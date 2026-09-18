@@ -1,0 +1,50 @@
+---
+description: Documentar en el vault de Obsidian del proyecto (HappyRobot-Vault) — usar cuando el usuario pida documentar, añadir al vault, apuntar en Obsidian, o al cerrar una sesión de trabajo relevante sobre HappyRobot/FlareAI.
+alwaysApply: false
+---
+
+# Documentar en el vault de Obsidian
+
+Este proyecto mantiene un vault de Obsidian en `HappyRobot-Vault/` (raíz del repo) como
+memoria persistente del trabajo hecho con HappyRobot/FlareAI, para que cualquiera (otro agente,
+otra sesión) entienda el qué, el cómo y el porqué sin releer el chat.
+
+## Estructura
+
+```
+HappyRobot-Vault/
+├── 00 Índice.md        # mapa de navegación — actualizar SIEMPRE sus enlaces al añadir notas
+├── Conceptos/           # cómo funciona HappyRobot en general (API, auth, nodos, voces...)
+├── Proyecto/            # lo específico construido aquí (workflows, código, cómo arrancarlo)
+├── Referencia/           # chuletas: IDs, endpoints, catálogos, problemas/soluciones
+└── Bitácora/             # una nota por fecha (YYYY-MM-DD.md) con el registro cronológico
+```
+
+Si no existe, créala con esta estructura antes de escribir notas.
+
+## Reglas de estilo
+
+1. Frontmatter YAML: `tags: [happyrobot, <concepto|proyecto|referencia|bitácora>]` (Bitácora
+   añade `date: YYYY-MM-DD`).
+2. Wikilinks `[[Nombre de la nota]]` liberalmente; cada nota termina con
+   `Relacionado: [[...]] · [[...]]`.
+3. Una nota = un tema concreto, nombre de fichero descriptivo en español, título estilo frase.
+4. Actualiza `00 Índice.md` en cada nota nueva (enlace + sección "Estado actual" si cambia).
+5. Prioriza el "por qué" (decisiones, alternativas descartadas, motivo del error concreto)
+   sobre el "qué" (el código ya está en el repo).
+6. Incluye comandos/código reproducibles en bloques \`\`\`bash / \`\`\`json.
+7. Nunca guardes secretos completos: solo los últimos 3-4 caracteres o un alias, y anota dónde
+   vive el valor real.
+8. Bitácora: al cerrar sesión con cambios relevantes, añade/amplía
+   `Bitácora/YYYY-MM-DD.md` con petición inicial, pasos, resultado y pendientes.
+
+## Flujo
+
+1. Comprueba si `HappyRobot-Vault/` existe; si no, créala.
+2. Repasa qué se descubrió y qué se construyó/cambió en la sesión.
+3. Decide carpeta por pieza; prefiere ampliar nota existente antes que duplicar.
+4. Escribe/edita notas.
+5. Actualiza `00 Índice.md`.
+6. Añade/amplía la Bitácora del día.
+7. Verifica que no haya secretos completos filtrados antes de terminar.
+8. Resume al usuario qué notas se crearon/actualizaron, enlazando el índice.
