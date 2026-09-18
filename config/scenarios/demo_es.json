@@ -1,0 +1,43 @@
+{
+  "_comment": "Escenario demo: Serra Calderona (Valencia). Pueblos reales, datos de población/valor ilustrativos. Contactos ficticios.",
+  "region": { "name": "Serra Calderona / Camp de Morvedre", "center": { "lat": 39.69, "lon": -0.40 } },
+
+  "assets": [
+    { "key": "serra",      "name": "Serra",                 "kind": "town",   "lat": 39.6836, "lon": -0.4216, "population": 3200, "insured_value": 180, "hazard_class": "forest" },
+    { "key": "naquera",    "name": "Náquera",               "kind": "town",   "lat": 39.6531, "lon": -0.4200, "population": 6900, "insured_value": 420, "hazard_class": "forest" },
+    { "key": "segart",     "name": "Segart",                "kind": "town",   "lat": 39.6797, "lon": -0.3703, "population": 150,  "insured_value": 12,  "hazard_class": "forest" },
+    { "key": "gatova",     "name": "Gátova",                "kind": "town",   "lat": 39.7736, "lon": -0.4917, "population": 400,  "insured_value": 25,  "hazard_class": "forest" },
+    { "key": "olocau",     "name": "Olocau",                "kind": "town",   "lat": 39.6997, "lon": -0.5333, "population": 1800, "insured_value": 90,  "hazard_class": "forest" },
+    { "key": "marines",    "name": "Marines",               "kind": "town",   "lat": 39.6717, "lon": -0.5489, "population": 1900, "insured_value": 95,  "hazard_class": "forest" },
+    { "key": "estivella",  "name": "Estivella",             "kind": "town",   "lat": 39.7128, "lon": -0.3489, "population": 1400, "insured_value": 70,  "hazard_class": "forest" },
+    { "key": "sagunto",    "name": "Sagunto",               "kind": "town",   "lat": 39.6764, "lon": -0.2733, "population": 68000, "insured_value": 4500, "hazard_class": "industrial" },
+    { "key": "hospital",   "name": "Hospital de Sagunto",   "kind": "hospital", "lat": 39.6867, "lon": -0.2755, "population": 600, "insured_value": 300 },
+    { "key": "ceip_serra", "name": "CEIP Sant Josep (Serra)", "kind": "school", "lat": 39.6850, "lon": -0.4230, "population": 250, "insured_value": 15 },
+    { "key": "planta",     "name": "Planta química Port de Sagunt", "kind": "plant", "lat": 39.6500, "lon": -0.2350, "population": 120, "insured_value": 900, "hazard_class": "chemical" },
+    { "key": "puerto",     "name": "Port de Sagunt",        "kind": "port",   "lat": 39.6380, "lon": -0.2280, "population": 300, "insured_value": 1200, "hazard_class": "maritime" },
+    { "key": "reserva",    "name": "Parc Natural Serra Calderona (reserva)", "kind": "forest_reserve", "lat": 39.7250, "lon": -0.4600, "population": 0, "carbon_credit_value": 35, "hazard_class": "forest" }
+  ],
+
+  "contacts": [
+    { "key": "maria",   "name": "María Ferrer",   "role": "citizen",   "phone": "+34600000001", "asset": "serra",     "priority": 10, "notes": "Vive en la urbanización alta de Serra, movilidad reducida." },
+    { "key": "pep",     "name": "Pep Martí",      "role": "citizen",   "phone": "+34600000002", "asset": "segart",    "priority": 20 },
+    { "key": "lucia",   "name": "Lucía Navarro",  "role": "citizen",   "phone": "+34600000003", "asset": "naquera",   "priority": 30 },
+    { "key": "toni",    "name": "Toni Gil",       "role": "citizen",   "phone": "+34600000004", "asset": "gatova",    "priority": 40 },
+    { "key": "amparo",  "name": "Amparo Bellver",  "role": "citizen",   "phone": "+34600000006", "asset": "olocau",    "priority": 15, "notes": "Casa de campo en la ladera este de Olocau." },
+    { "key": "carmen",  "name": "Carmen Soler",   "role": "citizen",   "phone": "+34600000005", "asset": "estivella", "priority": 50 },
+    { "key": "cmd_bomberos", "name": "Capitán Roig (Bomberos Sagunto)", "role": "commander", "phone": "+34600000010", "asset": "sagunto", "priority": 1 },
+    { "key": "cmd_forestal", "name": "Jefa Ibáñez (Brigada forestal)",  "role": "commander", "phone": "+34600000011", "asset": "serra",   "priority": 2 },
+    { "key": "policia", "name": "Sargento Vidal (Guardia Civil)", "role": "police", "phone": "+34600000020", "asset": "sagunto", "priority": 5 },
+    { "key": "alcalde", "name": "Alcalde de Serra", "role": "mayor", "phone": "+34600000030", "asset": "serra", "priority": 8 },
+    { "key": "puerto_jefe", "name": "Jefe de seguridad Port de Sagunt", "role": "commander", "phone": "+34600000040", "asset": "puerto", "priority": 3 }
+  ],
+
+  "resources": [
+    { "key": "brig_sagunto", "name": "Parque de Bomberos Sagunto", "kind": "brigade",    "capabilities": ["water", "rescue"], "lat": 39.6700, "lon": -0.2800, "contact": "cmd_bomberos" },
+    { "key": "brig_forestal","name": "Brigada forestal Serra",       "kind": "brigade",    "capabilities": ["water"],           "lat": 39.6900, "lon": -0.4300, "contact": "cmd_forestal" },
+    { "key": "hidro_1",      "name": "Hidroavión CL-415 (Manises)",  "kind": "hydroplane", "capabilities": ["water"],           "lat": 39.4893, "lon": -0.4816, "metadata": { "reload_min": 12, "water_source": "mar / embalse" } },
+    { "key": "espuma_1",     "name": "Unidad espuma Port de Sagunt",  "kind": "foam_unit",  "capabilities": ["foam", "hazmat"],  "lat": 39.6400, "lon": -0.2300 },
+    { "key": "dron_1",       "name": "Dron térmico Náquera",           "kind": "drone",      "capabilities": ["recon"],           "lat": 39.6531, "lon": -0.4200 },
+    { "key": "gc_1",         "name": "Patrulla Guardia Civil",         "kind": "police",     "capabilities": ["traffic", "evacuation"], "lat": 39.6764, "lon": -0.2733, "contact": "policia" }
+  ]
+}

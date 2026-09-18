@@ -21,3 +21,6 @@ HappyRobot-Vault/.obsidian/
 
 # Docs
 happyrobot-docs-web
+# Base de datos local embebida y venv
+.local/
+.venv/
