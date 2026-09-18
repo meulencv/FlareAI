@@ -37,3 +37,23 @@ documentado aquí (guardamos una copia local en
 se necesita otra vez).
 
 Relacionado: [[Autenticación y hosts API]] · [[Workflows y nodos]]
+
+## Añadidos en la sesión 2026-09-19 (S.O.S.)
+
+| Endpoint | Uso |
+|---|---|
+| `POST /workflows/` (plano) · `POST /versions/{v}/nodes` · `PUT …/nodes/{n}` · `DELETE …/nodes/{n}` | construir workflows por código |
+| `PUT /versions/{v}/nodes/{n}/custom-output` | declarar salida de ejemplo (variables aguas abajo) |
+| `POST /versions/{v}/nodes/{n}/test` | ejecutar un nodo suelto con valores de ejemplo |
+| `GET /versions/{v}/nodes/{n}/available-vars` | ver qué variables (grupos/campos) ve un nodo |
+| `GET /events/{event_id}/config-schema?use_case_id=` | campos de configuración de cada tipo de nodo |
+| `GET /integrations/`, `GET /integrations/{id}` | catálogo de 278 integraciones y sus eventos (ids de nodo) |
+| `POST /versions/{v}/tools/{t}/tool-call-result/generate` · `PUT …/visibility` | activar tools de agentes |
+| `POST /workflows/{id}/variables` · `PATCH …/{var}` | variables de workflow (API key oculta, FIRMS key) |
+| `POST /workflows/{id}/runs` | disparar run con payload (equivalente al hook) |
+| `GET /runs/{id}/nodes` · `GET /runs/{id}/outputs/{oid}` · `GET /runs/{id}/sessions` · `GET /sessions/{id}/messages` | depurar runs y ver el razonamiento del agente |
+| `POST /signals/` · `POST /signals/keys` | avisar a agentes en llamada |
+| `POST /voice/tokens/` con `data` / con `session_id` (+`should_takeover`) | web call con parámetros / escuchar / tomar el control |
+| `POST /twin/sql` · `GET /twin/schema` | base de datos (pendiente de provisionar) |
+| `POST /realtime/tokens` (`runs_firehose`) | feed en vivo (previsto para el dashboard) |
+

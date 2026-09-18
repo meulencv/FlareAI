@@ -5,49 +5,56 @@
       "slug": "e63ungrodwxy",
       "name": "SOS · Ingesta de evidencias",
       "version_id": "01a0b6af-619c-7117-83a9-bd87c8b1ce65",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/e63ungrodwxy"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/e63ungrodwxy",
+      "published": true
     },
     "assess": {
       "id": "01a0b6af-627b-7d58-91de-3fb3ad486030",
       "slug": "5rh0j7skhb1s",
       "name": "SOS · Evaluación de incidente",
       "version_id": "01a0b6af-6288-7fd3-b7c8-1b43c238bf82",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/5rh0j7skhb1s"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/5rh0j7skhb1s",
+      "published": true
     },
     "execute": {
       "id": "01a0b6b6-8b65-72ef-8874-a4beda03c135",
       "slug": "nfso7alppk61",
       "name": "SOS · Ejecución de acción",
       "version_id": "01a0b6b6-8b73-7bff-bf08-e6ae3873d9c4",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/nfso7alppk61"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/nfso7alppk61",
+      "published": true
     },
     "approve": {
       "id": "01a0b6b6-8c32-706d-be34-981b6a16e18c",
       "slug": "oloo648gpi35",
       "name": "SOS · Aprobación humana",
       "version_id": "01a0b6b6-8c3e-7e80-8a10-6c345c528f65",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/oloo648gpi35"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/oloo648gpi35",
+      "published": true
     },
     "outbound_voice": {
       "id": "01a0b6b9-41f2-7384-ae09-6879170ba8c3",
       "slug": "thsat57aqgdi",
       "name": "SOS · Llamada saliente (web call)",
       "version_id": "01a0b6b9-41fd-7091-8288-8d1894d520e2",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/thsat57aqgdi"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/thsat57aqgdi",
+      "published": true
     },
     "citizen_inbound": {
       "id": "01a0b6c9-7925-7352-982f-89e9648ba3ad",
       "slug": "fr98xnx7qvqk",
       "name": "SOS · 112 virtual (web call)",
       "version_id": "01a0b6c9-7934-72d6-aa79-4f12cfeb3186",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/fr98xnx7qvqk"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/fr98xnx7qvqk",
+      "published": true
     },
     "weather_inject": {
       "id": "01a0b6c9-79fc-7cb5-bc01-111002ee2984",
       "slug": "tt2c77n1j1g6",
       "name": "SOS · Meteo: observación y giro de viento",
       "version_id": "01a0b6c9-7a0e-7979-8f2d-247e60a52fa3",
-      "hook_url": "https://platform.eu.happyrobot.ai/hooks/tt2c77n1j1g6"
+      "hook_url": "https://platform.eu.happyrobot.ai/hooks/tt2c77n1j1g6",
+      "published": true
     },
     "weather_feeder": {
       "id": "01a0b6c9-7add-78c8-8905-b3a95c5ec1cd",
@@ -63,7 +70,7 @@
         "parse": "01a0b6c9-d127-7904-aeb6-8405eade5572",
         "inyectar": "01a0b6c9-d212-7503-9783-113bc241f7b8"
       },
-      "published": true
+      "published": false
     },
     "firms_feeder": {
       "id": "01a0b6c9-7bbb-7768-8db3-0a85221a1524",
@@ -78,7 +85,7 @@
         "por_deteccion": "01a0b6c9-d9e1-7f81-b7d3-9b11aae3231f",
         "ingestar": "01a0b6c9-da4a-766a-ae68-186d2557b43b"
       },
-      "published": true
+      "published": false
     }
   }
 }

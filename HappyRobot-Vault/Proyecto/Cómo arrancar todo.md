@@ -4,41 +4,47 @@ tags: [happyrobot, proyecto, guía]
 
 # Cómo arrancar todo (guía rápida)
 
-```bash
-cd /Users/meulencv/development/projects/FlareAI/voice
-export HAPPYROBOT_API_KEY=sk_live_...   # ver la key real en tu gestor de secretos, no aquí
-python3 server.py
-```
-
-Abrir **http://localhost:8000**, pulsar **"🎙️ Iniciar llamada"**, aceptar el permiso de
-micrófono del navegador, y hablar con Flare (en español).
-
-## Arrancarlo en background (para que no se corte al cerrar la sesión)
+## S.O.S. Crisis Engine (2026-09-19 en adelante)
 
 ```bash
-cd voice
-HAPPYROBOT_API_KEY=sk_live_... nohup python3 server.py > /tmp/hr-voice.log 2>&1 &
+cd /Users/meulencv/development/projects/FlareAI
+# 1) entorno (todo dentro de la carpeta)
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env            # HAPPYROBOT_API_KEY=sk_live_... (nunca al repo)
+# 2) base de datos local (Postgres embebido en .local/pg) + esquema + datos de demo
+.venv/bin/python -m sos db start
+.venv/bin/python -m sos twin migrate && .venv/bin/python -m sos twin seed
+# 3) simulación completa (entregable del reto)
+.venv/bin/python main_simulation.py            # añade --verbose para ver cada nodo
+# 4) dashboard
+.venv/bin/python web/server.py                 # http://localhost:8000
+# 5) tests
+.venv/bin/python -m pytest -q tests
 ```
 
-## Dónde ver las llamadas / transcripciones
+En el dashboard: botones de simulación arriba (aviso 112 → satélite → giro de viento), aprobar
+acciones con 1 clic, "Sala de llamadas" para hablar por voz (web call, micrófono).
 
-En la plataforma HappyRobot (clúster **EU** → https://platform.eu.happyrobot.ai), dentro del
-workflow **FlareAI Web Voice**:
-- **Runs**: cada llamada queda como un run (`GET /workflows/{id}/runs`).
-- **Sessions**: transcripción + audio de cada conversación.
+## Cuando Twin esté provisionado (y la key tenga `twin.manage`)
 
-También por API:
 ```bash
-curl -H "Authorization: Bearer $HAPPYROBOT_API_KEY" \
-  "https://platform.eu.happyrobot.ai/api/v2/workflows/01a0b665-2a84-725f-a714-947e427ea6d2/runs?limit=5"
+.venv/bin/python -m sos status                 # debe decir backend twin
+.venv/bin/python -m sos twin migrate && .venv/bin/python -m sos twin sync-to-twin
+.venv/bin/python -m sos deploy                 # (re)publica los 9 workflows, incluidos los cron
+.venv/bin/python main_simulation.py --cloud    # runs reales en la plataforma
+.venv/bin/python web/server.py                 # detecta Twin → modo cloud, voz con los agentes SOS
 ```
 
-## Si quieres cambiar el prompt o la voz
+## Legacy: FlareAI Web Voice (la web de voz simple de 2026-09-18)
 
-Dos formas:
-1. **Desde la UI del builder** (más fácil): editar el nodo, y pulsar "Publish" ahí mismo.
-2. **Por API** (lo que hicimos nosotros): seguir el flujo
-   unpublish → unlock → PUT node → publish, documentado en
-   [[FlareAI Web Voice - workflow]].
+```bash
+cd voice && HAPPYROBOT_API_KEY=sk_live_... python3 server.py   # http://localhost:8000
+```
+El dashboard nuevo la reutiliza como agente de voz de reserva cuando no hay Twin.
 
-Relacionado: [[Web app - server y frontend]] · [[IDs y recursos]]
+## Dónde ver las cosas en HappyRobot
+
+https://platform.eu.happyrobot.ai/hackspainteam3/workflows → 9 workflows "SOS · …". Cada
+ejecución es un *run* con sus nodos; las llamadas tienen *session* con transcripción y audio.
+
+Relacionado: [[SOS Crisis Engine - arquitectura]] · [[Dashboard y simulador]] · [[Base de datos local embebida]] · [[Cómo desplegar - sos deploy]]

@@ -5,12 +5,23 @@ este repositorio.
 
 ## Proyecto
 
-- `main.py` — mapa ASCII en terminal de detecciones térmicas NASA FIRMS sobre España.
-- `voice/` — web con botón de llamada de voz que usa un workflow de **HappyRobot** (agente IA
-  por voz, vía LiveKit/WebRTC, sin telefonía real).
+**S.O.S. Agentic Crisis Engine** (HackSpain 2026, reto HappyRobot): gestión autónoma de crisis
+sobre HappyRobot. Lee primero `HappyRobot-Vault/00 Índice.md` y `README.md`.
+
+- `sos/` — todo lo que vive en HappyRobot, como código: cliente API (`happyrobot/`), esquema Twin y
+  seed (`twin/`), los 9 workflows + DSL + deployer (`workflows/`), motor de riesgo (`risk/`),
+  intérprete local de los workflows (`runtime/`), fuentes (`sources/`), simulador (`simulation/`).
+  `python -m sos deploy` crea/actualiza/publica los workflows por API.
+- `web/` — dashboard operativo (stdlib + Leaflet/LiveKit por CDN). `main_simulation.py` — demo.
+- `config/` — pesos/umbrales y escenario demo. `tests/` — pytest. `deploy-state.json` — ids desplegados.
+- `.local/` — Postgres embebido (mientras Twin no está provisionado). **Regla del usuario: no
+  instalar nada fuera de esta carpeta** (venv + `.local`).
+- `voice/`, `main.py` — legado (web de voz simple, mapa FIRMS en terminal).
 - `HappyRobot-Vault/` — vault de **Obsidian** con la documentación de cómo funciona HappyRobot
-  y de todo lo construido en este proyecto sobre esa plataforma.
-- `.claude/skills/obsidian-docs/` — skill de Claude Code equivalente a esta sección de AGENTS.md.
+  y de todo lo construido (formatos de nodos por API, problemas resueltos, IDs, bitácora).
+- `.claude/skills/obsidian-docs/` — skill de Claude Code equivalente a la sección siguiente.
+
+Secretos: solo en `.env` (`HAPPYROBOT_API_KEY`) o como variables de workflow; nunca en el repo/vault.
 
 ## Documentar en el vault de Obsidian (`HappyRobot-Vault/`)
 

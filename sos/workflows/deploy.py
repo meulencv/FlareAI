@@ -61,11 +61,13 @@ class Deployer:
         data = existing.get("data", existing)
         version = data.get("latest_version") or {}
         entry = {
+            **(entry or {}),  # conserva nodes/published del último build
             "id": data["id"],
             "slug": data["slug"],
             "name": spec.name,
             "version_id": version.get("id"),
             "hook_url": f"{self.c.settings.hooks_base}/{data['slug']}",
+            "published": bool(version.get("is_published")),
         }
         self.state["workflows"][spec.key] = entry
         return entry
