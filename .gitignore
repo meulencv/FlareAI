@@ -25,3 +25,4 @@ happyrobot-docs-web
 # Base de datos local embebida y venv
 .local/
 .venv/
+data/territorial/

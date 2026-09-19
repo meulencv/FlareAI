@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent
 PG = ROOT / '.local/pg'
 CATALOG = ROOT / 'data/espana-en-directo/data/catalog.json'
 TABLES = ('sources', 'imports', 'grid', 'facilities', 'cameras', 'snapshots', 'incidents',
-          'observations', 'confirmations', 'assets', 'settings')
+          'observations', 'confirmations', 'assets', 'settings', 'camera_checks', 'demo_sessions', 'demo_calls')
 
 
 def local_start() -> None:
@@ -149,11 +149,38 @@ class Database:
                         dtype=[(name, 'f8') for name in GRID_FIELDS])
         return Atlas(grid, [{k: v for k, v in r['data'].items() if k != 'original'} for r in facilities])
 
-    def catalog(self) -> dict:
+    def catalog(self, verified: bool = False) -> dict:
         with self.connect() as conn:
-            return {'cameras': [r['data'] for r in conn.execute('SELECT data FROM flare_cameras ORDER BY id')],
+            if verified:
+                from territorial import UNAVAILABLE_IMAGES
+                rows = conn.execute("SELECT c.data, h.media_kind, h.checked_at FROM flare_cameras c JOIN flare_camera_checks h ON h.id=c.id WHERE h.status='available' AND h.data->>'method' IN ('image_decoded','browser_video_playing') AND coalesce(h.data->>'sha256','') <> ALL(%s) AND h.valid_until > (now() AT TIME ZONE 'UTC') ORDER BY c.id", (list(UNAVAILABLE_IMAGES),))
+                cameras = [{**r['data'], 'kind': r['media_kind'], 'verified_at': r['checked_at'].isoformat() + 'Z'} for r in rows]
+            else:
+                cameras = [r['data'] for r in conn.execute('SELECT data FROM flare_cameras ORDER BY id')]
+            return {'cameras': cameras,
                     'sources': [r['data'] for r in conn.execute("SELECT data FROM flare_sources WHERE id LIKE 'camera:%%' ORDER BY id")],
-                    'mode': 'imported_catalog', 'exhaustive': False}
+                    'mode': 'verified_media' if verified else 'imported_catalog', 'exhaustive': False}
+
+    def camera_check(self, identifier: str, status: str, media_kind: str | None, data: dict) -> None:
+        from datetime import timedelta
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        hours = 6 if status == 'available' else 24 if status == 'external' else 1
+        expires = now + timedelta(hours=hours)
+        if status == 'available' and media_kind == 'player':
+            expires = min(expires, datetime.fromtimestamp(data.get('browser_verified_until', 0), timezone.utc).replace(tzinfo=None))
+        with self.connect() as conn:
+            conn.execute('INSERT INTO flare_camera_checks VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,checked_at=EXCLUDED.checked_at,valid_until=EXCLUDED.valid_until,media_kind=EXCLUDED.media_kind,data=EXCLUDED.data',
+                         (identifier, status, now, expires, media_kind, Jsonb(data)))
+
+    @contextmanager
+    def verification_lock(self, key: int) -> Iterator[bool]:
+        with self.connect() as conn:
+            yield conn.execute('SELECT pg_try_advisory_xact_lock(%s) AS acquired', (key,)).fetchone()['acquired']
+
+    def camera_checks(self) -> dict:
+        with self.connect() as conn:
+            rows = conn.execute('SELECT id,status,checked_at,valid_until,media_kind,data FROM flare_camera_checks')
+            return {r['id']: r for r in rows}
 
     def camera(self, identifier: str) -> dict:
         with self.connect() as conn:
@@ -183,6 +210,14 @@ class Database:
                     identifier = detection.get('id') or hashlib.sha256(json.dumps(detection, sort_keys=True).encode()).hexdigest()
                     conn.execute('INSERT INTO flare_observations VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET incident_id=EXCLUDED.incident_id',
                                  (identifier, item['id'], detection['lat'], detection['lon'], utc(detection['at']), Jsonb(detection)))
+
+    def start_demo(self, identifier: str) -> None:
+        with self.connect() as conn:
+            conn.execute("INSERT INTO flare_demo_sessions VALUES (%s,now() AT TIME ZONE 'UTC')", (identifier,))
+
+    def save_demo_call(self, session_id: str, run_id: str, data: dict) -> None:
+        with self.connect() as conn:
+            conn.execute("INSERT INTO flare_demo_calls VALUES (%s,%s,now() AT TIME ZONE 'UTC',%s) ON CONFLICT (id) DO UPDATE SET updated_at=EXCLUDED.updated_at,data=EXCLUDED.data WHERE flare_demo_calls.session_id=EXCLUDED.session_id", (run_id, session_id, Jsonb(data)))
 
     def confirmations(self, at: datetime) -> dict[str, dict]:
         moment = at.astimezone(timezone.utc).replace(tzinfo=None)
@@ -219,12 +254,19 @@ class Database:
             self.source(conn, 'ign-roads', {'url': 'https://servicios.idee.es/wms-inspire/transportes',
                                           'layer': 'TN.RoadTransportNetwork.RoadLink', 'license': 'CC BY 4.0 · SCNE/IGN'})
         for path in (ROOT / 'static').glob('*.geojson'):
-            self.asset('map:' + path.name, 'cartography', json.loads(path.read_text()), path)
+            if self.get_asset('map:' + path.name) is None:
+                self.asset('map:' + path.name, 'cartography', json.loads(path.read_text()), path)
         path = ROOT / 'static/places.json'
-        self.asset('map:places.json', 'cartography', {'places': json.loads(path.read_text())}, path)
+        if self.get_asset('map:places.json') is None:
+            self.asset('map:places.json', 'cartography', {'places': json.loads(path.read_text())}, path)
         for path in (ROOT / 'data/satellite').glob('*.json'):
-            if not path.name.endswith('.request.json'):
+            if not path.name.endswith('.request.json') and self.get_asset('satellite:' + path.stem) is None:
                 self.asset('satellite:' + path.stem, 'satellite', json.loads(path.read_text()), path.with_suffix('.png'))
+
+    def satellite(self, bbox: list[float], mode: str) -> dict | None:
+        with self.connect() as conn:
+            rows = conn.execute("SELECT data,path FROM flare_assets WHERE kind='satellite' AND data->'bbox'=%s AND data->>'mode'=%s ORDER BY data->>'checked_at_utc' DESC", (Jsonb(bbox), mode))
+            return next((row['data'] for row in rows if row['path'] and (ROOT / row['path']).is_file()), None)
 
     def stats(self) -> dict:
         with self.connect() as conn:

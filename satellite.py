@@ -5,7 +5,7 @@ import io
 import json
 import threading
 from datetime import timedelta
-from typing import TypedDict, cast
+from typing import Any, TypedDict, cast
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -37,11 +37,16 @@ class Picture(TypedDict):
     checked_at_utc: str
 
 
-def picture(incident: Incident, mode: str, offline: bool = False) -> Picture:
+def picture(incident: Incident, mode: str, offline: bool = False, database: Any = None) -> Picture:
     if mode not in LAYERS:
         raise ValueError("Capa desconocida")
     lon, lat = incident["lon"], incident["lat"]
     bbox = [round(lon - .24, 5), round(lat - .16, 5), round(lon + .24, 5), round(lat + .16, 5)]
+    if offline and database:
+        saved = database.satellite(bbox, mode)
+        if saved:
+            return cast(Picture, saved)
+        raise ValueError("Sin imagen guardada para esta zona y capa; necesita conexión.")
     if offline:
         cached = []
         for path in (DATA / "satellite").glob("*.json"):
@@ -57,7 +62,11 @@ def picture(incident: Incident, mode: str, offline: bool = False) -> Picture:
     key = hashlib.sha256(f"v2|{bbox}|{mode}|{now:%Y-%m-%d_%H}".encode()).hexdigest()[:24]
     meta = DATA / "satellite" / f"{key}.json"
     with LOCK:
-        if meta.exists():
+        if database:
+            saved = database.get_asset('satellite:' + key)
+            if saved and saved['path'] and (DATA.parent / saved['path']).is_file():
+                return cast(Picture, saved['data'])
+        elif meta.exists():
             return cast(Picture, json.loads(meta.read_text()))
         for days in range(4):
             date = (now - timedelta(days=days)).date().isoformat()

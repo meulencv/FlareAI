@@ -18,6 +18,16 @@ const PATHS = {
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${PATHS[name] || PATHS.factory}</svg>`;
 const number = value => Number(value).toLocaleString("es-ES", { maximumFractionDigits: 2 });
 
+export function roadEvents(events) {
+  const stable = { ...events };
+  delete stable.viewprereset;
+  return stable;
+}
+
+export function camerasVisible(zoom) {
+  return zoom >= 10;
+}
+
 export function safeLink(value) {
   try {
     const url = new URL(value);
@@ -74,14 +84,17 @@ export function createInfrastructure({ map, L, document, fetch }) {
     sequence++; clearInterval(timer); timer = null;
     if (active) active.node.querySelectorAll("iframe, img").forEach(node => node.remove());
     active = null;
+    document.getElementById("map").classList.remove("place-open");
   }
   function popup(item, type) {
     if (active) map.closePopup(active.popup);
     stopMedia();
     const root = make("section", null, "place-card");
-    const shown = L.popup({ className: "place-popup", maxWidth: 360, minWidth: 230, autoPanPadding: [20, 80] })
+    const shown = L.popup({ className: "place-popup", maxWidth: 360, minWidth: 230,
+      autoPanPaddingTopLeft: [20, 100], autoPanPaddingBottomRight: [20, 110] })
       .setLatLng([item.lat, item.lon]).setContent(root).openOn(map);
     active = { popup: shown, node: root, type };
+    document.getElementById("map").classList.add("place-open");
     shown.on("remove", () => { if (active?.popup === shown) stopMedia(); });
     return root;
   }
@@ -91,6 +104,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
     root.append(make("p", detail.priority), make("p", poi.reason || "Actividad publicada en OpenStreetMap."), make("p", detail.wind));
     root.append(make("p", `OSM ${poi.source_date || "2026-09-18"} · ${poi.coordinate_method || "posición representativa"}. Riesgo oficial no evaluado. No confirma afección.`, "place-note"));
     link(root, "Ver instalación en OpenStreetMap ↗", poi.source_url);
+    active.popup.update();
   }
   function camera(item) {
     const root = popup(item, "camera"), token = sequence;
@@ -102,22 +116,30 @@ export function createInfrastructure({ map, L, document, fetch }) {
     const updated = source?.updatedAt || source?.checkedAt;
     root.append(make("p", `Catálogo ${updated ? new Date(updated).toLocaleString("es-ES") : "sin fecha"}. Ubicación publicada, no verificada sobre el terreno.`, "place-note"));
     if (item.coordinateNote) root.append(make("p", item.coordinateNote, "place-note"));
-    link(root, "Abrir fuente original ↗", item.pageUrl);
+    link(root, "Fuente y autoría ↗", item.pageUrl);
     link(root, "Condiciones de la fuente ↗", source?.licenseUrl);
     let loading = false;
+    function unavailable(text) {
+      if (token !== sequence) return;
+      clearInterval(timer); timer = null;
+      media.replaceChildren(); message.textContent = text;
+      catalog.cameras = catalog.cameras.filter(camera => camera.id !== item.id);
+      render(); active.popup.update();
+    }
     async function load() {
       if (loading || token !== sequence || document.hidden) return;
       loading = true;
       try {
         const response = await fetch(`/api/webcam?id=${encodeURIComponent(item.id)}`);
-        if (!response.ok) throw new Error("Cámara no disponible. Puedes abrir la fuente original.");
+        if (!response.ok) throw new Error("Cámara no disponible. Se oculta del mapa hasta una nueva comprobación.");
         const result = await response.json();
         if (token !== sequence) return;
-        if (item.kind === "snapshot") {
+        if (result.verification_pending) throw new Error("Cámara pendiente de comprobar la reproducción. Se oculta temporalmente.");
+        if (result.kind === "snapshot") {
           if (!/^\/territorial\/[a-f0-9]{24}\.img$/.test(result.url)) throw new Error("Imagen no válida");
           const image = make("img"); image.alt = `Captura de ${item.name}`;
-          image.onload = () => { if (token === sequence) media.replaceChildren(image); };
-          image.onerror = () => { if (token === sequence) { media.replaceChildren(); message.textContent = "No se pudo mostrar la captura. Abre la fuente original."; } };
+          image.onload = () => { if (token === sequence) { media.replaceChildren(image); active.popup.update(); } };
+          image.onerror = () => unavailable("No se pudo mostrar la captura. Cámara oculta temporalmente.");
           image.src = `${result.url}?v=${encodeURIComponent(result.fetched_at)}`;
           const modified = result.source_modified ? new Date(result.source_modified) : null;
           const old = modified && Date.now() - modified.getTime() > 1800000;
@@ -126,24 +148,28 @@ export function createInfrastructure({ map, L, document, fetch }) {
           const frame = make("iframe"); frame.title = item.name;
           frame.referrerPolicy = "no-referrer";
           frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-presentation");
-          frame.setAttribute("allow", "fullscreen"); frame.src = result.player_url;
+          frame.setAttribute("allow", "autoplay; fullscreen; picture-in-picture"); frame.src = result.player_url;
           media.replaceChildren(frame);
           message.textContent = "Reproductor del proveedor. La disponibilidad y la emisión dependen de la fuente.";
         } else {
-          message.textContent = "Esta cámara se ve en la página original del proveedor.";
+          unavailable("La fuente no publica una cámara integrable. Se retira del mapa.");
         }
       } catch (error) {
-        if (token === sequence) { media.replaceChildren(); message.textContent = error.message; }
-      } finally { loading = false; }
+        unavailable(error.message);
+      } finally {
+        loading = false;
+        if (token === sequence) active.popup.update();
+      }
     }
     if (item.kind === "snapshot") {
-      load(); timer = setInterval(load, Math.max(30, item.refreshSeconds) * 1000);
+      load(); timer = setInterval(load, Math.max(30, item.refreshSeconds || 180) * 1000);
     } else if (item.kind === "player") {
       const button = make("button", "Ver cámara", "camera-play");
       message.textContent = "Al abrir el vídeo contactas con el proveedor, que puede usar cookies.";
       button.onclick = () => { button.remove(); load(); };
       media.append(button);
-    } else message.textContent = "Abre la fuente original para ver esta cámara.";
+    } else unavailable("Cámara sin medio integrable.");
+    active.popup.update();
   }
   function grouped(group, type) {
     const latitudes = group.items.map(p => p.lat), longitudes = group.items.map(p => p.lon);
@@ -160,6 +186,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
       list.append(button);
     }
     root.append(list);
+    active.popup.update();
   }
   function draw(points, layer, type) {
     layer.clearLayers();
@@ -181,13 +208,26 @@ export function createInfrastructure({ map, L, document, fetch }) {
     }
   }
   function render() {
-    if (catalog) draw(catalog.cameras, cameras, "camera");
+    if (catalog && camerasVisible(map.getZoom())) draw(catalog.cameras.filter(c => ["snapshot", "player"].includes(c.kind)), cameras, "camera");
+    else {
+      cameras.clearLayers();
+      if (active?.type === "camera") map.closePopup(active.popup);
+    }
     draw(context?.potential.facilities || [], facilities, "facility");
   }
   map.createPane("infrastructure"); map.getPane("infrastructure").style.zIndex = 470;
+  map.on("zoom", () => {
+    if (!camerasVisible(map.getZoom())) {
+      cameras.clearLayers();
+      if (active?.type === "camera") map.closePopup(active.popup);
+    }
+  });
   map.on("moveend zoomend resize", () => { clearTimeout(repaint); repaint = setTimeout(render, 100); });
   map.createPane("roads"); map.getPane("roads").style.zIndex = 403; map.getPane("roads").style.pointerEvents = "none";
-  const roads = L.tileLayer("/roads/{z}/{x}/{y}.png", { pane: "roads", opacity: .48, minZoom: 4, maxZoom: 16,
+  const StableRoadLayer = L.TileLayer.extend({
+    getEvents() { return roadEvents(L.TileLayer.prototype.getEvents.call(this)); },
+  });
+  const roads = new StableRoadLayer("/roads/{z}/{x}/{y}.png", { pane: "roads", opacity: .48, minZoom: 4, maxZoom: 16,
     bounds: [[27, -19], [44.5, 5]], noWrap: true, updateWhenIdle: true,
     attribution: 'Carreteras © <a href="https://www.scne.es" target="_blank" rel="noopener">SCNE/IGN</a> · CC BY 4.0' });
   let tileFailed = false;
@@ -195,6 +235,25 @@ export function createInfrastructure({ map, L, document, fetch }) {
   roads.on("tileerror", () => { tileFailed = true; problem("roads", "Carreteras: cobertura no disponible en parte de esta vista"); });
   roads.on("load", () => { if (!tileFailed) problem("roads", null); });
   roads.addTo(map);
+  let loadingCatalog = false, attributed = false;
+  async function loadCatalog() {
+    if (loadingCatalog) return;
+    loadingCatalog = true;
+    try {
+      const response = await fetch("/api/webcams");
+      if (!response.ok) throw new Error("Catálogo no disponible");
+      const result = await response.json();
+      if (!Array.isArray(result.cameras) || !Array.isArray(result.sources)) throw new Error("Catálogo inválido");
+      catalog = result;
+      if (!attributed) {
+        map.attributionControl.addAttribution('<a href="/webcams/sources" target="_blank" rel="noopener">Cámaras públicas · fuentes y cobertura parcial</a>');
+        attributed = true;
+      }
+      render(); problem("cameras", null);
+    } catch { problem("cameras", "Cámaras: catálogo no disponible"); }
+    finally { loadingCatalog = false; }
+  }
+  setInterval(() => { if (!document.hidden) loadCatalog(); }, 60000);
   return {
     setContext(value) {
       context = value;
@@ -202,16 +261,6 @@ export function createInfrastructure({ map, L, document, fetch }) {
       facilities.clearLayers();
       if (context) draw(context.potential.facilities, facilities, "facility");
     },
-    async load() {
-      try {
-        const response = await fetch("/api/webcams");
-        if (!response.ok) throw new Error("Catálogo no disponible");
-        const result = await response.json();
-        if (!Array.isArray(result.cameras) || !Array.isArray(result.sources)) throw new Error("Catálogo inválido");
-        catalog = result;
-        map.attributionControl.addAttribution('<a href="/webcams/sources" target="_blank" rel="noopener">Cámaras públicas · fuentes y cobertura parcial</a>');
-        render(); problem("cameras", null);
-      } catch { problem("cameras", "Cámaras: catálogo no disponible"); }
-    },
+    load: loadCatalog,
   };
 }

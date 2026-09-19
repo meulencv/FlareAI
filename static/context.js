@@ -25,7 +25,7 @@ export function createContextView({ map, document, fetch, canvas, onFocus = () =
   const attribution = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · INE/Eurostat 2021 · Copernicus 2019';
 
   const heat = createHeatLayer({ map, canvas, document, onHover(hovered) {
-    if (!hovered || !hovered.text || !visible || !context) { tip.hidden = true; return; }
+    if (!hovered || !hovered.text || !visible || !context || map.getContainer?.()?.classList?.contains("place-open")) { tip.hidden = true; return; }
     tip.textContent = hovered.text;
     tip.style.transform = `translate(${hovered.point.x}px, ${hovered.point.y}px)`;
     tip.hidden = false;

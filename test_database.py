@@ -43,6 +43,34 @@ class DatabaseTests(unittest.TestCase):
         self.assertTrue(result['potential']['samples'])
         self.assertTrue(all(i['confirmation']['status'] == 'unconfirmed' for i in self.store.payload()['incidents']))
         self.assertEqual(self.db.snapshot('weather'), dict(self.store.weather))
+        from satellite import picture
+        image = picture(self.store.incidents[0], 'natural', True, self.db)
+        self.assertIn('/satellite/', image['url'])
+
+    def test_only_verified_integrable_recent_media_is_visible(self):
+        from contextlib import nullcontext
+        from datetime import timedelta
+        from uuid import uuid4
+        from psycopg.types.json import Jsonb
+        from territorial import UNAVAILABLE_IMAGES
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        ids = [str(uuid4()) for _ in range(5)]
+        cases = [('available', 'image_decoded', now + timedelta(hours=1), ''),
+                 ('available', 'public_embed_accessible', now + timedelta(hours=1), ''),
+                 ('external', 'browser_embed_failed', now + timedelta(hours=1), ''),
+                 ('available', 'image_decoded', now - timedelta(hours=1), ''),
+                 ('available', 'image_decoded', now + timedelta(hours=1), next(iter(UNAVAILABLE_IMAGES)))]
+        with self.db.connect() as conn, conn.transaction(force_rollback=True):
+            for identifier, (status, method, valid, checksum) in zip(ids, cases):
+                conn.execute('INSERT INTO flare_cameras VALUES (%s,%s,0,40,%s,%s,%s)',
+                             (identifier, 'webcams', 'test', 'snapshot', Jsonb({'id': identifier})))
+                conn.execute('INSERT INTO flare_camera_checks VALUES (%s,%s,%s,%s,%s,%s)',
+                             (identifier, status, now, valid, 'snapshot', Jsonb({'method': method, 'sha256': checksum})))
+            with patch.object(self.db, 'connect', side_effect=lambda: nullcontext(conn)):
+                visible = {camera['id'] for camera in self.db.catalog(verified=True)['cameras']}
+            self.assertIn(ids[0], visible)
+            for identifier in ids[1:]:
+                self.assertNotIn(identifier, visible)
 
     def test_parameterized_camera_lookup_and_foreign_keys(self):
         with self.assertRaises(KeyError):

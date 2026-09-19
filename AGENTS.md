@@ -65,24 +65,34 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 - Viento hacia `(procedencia + 180) % 360`, sector ±30°, mínimo 3 km/h; sin aviso direccional
   con viento ausente/desactualizado. Offline muestra contexto histórico, nunca alerta actual.
 - Preferencia actual: heatmap automático al pulsar un foco, sin botón de activación, con iconos
-  de instalaciones y ficha al pulsar (`static/infrastructure.js`). Cámaras públicas con icono,
-  agrupadas al alejar y separadas en detalle; agrupaciones coincidentes permiten elegir un elemento.
+  de instalaciones y ficha al pulsar (`static/infrastructure.js`). Las cámaras solo aparecen desde
+  zoom 10: no hay iconos ni grupos de cámaras en el panorama. Se conservan en SQL aunque estén ocultas.
   Las actualizaciones no deben mover la cámara. El canvas del calor no captura clics.
 - El calor acumula degradados radiales y traduce densidad a una paleta de 256 pasos; se dibuja
   al 60 % de resolución, en `multiply`, bajo el fuego, y se repinta una vez por fotograma.
 - Carreteras IGN: WMS nacional `TN.RoadTransportNetwork.RoadLink`, siempre visible, teselas
   solicitadas por viewport vía `/roads/z/x/y.png`, caché y metadatos SQL; no es un grafo viario
   descargado completo ni contiene cortes/tráfico. No descargar masivamente teselas.
-- Webcams: 2.926 registros del catálogo Faro importados en SQL; no inventario exhaustivo ni
-  sincronización automática de catálogos. Capturas solo al abrir, con intervalos del proveedor;
-  reproductores públicos tras clic explícito, enlaces originales si no integrables. Allowlists
-  de hosts/rutas y redirecciones, límites de bytes, concurrencia y tiempo en `territorial.py`.
-- Detecciones sin confirmar en gris. `flare_confirmations` requiere fuente, fecha y caducidad;
-  alta confianza FIRMS o noticia histórica no confirma actividad actual. Offline conserva gris.
-  Localizador de llama de hasta 32 px al alejarse, distinto de la huella real anclada al terreno.
-- La huella del incendio está **anclada al terreno**: no escalar componentes pequeñas según el zoom
-  (causaba deformación al acercar). La ondulación se indexa por posición relativa del contorno, no
-  por índice de vértice, y su amplitud es proporcional a la extensión dibujada.
+  `StableRoadLayer` excluye `viewprereset` de sus eventos (Leaflet local 1.9.4): el zoom continuo
+  usa `map.setView` por fotograma y ese evento destruía todas las teselas. Conserva `viewreset`,
+  `zoom`, `moveend` y la retención normal de padres/hijos para mantener cobertura al cargar.
+- Webcams: catálogo original de 2.926 registros en SQL, no exhaustivo ni sincronizado automáticamente.
+  La migración 2 añade `flare_camera_checks` (FK, estado, método, fecha, caducidad). `/api/webcams`
+  solo devuelve medios comprobados, integrables y vigentes; se excluyen enlaces externos, candidatos
+  sin verificar y plantillas conocidas de imagen no disponible. No borrar sus registros originales.
+  La UI refresca la lista cada minuto y oculta una cámara que falle al abrirla.
+- Auditoría: `python territorial.py verify-cameras` (cuatro workers, dos por fuente, límites de
+  tamaño/tiempo y allowlists de redirección); `python verify_camera_players.py` prueba el iframe
+  con Playwright desde el origen local real, sin falsear Referer ni extraer tokens/manifiestos.
+  Un HTTP 200 o `<video>` no prueba reproducción: exige fotogramas y avance de tiempo. El servidor
+  reevalúa lotes de 200 medios y hasta 20 vídeos cada diez minutos; locks SQL evitan barridos duplicados.
+- Detecciones sin confirmar en gris; **confirmadas en rojo/fuego animado**, también al alejarse.
+  `flare_confirmations` exige fuente, fecha y caducidad; confianza FIRMS alta no es confirmación.
+- Preferencia visual actual: **la misma animación en todas las escalas, sin icono estático**.
+  `fireDisplayScale` mantiene un radio visual mínimo de 16 px, con un factor común para toda la
+  huella, huecos y chispas. Al superar ese tamaño usa escala geográfica 1:1. Nunca modifica
+  `incident.footprint` ni cálculos de superficie/distancia. No ampliar componentes por separado.
+  La ondulación sigue anclada a la forma y se respetan pausa y movimiento reducido.
 - API v2: `potential` contiene `model`, `samples`, `zones` GeoJSON, `facilities`, `status` y
   limitaciones. `POTENTIAL_MODEL` centraliza pesos/umbrales versionados; cada muestra incluye
   evidencia, contribuciones, proximidad y datos ausentes. Se usan todas las celdas y los puntos OSM

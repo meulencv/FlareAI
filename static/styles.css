@@ -698,6 +698,7 @@ h1 {
   font-weight: 600;
   text-align: center;
 }
+#map.place-open ~ .map-label { visibility: hidden; }
 .place-popup .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: 0 8px 32px #25364724; }
 .place-popup .leaflet-popup-content { margin: 18px; max-width: calc(100vw - 76px); }
 .place-card { width: 300px; max-width: 100%; font-size: 11px; color: #586270; }
@@ -1371,6 +1372,9 @@ dialog p {
 dialog .eyebrow {
   font-size: 8px;
 }
+.demo-notice { position: absolute; bottom: 119px; left: 28px; right: 22px; z-index: 650; width: fit-content; max-width: calc(100% - 50px); padding: 9px 12px; border: 1px solid #eadbd4; border-radius: 8px; background: #fffaf4f5; color: #8c6453; font-size: 10px; pointer-events: none; }
+.map-label h2 { max-width: min(400px, 75vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 650px) { #demo-link { display: none; } }
 .source-links {
   display: flex;
   gap: 12px;
