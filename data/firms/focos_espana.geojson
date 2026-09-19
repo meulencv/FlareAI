@@ -1,6 +1,6 @@
 {
   "type": "FeatureCollection",
-  "analysis_at_utc": "2026-09-19T06:35:19.174224+00:00",
+  "analysis_at_utc": "2026-09-19T07:15:20.781242+00:00",
   "window_hours": 24,
   "features": [
     {
@@ -2223,6 +2223,56 @@
         "brightness_i5_k": 292.46,
         "scan_km": 0.39,
         "track_km": 0.36,
+        "daynight": "N",
+        "version": "2.0NRT",
+        "classification": "thermal_anomaly_unconfirmed"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "noaa21|2026-09-19T03:47:00+00:00|42.44118|-8.42512",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -8.42512,
+          42.44118
+        ]
+      },
+      "properties": {
+        "source": "noaa21",
+        "satellite": "N21",
+        "acquired_at_utc": "2026-09-19T03:47:00+00:00",
+        "confidence": "nominal",
+        "frp_mw": 4.12,
+        "brightness_i4_k": 312.51,
+        "brightness_i5_k": 287.35,
+        "scan_km": 0.75,
+        "track_km": 0.77,
+        "daynight": "N",
+        "version": "2.0NRT",
+        "classification": "thermal_anomaly_unconfirmed"
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "noaa21|2026-09-19T03:47:00+00:00|42.43435|-8.42797",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -8.42797,
+          42.43435
+        ]
+      },
+      "properties": {
+        "source": "noaa21",
+        "satellite": "N21",
+        "acquired_at_utc": "2026-09-19T03:47:00+00:00",
+        "confidence": "nominal",
+        "frp_mw": 7.51,
+        "brightness_i4_k": 331.34,
+        "brightness_i5_k": 288.37,
+        "scan_km": 0.75,
+        "track_km": 0.77,
         "daynight": "N",
         "version": "2.0NRT",
         "classification": "thermal_anomaly_unconfirmed"
