@@ -2,6 +2,7 @@ import { sample, cardinal } from "./wind.js";
 import { destination, scenario, imagePoints } from "./simulation.js";
 import { createStage } from "./flames.js";
 import { rings } from "./flow.js";
+import { createContextView } from "./context.js";
 
 const $ = id => document.getElementById(id);
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -33,6 +34,9 @@ let data, country, selected, currentPicture, imageMode = "natural", imageRequest
 let windVisible = true, simulationOpen = false, playTimer, refreshing = false, animationPaused = false;
 let zoomTarget = null, zoomFrame = 0;
 const cachedPictures = new Map();
+const contextView = createContextView({ map, L, document, fetch, onFocus: () => {
+  cancelZoom(); $("details").classList.remove("open");
+} });
 const views = {
   peninsula: [[35.6, -9.9], [44.1, 4.65]], baleares: [[38.5, .8], [40.4, 4.8]],
   canarias: [[27.4, -18.4], [29.5, -13.25]], ceuta: [[34.9, -6.2], [36.6, -2.1]],
@@ -98,6 +102,7 @@ function renderFires(incidents) {
     }
   }
   stage.update(incidents, selected?.id || null);
+  contextView.setVisible(incidents.some(i => i.id === selected?.id));
 }
 
 function selectIncident(incident, focus = false) {
@@ -138,6 +143,7 @@ function selectIncident(incident, focus = false) {
     else map.panTo([incident.lat, incident.lon], { animate: false });
   }
   loadPicture();
+  contextView.load(incident);
 }
 
 async function loadPicture() {
@@ -213,12 +219,13 @@ async function refresh() {
     const next = data.incidents.find(i => i.id === selected?.id) || data.incidents[0];
     if (!selected || next?.id !== selected.id) {
       if (next) selectIncident(next);
-      else { selected = null; $("scenario-shortcut").disabled = true; $("detail-content").hidden = true; $("detail-name").textContent = "Sin detecciones"; closeSimulation(); imageRequest++; renderList(); }
+      else { selected = null; contextView.clear(); $("scenario-shortcut").disabled = true; $("detail-content").hidden = true; $("detail-name").textContent = "Sin detecciones"; closeSimulation(); imageRequest++; renderList(); }
     } else {
       const changed = data.wind.valid_at_utc !== selected.weather.valid_at_utc || next.observations !== selected.observations;
-      if (changed) selectIncident(next); else { selected = next; $("seen-age").textContent = `Última detección ${age(next.last_seen)}`; renderList(); }
+      if (changed) selectIncident(next); else { selected = next; $("seen-age").textContent = `Última detección ${age(next.last_seen)}`; renderList(); contextView.load(next); }
     }
   } catch (error) {
+    contextView.clear();
     $("error-banner").hidden = false; $("error-banner").textContent = `${error.message}. Reintentando en un minuto.`;
     $("feed-state").classList.add("warning"); $("feed-state").innerHTML = "<i></i>Sin conexión";
   } finally { refreshing = false; }
@@ -313,7 +320,7 @@ $("close-details").onclick = () => {
   $("details").classList.remove("open");
   if (!matchMedia("(max-width:650px)").matches) {
     $("detail-content").hidden = true; $("detail-name").textContent = "Selecciona una zona"; $("detail-location").textContent = "Haz clic en una señal del mapa";
-    selected = null; $("scenario-shortcut").disabled = true; imageRequest++; renderList(); closeSimulation();
+    selected = null; contextView.clear(); $("scenario-shortcut").disabled = true; imageRequest++; renderList(); closeSimulation();
   }
 };
 $("focus-fire").onclick = () => {

@@ -14,6 +14,7 @@ from socketserver import BaseServer
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
 
+from context import ATLAS_ROOT, Atlas
 from gfs import DATA, ROOT, Snapshot, iso, update, utcnow
 from incidents import Collection, Incident, assemble, refresh_fires
 from satellite import picture
@@ -23,6 +24,8 @@ class Store:
     def __init__(self, offline: bool = False) -> None:
         self.offline = offline
         self.lock = threading.Lock()
+        self.atlas_lock = threading.Lock()
+        self.atlas: Atlas | None = None
         self.fires = cast(Collection, json.loads((DATA / "firms/focos_espana.geojson").read_text()))
         self.weather = cast(Snapshot, json.loads((DATA / "latest.json").read_text()))
         self.errors: dict[str, str] = {}
@@ -72,6 +75,18 @@ class Store:
                 "classification": "thermal_clusters_not_exhaustive_fire_inventory",
             }
 
+    def context(self, identifier: str) -> dict:
+        with self.lock:
+            incident = next((i for i in self.incidents if i["id"] == identifier), None)
+            weather_error = "weather" in self.errors
+            if incident is None or (not self.offline and (utcnow() - datetime.fromisoformat(incident["last_seen"])).total_seconds() > 86400):
+                raise KeyError("Zona no encontrada en el periodo disponible")
+        with self.atlas_lock:
+            if self.atlas is None:
+                self.atlas = Atlas.load()
+            atlas = self.atlas
+        return atlas.analyze(dict(incident), now=utcnow(), offline=self.offline, weather_error=weather_error)
+
     def find(self, identifier: str) -> Incident:
         with self.lock:
             for incident in self.incidents:
@@ -119,12 +134,16 @@ class Handler(SimpleHTTPRequestHandler):
                 for incident in cast(list[Incident], self.store.payload()["incidents"]):
                     writer.writerow({**incident, **incident["weather"]})
                 self.send_bytes(output.getvalue().encode("utf-8-sig"), "text/csv; charset=utf-8")
+            elif route.path == "/api/context":
+                self.send_json(self.store.context(query["id"][0]))
+            elif route.path == "/atlas/sources":
+                self.send_bytes((ATLAS_ROOT / "FUENTES.md").read_bytes(), "text/plain; charset=utf-8")
             elif route.path == "/api/satellite":
                 self.send_json(picture(self.store.find(query["id"][0]), query.get("mode", ["natural"])[0], self.store.offline))
             elif re.fullmatch(r"/satellite/[a-f0-9]{24}\.png", route.path):
                 self.send_bytes((DATA / "satellite" / route.path.rsplit("/", 1)[1]).read_bytes(), "image/png")
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js",
+                                "/flow.js", "/flames.js", "/context.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()

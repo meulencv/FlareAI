@@ -1,0 +1,11 @@
+suelo_dominante,celdas,poblacion_en_celda,superficie_clasificada_km2
+agua,2301,22266,2011.4
+bosque,241670,5055658,240400.18
+cultivos,159087,2977693,158929.78
+herbaceas,44669,650055,43932.88
+humedales,584,10651,495.47
+matorral,48693,1538919,48158.14
+nieve_hielo,2,0,2.0
+sin_datos,1293,3585,0.0
+suelo_desnudo,1881,69998,1603.03
+urbano,11046,37071309,10150.61

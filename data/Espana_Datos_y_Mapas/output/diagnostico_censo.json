@@ -1,0 +1,39 @@
+{
+  "STAT": {
+    "T": 511226,
+    "Y_GE65": 511226,
+    "Y_LT15": 511226,
+    "EMP": 511226,
+    "F": 511226,
+    "M": 511226,
+    "EU_OTH": 511226,
+    "NAT": 511226,
+    "OTH": 511226,
+    "CHG_IN": 511226,
+    "CHG_OUT": 511226,
+    "SAME": 511226,
+    "Y15-64": 511226
+  },
+  "POPULATED": {
+    "0": 5145608,
+    "1": 1500330
+  },
+  "OBS_STATUS": {
+    "nan": 6645938
+  },
+  "SPECIAL_VALUE": {
+    "nan": 6645938
+  },
+  "OBS_NOTE": {
+    "nan": 6645938
+  },
+  "APPROXIMATELY_LOCATED_POPULATION_PROPORTION": {
+    "0": 6645938
+  },
+  "CONVENTIONALLY_LOCATED_PROPORTION": {
+    "0": 6645938
+  },
+  "NOT_COUNTED_PROPORTION": {
+    "nan": 6645938
+  }
+}

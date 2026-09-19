@@ -1,0 +1,54 @@
+{
+  "extractos": {
+    "spain.osm.pbf": {
+      "timestamp": "2026-09-18T20:21:10Z",
+      "generator": "osmium/1.16.0"
+    },
+    "canarias.osm.pbf": {
+      "timestamp": "2026-09-18T20:21:10Z",
+      "generator": "osmium/1.16.0"
+    }
+  },
+  "elementos": 44787,
+  "errores_geometria": 1,
+  "excluidos_fuera_ambito": 263,
+  "puertos_costa_revisar": 369,
+  "categorias": {
+    "area_industrial": 22575,
+    "gasolinera": 12038,
+    "fabrica": 4915,
+    "gestion_residuos": 2122,
+    "combustibles_quimica": 964,
+    "vertedero": 910,
+    "puerto": 575,
+    "aeropuerto_aerodromo": 358,
+    "central_combustion": 151,
+    "puerto_deportivo": 144,
+    "helipuerto": 35
+  },
+  "prioridades": {
+    "revisar": 24876,
+    "alta_orientativa": 19911
+  },
+  "comunidades": {
+    "Andalucía": 6965,
+    "Cataluña": 6334,
+    "Comunitat Valenciana ": 4369,
+    "Galicia": 3712,
+    "Castilla y León": 3678,
+    "Comunidad de Madrid": 3112,
+    "Castilla-La Mancha": 2999,
+    "País Vasco": 2213,
+    "Región de Murcia": 1912,
+    "Aragón": 1899,
+    "Canarias": 1837,
+    "Extremadura": 1457,
+    "Illes Balears": 1108,
+    "Comunidad Foral de Navarra": 983,
+    "Principado de Asturias": 892,
+    "Cantabria": 859,
+    "La Rioja": 408,
+    "Ciudad de Melilla": 26,
+    "Ciudad de Ceuta": 24
+  }
+}

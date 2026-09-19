@@ -1,0 +1,30 @@
+{
+  "Eurostat_Census-GRID_2021_V3.zip": {
+    "bytes": 566125577,
+    "sha256": "18a467e3d96b71dd89f0440cc184751bded45721cdff8ba778ece79d7a4f5843"
+  },
+  "ESTAT_Census_2021_country.csv.zip": {
+    "bytes": 257389035,
+    "sha256": "fbe231d3ca8929ff746a74189bcc04c793472e4835537f94bd886e7a7989aca1"
+  },
+  "nuts2_2024.geojson": {
+    "bytes": 16746752,
+    "sha256": "950cff8f464072712bf773470f5ecc96d088278d19a290c766099b9a122edd67"
+  },
+  "spain.osm.pbf": {
+    "bytes": 1483202814,
+    "sha256": "bb066dfe1cb69fb16eb81433f6eadd0c5c1465dedea0535632329b3808257648"
+  },
+  "canarias.osm.pbf": {
+    "bytes": 59761291,
+    "sha256": "6fd28319b1c864a24e58fe22ff7c23693ab32db5cfda240608ee23e78c3ac202"
+  },
+  "lc2019_peninsula_baleares_ceuta_melilla.tif": {
+    "bytes": 14516860,
+    "sha256": "5f21c7953e078e01832ad2a5932b1c44ca2fb5a31a014a947ee5dc7270e99788"
+  },
+  "lc2019_canarias.tif": {
+    "bytes": 168790,
+    "sha256": "515fbd2474ef8127c0b901cb2e6773d12095c97d93a1e0352a72f8f9d2b2e239"
+  }
+}

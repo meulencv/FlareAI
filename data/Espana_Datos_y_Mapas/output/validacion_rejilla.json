@@ -1,0 +1,20 @@
+{
+  "celdas": 511226,
+  "poblacion_publicada": 47400134,
+  "celdas_con_poblacion": 111812,
+  "celdas_sin_poblacion": 399414,
+  "celdas_sin_suelo_clasificado": 1293,
+  "poblacion_en_celdas_sin_suelo_clasificado": 3585,
+  "celdas_suma_sexo_distinta_total": 81705,
+  "celdas_suma_edad_distinta_total": 79206,
+  "superficie_censo_km2": 501307.38959999994,
+  "superficie_clasificada_km2": 505683.48999999993,
+  "suma_pct_suelo_error_max": 0.0020000000000237605,
+  "poblacion_por_zona": {
+    "Baleares": 1183435,
+    "Canarias": 2178991,
+    "Ceuta": 84073,
+    "Melilla": 86450,
+    "Peninsula": 43867185
+  }
+}

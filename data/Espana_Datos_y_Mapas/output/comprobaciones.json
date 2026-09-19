@@ -1,0 +1,24 @@
+{
+  "resultado": "OK",
+  "celdas": 511226,
+  "columnas_rejilla": 54,
+  "columnas_instalaciones": 27,
+  "poblacion_total": 47400134,
+  "coordenadas_error_max_m": 0.07627934722270756,
+  "suma_porcentajes_suelo_error_max": 0.0020000000000237605,
+  "geoparquet_crs": "EPSG:3035",
+  "area_cada_celda_m2": 1000000,
+  "instalaciones": 44787,
+  "regiones_nuts2_instalaciones": 19,
+  "instalaciones_sin_celda_censo": 4,
+  "instalaciones_sin_nombre": 18738,
+  "sin_suelo": 1293,
+  "porcentajes_demograficos_fuera_0_100": 0,
+  "imagenes_png_validadas": 34,
+  "controles_airports_iata": [
+    "MAD",
+    "BCN",
+    "PMI",
+    "LPA"
+  ]
+}

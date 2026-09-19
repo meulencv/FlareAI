@@ -1,0 +1,201 @@
+[
+  {
+    "archivo": "poblacion.png",
+    "variable": "poblacion",
+    "titulo": "Concentración de población",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "hombres.png",
+    "variable": "hombres",
+    "titulo": "Población masculina",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "mujeres.png",
+    "variable": "mujeres",
+    "titulo": "Población femenina",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "menores_15.png",
+    "variable": "menores_15",
+    "titulo": "Población menor de 15 años",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "edad_15_64.png",
+    "variable": "edad_15_64",
+    "titulo": "Población de 15 a 64 años",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "mayores_65.png",
+    "variable": "mayores_65",
+    "titulo": "Población de 65 años o más",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "ocupados.png",
+    "variable": "ocupados",
+    "titulo": "Personas ocupadas",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "nacidos_espana.png",
+    "variable": "nacidos_espana",
+    "titulo": "Personas nacidas en España",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "nacidos_otro_pais_ue.png",
+    "variable": "nacidos_otro_pais_ue",
+    "titulo": "Personas nacidas en otro país de la UE",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "nacidos_fuera_ue.png",
+    "variable": "nacidos_fuera_ue",
+    "titulo": "Personas nacidas fuera de la UE",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "misma_residencia.png",
+    "variable": "misma_residencia",
+    "titulo": "Sin cambio de residencia respecto al año anterior",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "mudanza_dentro_espana.png",
+    "variable": "mudanza_dentro_espana",
+    "titulo": "Cambio de residencia dentro de España",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "mudanza_desde_extranjero.png",
+    "variable": "mudanza_desde_extranjero",
+    "titulo": "Cambio de residencia desde el extranjero",
+    "subtitulo": "Censo 2021 · habitantes por celda de 1 km² · escala logarítmica"
+  },
+  {
+    "archivo": "pct_hombres.png",
+    "variable": "pct_hombres",
+    "titulo": "Porcentaje de hombres",
+    "subtitulo": "Censo 2021 · % de la población · se muestran celdas con al menos 20 habitantes"
+  },
+  {
+    "archivo": "pct_mujeres.png",
+    "variable": "pct_mujeres",
+    "titulo": "Porcentaje de mujeres",
+    "subtitulo": "Censo 2021 · % de la población · se muestran celdas con al menos 20 habitantes"
+  },
+  {
+    "archivo": "pct_menores_15.png",
+    "variable": "pct_menores_15",
+    "titulo": "Porcentaje de menores de 15 años",
+    "subtitulo": "Censo 2021 · % de la población · se muestran celdas con al menos 20 habitantes"
+  },
+  {
+    "archivo": "pct_edad_15_64.png",
+    "variable": "pct_edad_15_64",
+    "titulo": "Porcentaje de población de 15 a 64 años",
+    "subtitulo": "Censo 2021 · % de la población · se muestran celdas con al menos 20 habitantes"
+  },
+  {
+    "archivo": "pct_mayores_65.png",
+    "variable": "pct_mayores_65",
+    "titulo": "Porcentaje de población de 65 años o más",
+    "subtitulo": "Censo 2021 · % de la población · se muestran celdas con al menos 20 habitantes"
+  },
+  {
+    "archivo": "pct_nacidos_extranjero.png",
+    "variable": "pct_nacidos_extranjero",
+    "titulo": "Porcentaje de población nacida en el extranjero",
+    "subtitulo": "Censo 2021 · % de la población · se muestran celdas con al menos 20 habitantes"
+  },
+  {
+    "archivo": "pct_suelo_bosque.png",
+    "variable": "pct_suelo_bosque",
+    "titulo": "Cobertura de bosque",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_urbano.png",
+    "variable": "pct_suelo_urbano",
+    "titulo": "Cobertura urbana y construida",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_cultivos.png",
+    "variable": "pct_suelo_cultivos",
+    "titulo": "Cobertura de cultivos",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_matorral.png",
+    "variable": "pct_suelo_matorral",
+    "titulo": "Cobertura de matorral",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_herbaceas.png",
+    "variable": "pct_suelo_herbaceas",
+    "titulo": "Cobertura de vegetación herbácea",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_suelo_desnudo.png",
+    "variable": "pct_suelo_suelo_desnudo",
+    "titulo": "Cobertura de suelo desnudo o vegetación escasa",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_agua.png",
+    "variable": "pct_suelo_agua",
+    "titulo": "Cobertura de agua permanente",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_humedales.png",
+    "variable": "pct_suelo_humedales",
+    "titulo": "Cobertura de humedales herbáceos",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_nieve_hielo.png",
+    "variable": "pct_suelo_nieve_hielo",
+    "titulo": "Cobertura de nieve y hielo",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "pct_suelo_musgos_liquenes.png",
+    "variable": "pct_suelo_musgos_liquenes",
+    "titulo": "Cobertura de musgos y líquenes",
+    "subtitulo": "Copernicus 2019 · % de superficie clasificada dentro de cada celda de 1 km²"
+  },
+  {
+    "archivo": "instalaciones_todas.png",
+    "variable": "categoria",
+    "titulo": "Instalaciones de atención preventiva"
+  },
+  {
+    "archivo": "puertos_aeropuertos.png",
+    "variable": "categoria",
+    "titulo": "Puertos e infraestructuras aeronáuticas"
+  },
+  {
+    "archivo": "fabricas_areas_industriales.png",
+    "variable": "categoria",
+    "titulo": "Fábricas y áreas industriales"
+  },
+  {
+    "archivo": "combustibles_residuos.png",
+    "variable": "categoria",
+    "titulo": "Combustibles, química, energía y residuos"
+  },
+  {
+    "archivo": "prioridad_preventiva.png",
+    "variable": "prioridad_preventiva",
+    "titulo": "Prioridad preventiva ante incendios"
+  }
+]

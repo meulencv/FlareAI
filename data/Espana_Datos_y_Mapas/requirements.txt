@@ -1,0 +1,11 @@
+geopandas==1.1.1
+rasterio==1.4.3
+pyproj==3.7.1
+shapely==2.1.1
+numpy==2.2.6
+pandas==2.3.3
+pyarrow==24.0.0
+matplotlib==3.10.9
+osmium==4.1.1
+ruff==0.12.12
+mypy==1.17.1

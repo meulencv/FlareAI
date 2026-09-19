@@ -1,0 +1,82 @@
+tabla,campo,descripcion,unidad,tipo_pandas,nulos
+rejilla,grid_id,Identificador original de celda censal española,texto,object,0
+rejilla,proporcion_no_contada,Proporción no contada declarada por el censo; nula si no informada,fuente,float64,511226
+rejilla,estado_observacion_poblacion,OBS_STATUS de la variable T en la fuente,código fuente,float64,511226
+rejilla,superficie_terrestre_censo_km2,"LAND_SURFACE original, entre 0 y 1",km²,float64,0
+rejilla,valor_especial_poblacion,SPECIAL_VALUE de T en la fuente,código fuente,float64,511226
+rejilla,proporcion_localizada_aprox,"Proporción localizada aproximadamente, según fuente",fuente,int64,0
+rejilla,nota_poblacion,OBS_NOTE de T en la fuente,texto,float64,511226
+rejilla,proporcion_localizada_conv,"Proporción localizada convencionalmente, según fuente",fuente,int64,0
+rejilla,habitada_fuente,POPULATED original; puede diferir de poblacion>0 por confidencialidad,0/1,int64,0
+rejilla,mudanza_dentro_espana,"Cambio de residencia dentro de España respecto al año anterior, CHG_IN",habitantes,Int32,0
+rejilla,mudanza_desde_extranjero,"Cambio de residencia desde fuera de España, CHG_OUT",habitantes,Int32,0
+rejilla,ocupados,"Personas ocupadas, EMP; no es tasa de empleo",habitantes,Int32,0
+rejilla,nacidos_otro_pais_ue,"Nacidos en otro país UE, EU_OTH",habitantes,Int32,0
+rejilla,mujeres,"Mujeres, F",habitantes,Int32,0
+rejilla,hombres,"Hombres, M",habitantes,Int32,0
+rejilla,nacidos_espana,"Nacidos en España, NAT",habitantes,Int32,0
+rejilla,nacidos_fuera_ue,"Nacidos fuera de la UE, OTH",habitantes,Int32,0
+rejilla,misma_residencia,"Residencia igual un año antes del censo, SAME",habitantes,Int32,0
+rejilla,poblacion,"Total de residentes, T",habitantes,Int32,0
+rejilla,edad_15_64,"Edad 15–64, Y15-64",habitantes,Int32,0
+rejilla,mayores_65,"65 años o más, Y_GE65",habitantes,Int32,0
+rejilla,menores_15,"Menores de 15 años, Y_LT15",habitantes,Int32,0
+rejilla,x_min_3035,Este de esquina inferior izquierda de celda EPSG:3035,m,int32,0
+rejilla,y_min_3035,Norte de esquina inferior izquierda de celda EPSG:3035,m,int32,0
+rejilla,lon,Longitud WGS84 del centro de celda o punto de instalación,grados,float64,0
+rejilla,lat,Latitud WGS84 del centro de celda o punto de instalación,grados,float64,0
+rejilla,zona,Agrupación territorial de visualización; puede faltar en instalaciones sin celda,categoría,object,0
+rejilla,densidad_celda_hab_km2,Población dividida por el km² completo de la celda,hab/km²,float64,0
+rejilla,densidad_tierra_hab_km2,Población / LAND_SURFACE; vacío si superficie cero,hab/km² terrestre,Float64,1426
+rejilla,pct_hombres,hombres: porcentaje sobre T; vacío sin habitantes o fuera de 0–100,%,Float64,401212
+rejilla,pct_mujeres,mujeres: porcentaje sobre T; vacío sin habitantes o fuera de 0–100,%,Float64,400894
+rejilla,pct_menores_15,menores_15: porcentaje sobre T; vacío sin habitantes o fuera de 0–100,%,Float64,399572
+rejilla,pct_edad_15_64,edad_15_64: porcentaje sobre T; vacío sin habitantes o fuera de 0–100,%,Float64,401057
+rejilla,pct_mayores_65,mayores_65: porcentaje sobre T; vacío sin habitantes o fuera de 0–100,%,Float64,400131
+rejilla,pct_nacidos_extranjero,nacidos_extranjero: porcentaje sobre T; vacío sin habitantes o fuera de 0–100,%,Float64,399983
+rejilla,edad_suma_distinta_total,Menores 15 + 15–64 + 65 y más difiere de T,booleano,boolean,0
+rejilla,sexo_suma_distinta_total,M + F difiere de T,booleano,boolean,0
+rejilla,anio_censo,Año de referencia de la población,año,int64,0
+rejilla,pct_suelo_bosque,Porcentaje de bosque sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_urbano,Porcentaje de urbano sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_cultivos,Porcentaje de cultivos sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_matorral,Porcentaje de matorral sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_herbaceas,Porcentaje de herbaceas sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_suelo_desnudo,Porcentaje de suelo_desnudo sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_agua,Porcentaje de agua sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_humedales,Porcentaje de humedales sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_nieve_hielo,Porcentaje de nieve_hielo sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,pct_suelo_musgos_liquenes,Porcentaje de musgos_liquenes sobre superficie clasificada; vacío sin cobertura,%,float64,1293
+rejilla,superficie_clasificada_km2,Píxeles válidos de 100 m interiores al límite español; excluye mar,km²,float64,0
+rejilla,suelo_dominante,Grupo de mayor porcentaje; sin_datos si no hay píxeles válidos,categoría,object,0
+rejilla,pct_suelo_dominante,Máximo porcentaje entre las clases de suelo,%,float64,1293
+rejilla,suelo_mixto,La clase dominante representa menos del 50 %; falso también sin datos,booleano,bool,0
+rejilla,anio_suelo,Año de referencia de Copernicus LC100,año,int64,0
+rejilla,celda_costa_o_frontera,"LAND_SURFACE <0,99; indicador heurístico, no geometría de costa",booleano,bool,0
+instalaciones,osm_type,"Tipo de elemento OSM: node, way o relation",categoría,object,0
+instalaciones,osm_id,ID OSM; solo es único en combinación con osm_type,entero,int64,0
+instalaciones,nombre,Etiqueta name; vacío cuando OSM no informa,texto,object,0
+instalaciones,categoria,Tipo de instalación asignado por etiquetas OSM,categoría,object,0
+instalaciones,prioridad_preventiva,alta_orientativa o revisar; no es una evaluación oficial,categoría,object,0
+instalaciones,criterio,Razón de la clasificación preventiva por etiqueta/actividad,texto,object,0
+instalaciones,riesgo_oficial,Siempre no_evaluado; no se ha obtenido un riesgo oficial por instalación,categoría,object,0
+instalaciones,lon,Longitud WGS84 del centro de celda o punto de instalación,grados,float64,0
+instalaciones,lat,Latitud WGS84 del centro de celda o punto de instalación,grados,float64,0
+instalaciones,metodo_coordenada,Nodo original o punto interior de polígono; no un perímetro,categoría,object,0
+instalaciones,operador,"Etiqueta operator de OSM, cuando existe",texto,object,0
+instalaciones,iata,"Código IATA declarado en OSM, cuando existe",texto,object,0
+instalaciones,icao,"Código ICAO declarado en OSM, cuando existe",texto,object,0
+instalaciones,url_osm,Enlace al elemento público original,URL,object,0
+instalaciones,tags_fuente,Objeto JSON con etiquetas relevantes conservadas,JSON,object,0
+instalaciones,fecha_datos_osm,"Timestamp de replicación de la cabecera PBF, no fecha de visita",UTC,object,0
+instalaciones,ubicacion_limite,Interior del límite o puerto exterior dentro de tolerancia de 1 km,categoría,object,0
+instalaciones,nuts2,Región más próxima al punto con la cartografía GISCO,código NUTS2,object,0
+instalaciones,comunidad,Nombre de la región NUTS2 más próxima,texto,object,0
+instalaciones,distancia_region_m,Distancia proyectada al polígono NUTS2 más cercano; 0 si interior,m,float64,0
+instalaciones,x_min_3035,Este de esquina inferior izquierda de celda EPSG:3035,m,int32,0
+instalaciones,y_min_3035,Norte de esquina inferior izquierda de celda EPSG:3035,m,int32,0
+instalaciones,grid_id,Identificador original de celda censal española,texto,object,4
+instalaciones,zona,Agrupación territorial de visualización; puede faltar en instalaciones sin celda,categoría,object,4
+instalaciones,poblacion_celda_1km,"Población 2021 de la celda del punto, no población expuesta",habitantes,Int32,4
+instalaciones,pct_bosque_celda_1km,Porcentaje forestal 2019 de la celda del punto,%,float64,68
+instalaciones,pct_urbano_celda_1km,Porcentaje urbano 2019 de la celda del punto,%,float64,68

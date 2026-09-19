@@ -787,6 +787,32 @@ h1 {
   font-size: 8px;
   color: #adb3bb;
 }
+.context-section {
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--line);
+  font-size: 11px;
+  line-height: 1.6;
+  color: #626d79;
+}
+.context-section p { margin: 7px 0; }
+.context-summary { color: var(--ink); font-weight: 600; }
+.context-summary.attention { color: #995c2d; }
+.context-wind { padding-left: 9px; border-left: 2px solid #d6c1a8; }
+.context-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0; }
+.context-actions label { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.context-link { padding: 4px 0; color: #45697f; text-decoration: underline; text-underline-offset: 3px; }
+.context-more summary { cursor: pointer; padding: 5px 0; }
+.context-more ul { list-style: none; padding: 0; margin: 6px 0; }
+.context-more li { border-bottom: 1px solid var(--line); }
+.context-more li button { display: block; width: 100%; text-align: left; padding: 9px 0; }
+.context-more li button:hover { background: var(--bg); }
+.context-more li strong, .context-more li span { display: block; overflow-wrap: anywhere; }
+.context-more li span { font-size: 10px; color: #727d87; margin-top: 3px; }
+.context-more a, .context-popup a { color: #45697f; text-decoration: underline; }
+.context-dates { font-size: 9px; color: #79818c; }
+.context-popup { max-width: 240px; line-height: 1.5; }
+.context-popup p { margin: 7px 0; }
 .image-tabs {
   display: flex;
   gap: 3px;
