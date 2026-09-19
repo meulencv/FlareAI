@@ -1,6 +1,6 @@
 import { createHeatLayer } from "./heat.js";
 
-export function selectionBounds(incident, radius = 5) {
+export function selectionBounds(incident, radius = .45) {
   const geometry = incident.footprint;
   const points = geometry.type === "Polygon" ? geometry.coordinates.flat() : geometry.coordinates.flat(2);
   const lons = points.map(p => p[0]), lats = points.map(p => p[1]);
@@ -65,7 +65,7 @@ export function createContextView({ map, document, fetch, canvas, onFocus = () =
     if (focus) {
       onFocus();
       map.fitBounds(selectionBounds(incident), {
-        maxZoom: 12.5, paddingTopLeft: [24, 170], paddingBottomRight: [24, 90], animate: false,
+        maxZoom: 15.5, paddingTopLeft: [24, 170], paddingBottomRight: [24, 90], animate: false,
       });
     }
     $("potential-key").hidden = !visible;

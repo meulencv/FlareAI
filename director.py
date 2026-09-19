@@ -489,7 +489,9 @@ class Director:
             for incident in incidents:
                 incident.update(self.operations.context(incident['id']))
             context['presentation'] = True
-            context['memories'] = self.db.cached('memories', 30, lambda: self.db.documents('memory'))[-30:]
+            from reports import decision_memories
+            context['memories'] = self.db.cached('memories', 30, lambda: decision_memories(self.db))
+            context['memory_guidance'] = 'Consulta estas notas como contexto para tus decisiones y cita su título cuando resulten relevantes. curated_base es conocimiento inicial; simulation_observation son lecciones de operaciones anteriores. No sustituyen el parte actual, las restricciones ni la validación de recursos y rutas.'
         if self.scene:
             context['scenario'] = deepcopy(self.scene.data)
             context['capabilities'].update(ambulance='Ambulancias ficticias desde hospitales/bases del atlas. Riesgo vital, humo sobre barrio o población amenazada requieren valorar sanitario y policía, no solo camiones.',
@@ -522,6 +524,12 @@ class Director:
                 occupied = kind == 'dispatch' and current is not None
                 resource = self.state['resources'][rid]
                 destination = resource if kind == 'return' else incidents[item['incident_id']]
+                report_run_id = (destination.get('demo_report') or {}).get('run_id') if kind != 'return' else None
+                if report_run_id:
+                    # A call can move from a coarse locality (or a nearby FIRMS group) to a
+                    # precise address while keeping the same run.  Keep that stable identity
+                    # on the vehicle so AutoDispatch can reconcile the assignment.
+                    item['report_run_id'] = report_run_id
                 scene = destination.get('scenario') or {}
                 if self.scene and kind != 'return' and scene.get('phase') in {'releasing', 'closed'}:
                     item.update(route_error=True, blocked_reason='Aviso en retirada; no admite nuevas movilizaciones.')
@@ -606,6 +614,7 @@ class Director:
             if kind in {'dispatch', 'reassign', 'return'}:
                 rid = action['resource_id']
                 resource = self.state['resources'][rid]
+                previous_assignment = self.state['assignments'].get(rid, {})
                 if kind == 'return' and self.scene:
                     incident_id = self.state['assignments'][rid]['incident_id']
                     data['incident_id'] = incident_id
@@ -618,7 +627,8 @@ class Director:
                 departures[resource['station_id']] = departures.get(resource['station_id'], 0) + 1
                 self.state['assignments'][rid] = {'id': f'{run_id}:{rid}', 'resource': resource, 'incident_id': incident_id,
                     'route': route, 'target': action['target'], 'started_at': time.time() + delay, 'travel_seconds': max(45, min(150, route['duration_seconds'] / 30)),
-                    'status': 'returning' if kind == 'return' else 'enroute', 'time_scale': 'accelerated_demo', 'reason': action['reason']}
+                    'status': 'returning' if kind == 'return' else 'enroute', 'time_scale': 'accelerated_demo', 'reason': action['reason'],
+                    'report_run_id': action.get('report_run_id') or previous_assignment.get('report_run_id')}
                 noun = {'fire_engine': 'camión de bomberos', 'police': 'patrulla', 'ambulance': 'ambulancia', 'helicopter': 'helicóptero de demo'}[resource['kind']]
                 message = f'{"Regresa" if kind == "return" else "Reasignando" if kind == "reassign" else "Movilizando"} 1 {noun} · {resource["name"]}'
                 self.event(kind, message, action['reason'], resource_id=rid, **data)

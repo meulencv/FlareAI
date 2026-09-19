@@ -160,18 +160,20 @@ class Operations:
             self.records[identifier]['assessment'] = accepted
             self.director.event('assessment', 'Conclusión de los testimonios', accepted['summary'], incident_id=identifier)
 
-    def held(self, identifier: str) -> bool:
+    def held(self, identifier: str, *, suppression: bool = False) -> bool:
         record = self.records.get(identifier)
         if not record:
             return False
-        if time.time() - record['started_at'] >= HOLD_LIMIT:
-            return False
         call = self.outbound.jobs.get(identifier, {})
-        requests = [r for r in record['requests'].values() if r.get('status') != 'cancelled']
-        traveling = any(self.director.state['assignments'].get(rid, {}).get('status') in {'enroute', 'blocked'}
+        requests = [r for r in record['requests'].values() if r.get('status') != 'cancelled'
+                    and (not suppression or r['kind'] in {'fire_engine', 'helicopter'})]
+        assignments = self.director.state['assignments']
+        traveling = any(assignments.get(rid, {}).get('incident_id') != identifier
+                        or assignments[rid].get('status') not in {'onscene', 'transporting', 'returning'}
                         for r in requests for rid in r['resource_ids'])
         # Telefonía desactivada, contacto inalcanzable o conversación sin parte no retienen la extinción simulada.
-        waiting_call = call.get('status') not in {'completed', 'needs_report', 'disabled', 'unreachable'}
+        waiting_call = (time.time() - record['started_at'] < HOLD_LIMIT
+                        and call.get('status') not in {'completed', 'needs_report', 'disabled', 'unreachable'})
         return waiting_call or traveling or any(r['fulfilled'] < r['quantity'] for r in requests)
 
     def reinforce(self, payload: dict) -> None:

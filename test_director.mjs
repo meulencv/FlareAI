@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routePosition, freshEvents, directorWarning, cinematicFrame, nearbyEvidence, patrolTargets, createCameraTour, createEvidenceView } from "./static/director.js";
+import { routePosition, freshEvents, directorWarning, cinematicFrame, nearbyEvidence, patrolTargets, createCameraTour, createEvidenceView, createRouteRehearsal } from "./static/director.js";
 
 import { notificationBatch } from './happyrobot-112/static/alerts.js';
 import { preferredSpeaker, createSpeakerOutput } from './happyrobot-112/static/audio.js';
@@ -55,6 +55,88 @@ test('los bloqueos del director tienen explicación persistente y no aparentan d
   assert.match(directorWarning('error'), /Sin nuevos despachos/);
 });
 
+const rehearsalAssignment = (id = 'truck') => ({ id: `assignment-${id}`, resource: { id, kind: 'fire_engine', name: `Unidad ${id}` },
+  incident_id: 'fire', status: 'enroute', started_at: 0, travel_seconds: 1000, route_revision: 1,
+  route: { coordinates: [[2, 41], [2.01, 41.01]], cumulative_km: [0, 1] } });
+
+function rehearsalHarness(random = () => 0) {
+  const rehearsal = createRouteRehearsal({ random }), assignment = rehearsalAssignment();
+  const input = { assignments: { truck: assignment }, enabled: true, busy: false, visible: () => true };
+  return { rehearsal, assignment, input, step: (now, extra = {}) => rehearsal.step({ ...input, now, ...extra }) };
+}
+
+test('el recálculo visual es esporádico, selecciona una unidad y no modifica rutas ni tiempos', () => {
+  const h = rehearsalHarness(); h.assignment.travel_seconds = 45;
+  const original = JSON.stringify(h.input.assignments);
+  assert.equal(h.step(0), null);
+  assert.equal(h.step(11), null);
+  const start = h.step(12);
+  assert.equal(start.kind, 'route_rehearsal');
+  assert.equal(start.resource_id, 'truck');
+  assert.match(start.message, /Viento cambiado.*simulación.*recalculando/i);
+  assert.match(start.reason, /no modifica/i);
+  assert.equal(h.rehearsal.active.resource_id, 'truck');
+  assert.equal(h.step(17), null);
+  assert.match(h.step(18).message, /Ruta revisada.*simulación/);
+  assert.equal(h.rehearsal.active, null);
+  assert.equal(JSON.stringify(h.input.assignments), original);
+  h.assignment.travel_seconds = 1000;
+  assert.equal(h.step(62), null);
+  assert.ok(h.step(63));
+});
+
+test('la avería puntual se sitúa por delante de la unidad y no modifica la ruta', () => {
+  const h = rehearsalHarness(() => .5), original = JSON.stringify(h.assignment.route);
+  h.step(0);
+  const event = h.step(18);
+  assert.match(event.message, /Vehículo averiado.*simulación/);
+  assert.deepEqual(h.rehearsal.active.obstruction, routePosition(h.assignment.route, .018 + .08));
+  assert.equal(JSON.stringify(h.assignment.route), original);
+  h.step(24);
+  assert.equal(h.rehearsal.active, null);
+});
+
+test('varía la cadencia, el motivo y la unidad sin encadenar ráfagas', () => {
+  const h = rehearsalHarness(() => .999);
+  h.input.assignments.other = rehearsalAssignment('other');
+  h.step(0);
+  assert.equal(h.step(23), null);
+  const event = h.step(24);
+  assert.equal(event.resource_id, 'other');
+  assert.match(event.message, /Acceso alternativo/);
+  assert.ok(h.step(30));
+  assert.equal(h.step(119), null);
+  assert.ok(h.step(120));
+});
+
+test('no simula en vacío, fuera de pantalla, al llegar, en vuelo o con ruta aproximada', () => {
+  for (const change of [a => a.status = 'onscene', a => a.status = 'blocked', a => a.status = 'returning',
+    a => a.started_at = 100, a => a.travel_seconds = 40, a => a.resource.kind = 'helicopter',
+    a => a.route.approximate = true, a => a.route.coordinates = []]) {
+    const h = rehearsalHarness(); change(h.assignment); h.step(0);
+    assert.equal(h.step(35), null);
+    assert.equal(h.rehearsal.active, null);
+  }
+  const h = rehearsalHarness(); h.step(0);
+  assert.equal(h.step(35, { visible: () => false }), null);
+  assert.equal(h.step(100, { assignments: {} }), null);
+});
+
+test('pausa, desconexión y decisiones reales cancelan el efecto sin publicar un éxito ficticio', () => {
+  for (const extra of [{ enabled: false }, { busy: true }, { assignments: {} }]) {
+    const h = rehearsalHarness(); h.step(0); assert.ok(h.step(35));
+    assert.equal(h.step(36, extra), null);
+    assert.equal(h.rehearsal.active, null);
+    assert.equal(h.step(41), null);
+  }
+  const h = rehearsalHarness(); h.step(0); h.step(35);
+  h.assignment.route_revision++;
+  assert.equal(h.step(41), null);
+  assert.equal(h.rehearsal.active, null);
+  h.rehearsal.reset();
+  assert.equal(h.step(200), null);
+});
+
 const point = (x, y) => ({ x, y });
 
 test('el receptor no reproduce alertas antiguas, duplicadas, caducadas ni de otra sesión', () => {
@@ -96,6 +178,19 @@ test("las evidencias usan detecciones cercanas, no centroides ni llamadas como N
   assert.equal(result.camera.item.id, "camera");
   assert.deepEqual(nearbyEvidence(report, [report, remote], [{ ...camera, lat: 50 }]), { thermal: null, camera: null });
   assert.equal(JSON.stringify([report, nasa, remote, camera]), original);
+});
+
+test('la cámara se acerca a las calles junto al camión y respeta detención y movimiento reducido', async () => {
+  const { vehicleCameraView } = await import('./static/director.js');
+  const assignment = rehearsalAssignment();
+  const view = vehicleCameraView(assignment, 500);
+  assert.equal(view.zoom, 15.5);
+  assert.ok(Math.abs(view.center[0] - 41.005) < 1e-9 && Math.abs(view.center[1] - 2.005) < 1e-9);
+  assert.deepEqual(vehicleCameraView(assignment, 500, true).center, [41, 2]);
+  assignment.held_position = [2.003, 41.002];
+  assert.deepEqual(vehicleCameraView(assignment, 500).center, [41.002, 2.003]);
+  assignment.resource.kind = 'helicopter';
+  assert.equal(vehicleCameraView(assignment, 500).zoom, 14);
 });
 
 test("la ronda visita avisos y vehículos activos, nunca detecciones sin llamada ni retornos antiguos", () => {

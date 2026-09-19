@@ -215,11 +215,13 @@ class Scene:
             held = bool(operations and operations.held(identifier))
             record['waiting_field_report'] = held
             record['peak_radius_km'] = max(record.get('peak_radius_km', 0), record['radius_km'])
-            record['extinguished_pct'] = round(100 * max(0, 1 - record['radius_km'] / record['peak_radius_km'])) if record['peak_radius_km'] else 0
+            record['waiting_suppression'] = bool(operations and operations.held(identifier, suppression=True))
             record['peak_exposed_population'] = max(record.get('peak_exposed_population', 0), record.get('exposed_population', 0))
             assignments = [a for a in self.director.state['assignments'].values() if a.get('incident_id') == identifier]
             suppression = sum(1 if a['resource']['kind'] == 'fire_engine' else 2 if a['resource']['kind'] == 'helicopter' else 0
                               for a in assignments if a['status'] == 'onscene')
+            if record['waiting_suppression']:
+                suppression = 0
             old_band = int(record['radius_km'] * 4)
             if phase == 'active':
                 step = min(elapsed, 10)
@@ -255,6 +257,8 @@ class Scene:
             elif phase == 'releasing' and not assignments and not held:
                 record.update(phase='closed', phase_at=now, radius_km=.02)
                 self.change('closed', 'Cerrado · seguro en el escenario', 'Sin reactivación durante la vigilancia y medios de regreso en base. Relato conservado; datos NASA intactos.', identifier)
+            record['peak_radius_km'] = max(record['peak_radius_km'], record['radius_km'])
+            record['extinguished_pct'] = round(100 * max(0, 1 - record['radius_km'] / record['peak_radius_km'])) if record['peak_radius_km'] else 0
             self.risk(record)
 
     def overlay(self, payload: dict) -> dict:

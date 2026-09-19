@@ -31,10 +31,10 @@ test("la densidad se traduce a color y el ruido de fondo no se pinta", () => {
 
 test("el radio sigue una distancia real acotada y la intensidad respeta la puntuación", () => {
   assert.ok(heatRadiusPixels(10) > heatRadiusPixels(60), "al acercar, el radio crece");
-  assert.equal(heatRadiusPixels(30), 1600 / 30);
-  assert.equal(heatRadiusPixels(1), 190);
-  assert.equal(heatRadiusPixels(1000000), 18);
-  assert.equal(heatRadiusPixels(0), 18);
+  assert.equal(heatRadiusPixels(30), 450 / 30);
+  assert.equal(heatRadiusPixels(1), 75);
+  assert.equal(heatRadiusPixels(1000000), 10);
+  assert.equal(heatRadiusPixels(0), 10);
   assert.equal(sampleAlpha(null), 0);
   assert.equal(sampleAlpha(0), 0);
   assert.ok(sampleAlpha(100) > sampleAlpha(40));

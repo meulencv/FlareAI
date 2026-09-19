@@ -107,7 +107,8 @@ def main(cloud=False, response=False):
             page.locator('#scene-barcelona').click()
             page.evaluate('window.__directorMap.setView([41.4035,2.1744],14,{animate:false})')
             expect(page.locator('.traffic-canvas')).to_have_attribute('data-status', 'ready', timeout=30000)
-            page.wait_for_function('Number(document.querySelector(".traffic-canvas").dataset.cars) > 20')
+            page.wait_for_function('Number(document.querySelector(".traffic-canvas").dataset.cars) > 0')
+            assert int(page.locator('.traffic-canvas').get_attribute('data-cars')) <= 48, 'Tráfico local escaso, no toda la ciudad'
             atlas_hospitals = director.scene.data['hospitals']
             open_records = [r for r in director.scene.data['incidents'].values() if r['phase'] != 'closed']
             reserved = [h for h in atlas_hospitals if h['occupied']]

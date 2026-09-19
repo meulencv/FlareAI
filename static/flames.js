@@ -45,7 +45,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
   const embers = new Map();
   const footprints = new Map();
   let particles = [], incidents = [], selectedId = null, country = null;
-  let windVisible = true, frame = 0, previous = 0, clock = 0, running = false;
+  let windVisible = true, frame = 0, previous = 0, clock = 0, running = false, lastPaint = 0;
   let paused = false, origin, offset;
   const motionless = matchMedia("(prefers-reduced-motion: reduce)");
   const animated = () => !motionless.matches && !paused;
@@ -62,7 +62,9 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
   };
 
   function resize() {
-    const size = map.getSize(), ratio = Math.min(2, window.devicePixelRatio || 1);
+    // 1.5 DPR is visually crisp while avoiding four physical pixels per CSS pixel
+    // on Retina screens, where this animated layer was the main fill-rate cost.
+    const size = map.getSize(), ratio = Math.min(1.5, window.devicePixelRatio || 1);
     if (canvas.width !== Math.round(size.x * ratio) || canvas.height !== Math.round(size.y * ratio)) {
       canvas.width = Math.round(size.x * ratio); canvas.height = Math.round(size.y * ratio);
       canvas.style.width = `${size.x}px`; canvas.style.height = `${size.y}px`;
@@ -293,6 +295,11 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
 
   function draw(timestamp) {
     frame = 0;
+    if (animated() && lastPaint && timestamp - lastPaint < 32) {
+      if (running && !document.hidden && animated()) frame = requestAnimationFrame(draw);
+      return;
+    }
+    lastPaint = timestamp;
     const seconds = previous ? Math.min(.05, (timestamp - previous) / 1000) : .016;
     previous = timestamp;
     if (animated()) clock += seconds;
@@ -307,7 +314,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
 
   function loop() {
     if (!running || frame || document.hidden) return;
-    previous = 0;
+    previous = 0; lastPaint = 0;
     frame = requestAnimationFrame(draw);
   }
 

@@ -37,7 +37,7 @@ export function colorize(pixels, palette, maxAlpha = .8, floor = 4) {
   return pixels;
 }
 
-export function heatRadiusPixels(metersPerPixel, meters = 1600, minimum = 18, maximum = 190) {
+export function heatRadiusPixels(metersPerPixel, meters = 450, minimum = 10, maximum = 75) {
   if (!(metersPerPixel > 0)) return minimum;
   return Math.max(minimum, Math.min(maximum, meters / metersPerPixel));
 }
@@ -140,6 +140,9 @@ export function createHeatLayer({ map, canvas, document, onHover = () => {}, res
     onHover(sample ? { text: hoverSummary(sample, facilities, wind), point, id: sample.id } : null);
   }
 
+  // requestAnimationFrame already coalesces move + zoom into one recolour. The
+  // camera itself is capped at 30 updates/s, so this remains responsive without
+  // leaving delayed work behind when a view is interrupted.
   map.on("move zoom resize viewreset", schedule);
   map.on("mousemove", hover);
   map.on("mouseout dragstart zoomstart", () => onHover(null));

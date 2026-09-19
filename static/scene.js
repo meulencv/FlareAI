@@ -6,6 +6,7 @@ export function priorityLine(record) {
 
 export function extinctionLine(record) {
   if (!record || !['active', 'contained'].includes(record.phase)) return '';
+  if (record.waiting_suppression) return 'Extinción pendiente · esperando llamada o refuerzos de bomberos';
   const working = record.suppression_power || 0;
   const pct = Math.max(0, Math.min(100, Number(record.extinguished_pct) || 0));
   return working ? `Extinción simulada ${pct} % · ${working} ${working === 1 ? 'medio trabajando' : 'medios trabajando'} · más medios, antes` : record.phase === 'active' ? 'Fuego creciendo · medios en camino' : '';
@@ -38,7 +39,7 @@ export function engagedHospitals(scene, assignments = {}) {
   });
 }
 
-export const THREAT_MARGIN_KM = .3;
+export const THREAT_MARGIN_KM = .08;
 
 // Superficie de riesgo ilustrativa: sigue el contorno del fuego del escenario con un margen
 // reducido, más amplio a favor del viento. Sin huella disponible recae en un círculo pequeño.
@@ -59,10 +60,11 @@ export function threatOutline(record, footprint, marginKm = THREAT_MARGIN_KM) {
   });
 }
 
-export function createSceneView({ map, L, document, fetch, focus, findIncident = () => null }) {
-  const $ = id => document.getElementById(id), traffic = createTraffic({ map, L, document, fetch });
+export function createSceneView({ map, L, document, fetch, focus, findIncident = () => null, getTrafficVehicles = () => [] }) {
+  const $ = id => document.getElementById(id), traffic = createTraffic({ map, L, document, fetch, getVehicles: getTrafficVehicles });
   const hospitals = L.layerGroup(), cuts = L.layerGroup().addTo(map), hazards = L.layerGroup().addTo(map);
   let state = null, session = null, offset = 0, renderedSequence = -1, mapKey = '', events = new Map(), historyLoading = false;
+  let visualEvents = [];
   const toggle = $('history-toggle'), panel = $('decision-panel');
   function node(tag, text, className = '') {
     const item = document.createElement(tag); item.textContent = text; item.className = className; return item;
@@ -97,11 +99,11 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
     } catch (error) { $('alert-countdown-message').textContent = error.message; }
   };
   function history() {
-    if (renderedSequence === events.size) return;
-    renderedSequence = events.size;
+    if (renderedSequence === events.size + visualEvents.length) return;
+    renderedSequence = events.size + visualEvents.length;
     const list = $('decision-history'), bottom = list.scrollHeight - list.scrollTop - list.clientHeight < 50;
     list.replaceChildren();
-    for (const event of [...events.values()].sort((a, b) => a.sequence - b.sequence)) {
+    for (const event of [...events.values(), ...visualEvents].sort((a, b) => a.at - b.at || (a.sequence || 0) - (b.sequence || 0))) {
       const entry = node('li', '', `history-event ${event.kind}`);
       entry.append(node('time', new Date(event.at * 1000).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', second: '2-digit' })), node('strong', event.message), node('p', event.reason || ''));
       if (event.incident_id) {
@@ -111,7 +113,7 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
       list.append(entry);
     }
     if (bottom) list.scrollTop = list.scrollHeight;
-    $('history-count').textContent = `${events.size} pasos · memoria de esta sesión`;
+    $('history-count').textContent = `${events.size} pasos · memoria de esta sesión${visualEvents.length ? ` · ${visualEvents.length} efectos de simulación locales (no guardados)` : ''}`;
   }
   async function loadHistory() {
     if (historyLoading) return;
@@ -174,18 +176,22 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
       L.marker(end, { interactive: false, icon: L.divIcon({ className: 'scenario-wind', html: `Viento demo ${Math.round(record.wind_to)}°`, iconSize: [110, 20] }) }).addTo(hazards);
       if (record.maritime) L.marker([record.lat, record.lon], { icon: L.divIcon({ className: 'maritime-marker', html: '<svg viewBox="0 0 32 28" aria-hidden="true"><path d="M3 16h26l-5 8H8zM10 15V8h12v7M16 8V3M3 27l6-2 7 2 7-2 6 2"/></svg>', iconSize: [34, 30] }) }).bindTooltip(node('span', 'Barco comunicado en llamada · posición ilustrativa')).addTo(hazards);
       const footprint = findIncident(record.id)?.scenario?.footprint;
-      L.polygon(threatOutline(record, footprint), { color, weight: 1.2, dashArray: '4 7', fillColor: color, fillOpacity: .07, interactive: false, className: 'threat-surface' }).addTo(hazards);
+      L.polygon(threatOutline(record, footprint), { color, weight: 1.2, dashArray: '4 7', fillColor: color, fillOpacity: .035, interactive: false, className: 'threat-surface' }).addTo(hazards);
       const label = node('div', ''); label.append(node('strong', priorityLine(record)), node('p', `${record.exposed_population} residentes censales en el entorno simulado · no afectados medidos`), node('p', `Viento del escenario hacia ${Math.round(record.wind_to)}° · crecimiento y contención ilustrativos`));
       L.circleMarker([record.lat, record.lon], { radius: 14, opacity: 0, fillOpacity: 0 }).bindTooltip(label).addTo(hazards);
     }
     visibility();
   }
   return {
+    addVisualEvent(event) {
+      visualEvents.push({ ...event, visual: true }); visualEvents = visualEvents.slice(-40);
+      renderedSequence = -1; history();
+    },
     update(next) {
       state = next; offset = (next.server_time || Date.now() / 1000) * 1000 - Date.now();
-      if (session !== next.session_id) { session = next.session_id; events = new Map(); renderedSequence = -1; mapKey = ''; if (!panel.hidden) loadHistory(); }
+      if (session !== next.session_id) { session = next.session_id; events = new Map(); visualEvents = []; renderedSequence = -1; mapKey = ''; if (!panel.hidden) loadHistory(); }
       for (const event of next.events || []) events.set(event.sequence, event);
-      history(); renderWorld(); traffic.update(next.scenario);
+      history(); renderWorld(); traffic.update(next.scenario, next.session_id);
       const invalidated = [...events.values()].reverse().find(e => e.kind === 'invalidated');
       $('plan-invalidated').hidden = !invalidated || Date.now() + offset - invalidated.at * 1000 > 16000;
       if (invalidated) $('plan-invalidated').textContent = `Plan anterior invalidado · ${invalidated.reason} · recalculando`;

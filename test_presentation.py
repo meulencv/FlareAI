@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from outbound import OutboundCalls
-from reports import impact, pdf_bytes, report_markdown
+from reports import base_notes, brain_notes, decision_memories, impact, pdf_bytes, report_markdown
 
 
 class OutboundTests(unittest.TestCase):
@@ -58,6 +58,27 @@ class OutboundTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
+    def test_base_notes_are_linked_and_sent_to_decision_context(self):
+        db = Mock()
+        db.documents.return_value = []
+        notes = base_notes()
+        self.assertEqual(len(notes), 4)
+        ids = {note['id'] for note in notes}
+        self.assertTrue(all(set(note['links']) <= ids for note in notes))
+        self.assertEqual(brain_notes(db), notes)
+        self.assertEqual([row['data'] for row in decision_memories(db)], notes)
+        db.documents.return_value = [{'id': 'memory:learned', 'data': {'id': 'learned', 'title': 'Acceso', 'text': 'Ruta cortada'}}]
+        self.assertEqual(decision_memories(db)[-1]['data']['id'], 'learned')
+
+    def test_styled_pdf_paginates_and_has_valid_object_offsets(self):
+        pdf = pdf_bytes('# Operación Barcelona\n\n## Cronología\n' + '- Decisión registrada y recursos movilizados.\n' * 160)
+        self.assertIn(b'/Helvetica-Bold', pdf)
+        self.assertGreater(pdf.count(b'/Type /Page '), 2)
+        xref = pdf.split(b'xref\n', 1)[1].split(b'trailer', 1)[0].splitlines()
+        for identifier, row in enumerate(xref[2:], 1):
+            offset = int(row[:10])
+            self.assertTrue(pdf[offset:].startswith(f'{identifier} 0 obj'.encode()))
+
     def test_impact_uses_peak_area_not_extinguished_animation(self):
         scene = {'started_at': 100, 'peak_radius_km': .5, 'radius_km': .02}
         metrics = impact(scene, {'personas_asistidas': '2'}, 500)

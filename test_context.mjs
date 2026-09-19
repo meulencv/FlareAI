@@ -14,10 +14,11 @@ function context(id = "a") {
   };
 }
 
-test("encuadre automático incluye la huella y cinco kilómetros, también multipolígonos", () => {
+test("encuadre automático cercano incluye la huella y 450 metros, también multipolígonos", () => {
   const bounds = selectionBounds(incident("a"));
-  assert.ok(bounds[0][0] < 39.96 && bounds[1][0] > 40.04);
-  assert.ok(bounds[0][1] < -3.05 && bounds[1][1] > -2.95);
+  assert.ok(bounds[0][0] > 39.99 && bounds[1][0] < 40.01);
+  assert.ok(bounds[0][1] > -3.01 && bounds[1][1] < -2.99);
+  assert.ok(bounds[0][0] < 39.999 && bounds[1][0] > 40.001);
   const multi = { ...incident("a"), footprint: { type: "MultiPolygon", coordinates: [footprint.coordinates] } };
   assert.deepEqual(selectionBounds(multi), bounds);
 });

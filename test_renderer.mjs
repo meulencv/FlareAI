@@ -95,8 +95,8 @@ function fixture(t, reduced = false) {
 test("el canvas usa DPR acotado y dibuja viento inmediatamente, incluso con movimiento reducido", t => {
   const f = fixture(t, true);
   f.tick(100);
-  assert.equal(f.canvas.width, 1600);
-  assert.equal(f.canvas.height, 1200);
+  assert.equal(f.canvas.width, 1200);
+  assert.equal(f.canvas.height, 900);
   assert.ok(f.wind()?.length >= 2);
   assert.ok(f.fills.length > 0);
   assert.equal(f.frames.size, 0, "no consume fotogramas en reposo");

@@ -59,6 +59,12 @@ ejecutan una sola vez por revisión; en presentación las tramita `Operations.re
 modos esta capa. Cada oleada reutiliza `Director.prepare/apply` (rutas, alternativas, garantía de trayectoria,
 eventos `decision`/`dispatch`), con las rutas calculadas fuera del cerrojo. Un `dispatch` del LLM sobre una
 unidad ya movilizada ya no lanza error: busca otra libre del mismo tipo o queda `blocked` explicando el motivo.
+Cada asignación conserva además el `run_id` estable de la llamada. Si el llamante corrige la ubicación y el
+overlay cambia de localidad/grupo FIRMS a otro identificador, `AutoDispatch.reconcile_locations` no lo trata
+como un segundo incendio: a ≤20 km del nuevo punto recalcula la ruta desde la posición interpolada de cada
+unidad; a mayor distancia ordena el regreso y `ensure` moviliza un dispositivo nuevo. La tolerancia de 150 m
+evita recalcular por redondeos del geocodificador. El historial etiqueta ambas decisiones como corrección de
+ubicación y las unidades que regresan siguen ocupadas hasta alcanzar su sede.
 
 En Barcelona la evolución la gobierna `scene.py` con **extinción progresiva**: el radio crece a
 `GROWTH_KM_PER_S` (0,0025 km/s) y cada medio trabajando en el lugar (camión 1, helicóptero 2) lo reduce
@@ -432,7 +438,7 @@ La capa de fuego dibuja cada componente de la geometría aproximada sin escalarl
 - **Chispas:** nacen dentro de la huella geográfica, mediante muestreo con rechazo. Su posición se conserva en latitud/longitud y se actualiza con U/V de GFS interpolados en esa posición. Con calma o ausencia de viento no se inventa desplazamiento. Caducan a los 3,4 segundos. Hay un máximo global de 420 y el detalle aumenta con el zoom y la selección.
 - **Corrientes:** hasta 240 trazos según el tamaño de la vista. Se siembran sobre España usando un índice espacial de sus anillos. Sus cabezas se mueven en coordenadas geográficas. Las colas se reconstruyen con la dirección local y una longitud visual acotada; no se conserva una estela en coordenadas antiguas de pantalla. Al cambiar de vista se rellenan las posiciones visibles sin esperar a `moveend` ni hacer peticiones de red.
 - **Mapa:** la proyección se recalcula en cada fotograma y en eventos `move`, `zoom`, `resize` y `viewreset`. El canvas compensa la traslación del pane de Leaflet. No se estira una imagen de flechas durante el zoom. Rueda y botones interpolan el zoom durante 220 ms, con centro en el cursor para la rueda. El arrastre o la navegación a otra zona cancelan una transición pendiente.
-- **Recursos y accesibilidad:** DPR limitado a 2; delta temporal máximo de 50 ms tras pausas; el bucle se detiene con la pestaña oculta. El botón **Ⅱ** y `prefers-reduced-motion` dejan un fotograma estático, con flechas visibles. Mover el mapa sigue actualizando su posición aunque estén pausadas las animaciones. Las zonas también se seleccionan con los botones de la lista.
+- **Recursos y accesibilidad:** DPR limitado a 1,5 en los canvas animados; fuego, viento, tráfico, vehículos y viajes de cámara se actualizan como máximo a unos 30 Hz, evitando reproyecciones DOM duplicadas. El delta temporal sigue limitado a 50 ms tras pausas y el bucle se detiene con la pestaña oculta. El botón **Ⅱ** y `prefers-reduced-motion` dejan un fotograma estático, con flechas visibles. Mover el mapa sigue actualizando su posición aunque estén pausadas las animaciones. Las zonas también se seleccionan con los botones de la lista.
 
 La velocidad se normaliza en píxeles por segundo para hacer legible incluso un viento flojo. Los colores de fuego son una paleta visual: **no codifican temperatura medida ni intensidad de combustión**. Ni el desplazamiento de las chispas ni la ondulación modifican la geometría observada, las hectáreas del panel o los datos exportados. La malla GFS de 0,25° no adquiere resolución adicional al ampliar el mapa.
 

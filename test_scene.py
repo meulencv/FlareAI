@@ -92,6 +92,45 @@ class SceneTests(TestCase):
         self.scene.evolve(at + 72)
         self.assertEqual(record['phase'], 'closed')
 
+    def test_phone_and_requested_firefighters_delay_shrinking_until_arrival(self):
+        from operations import Operations, HOLD_LIMIT
+        from unittest.mock import patch
+        now = 1789812000
+        item = {**incident(), 'demo_report': {'summary': {}}}
+        self.scene.observe({'incidents': [item]}, now)
+        operations = Operations.__new__(Operations)
+        operations.director = self.director
+        operations.outbound = SimpleNamespace(jobs={'sensor': {'status': 'dialing'}})
+        self.director.operations = operations
+        request = {'kind': 'fire_engine', 'quantity': 2, 'fulfilled': 2, 'resource_ids': ['r1', 'r2'], 'status': 'fulfilled'}
+        self.director.state['operations'] = {'sensor': {'started_at': now, 'requests': {'reinforcement': request}}}
+        self.director.state['assignments'] = {
+            key: {'incident_id': 'sensor', 'status': 'enroute' if key.startswith('r') else 'onscene',
+                  'resource': {'kind': 'fire_engine'}} for key in ['base1', 'base2', 'base3', 'r1', 'r2']}
+        record = self.scene.data['incidents']['sensor']
+        with patch('operations.time.time', return_value=now + 10):
+            self.scene.evolve(now + 10)
+        self.assertGreater(record['radius_km'], .18)
+        self.assertEqual(record['suppression_power'], 0)
+        operations.outbound.jobs['sensor']['status'] = 'completed'
+        self.director.state['assignments']['r1']['status'] = 'onscene'
+        before = record['radius_km']
+        with patch('operations.time.time', return_value=now + HOLD_LIMIT + 10):
+            self.scene.evolve(now + HOLD_LIMIT + 10)
+        self.assertGreaterEqual(record['radius_km'], before, 'No consume extinción mientras falta un refuerzo, incluso tras 300 s')
+        self.director.state['assignments']['r2']['status'] = 'onscene'
+        before = record['radius_km']
+        for second in range(1, 61):
+            with patch('operations.time.time', return_value=now + HOLD_LIMIT + 10 + second):
+                self.scene.evolve(now + HOLD_LIMIT + 10 + second)
+            if second == 1:
+                self.assertLess(record['radius_km'], before)
+                self.assertEqual(record['phase'], 'active', 'La llegada inicia trabajo progresivo, no apaga de golpe')
+                self.assertGreater(record['extinguished_pct'], 0)
+            if record['phase'] == 'contained':
+                break
+        self.assertEqual(record['phase'], 'contained')
+
     def test_happyrobot_template_normalization_does_not_weaken_prompt_check(self):
         from director_workflow import canonical_prompt
         self.assertEqual(canonical_prompt('{{ index . "abc-123.data.context_json" }}'), '{{abc-123.data.context_json}}')

@@ -121,8 +121,10 @@ girar el viento y registrar un parte simulado de bomberos, sanitarios o policía
   de demo; llegada no es alta médica. Camiones, patrullas y helicópteros conservan flota y sedes del atlas.
 - El **barco solo aparece si una llamada comunica fuego en una embarcación en Barcelona**. Se coloca
   en un punto marítimo ilustrativo, no una posición verificada. Aire va al aviso; tierra, al encuentro costero.
-- Coches de frontend aparecen con fade desde zoom 12 y desaparecen al alejar. Los cortes comparten
-  identificador de tramo con el grafo: los coches se acumulan antes de la barrera y las unidades se desvían.
+- Coches de frontend solo en vistas cercanas (fade entre zoom 13 y 14), alrededor de unidades terrestres
+  visibles: máximo 48, a ≤650 m y ≤220 px, no por toda la ciudad. Fuera de Barcelona se reutilizan las
+  rutas disponibles, sin inventar calles. Los cortes comparten identificador de tramo con el grafo:
+  los coches se acumulan antes de la barrera y las unidades se desvían.
   Si no hay desvío, quedan detenidas; no atraviesan el corte ni usan una recta inventada.
 - El escenario gira el viento y provoca un corte tras la salida. El crecimiento se limita a 1,2 km de
   radio ilustrativo (150 m en un barco); aumenta el entorno censal considerado. Tras trabajo sostenido de

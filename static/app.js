@@ -331,12 +331,16 @@ function zoomTo(zoom, anchor = null) {
   const cursor = anchor ? map.containerPointToLatLng(anchor) : centre;
   const duration = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220;
   const end = zoomTarget;
+  let lastPaint = -Infinity;
   const tick = timestamp => {
     const progress = duration ? Math.min(1, (timestamp - began) / duration) : 1;
-    const current = start + (end - start) * (1 - Math.pow(1 - progress, 3));
-    const offset = anchor ? map.getSize().divideBy(2).subtract(anchor) : L.point(0, 0);
-    const projected = map.project(cursor, current).add(offset);
-    map.setView(map.unproject(projected, current), current, { animate: false });
+    if (progress === 1 || timestamp - lastPaint >= 32) {
+      const current = start + (end - start) * (1 - Math.pow(1 - progress, 3));
+      const offset = anchor ? map.getSize().divideBy(2).subtract(anchor) : L.point(0, 0);
+      const projected = map.project(cursor, current).add(offset);
+      map.setView(map.unproject(projected, current), current, { animate: false });
+      lastPaint = timestamp;
+    }
     if (progress < 1) zoomFrame = requestAnimationFrame(tick);
     else { zoomFrame = 0; zoomTarget = null; }
   };

@@ -17,6 +17,8 @@ from local_routes import km
 BASELINE = {'fire_engine': 3, 'ambulance': 1, 'police': 1}
 MAX_ENGINES = 6
 MAX_RANGE_KM = 60
+LOCATION_REDIRECT_KM = 20   # cerca del punto corregido: continúa desde su posición; lejos: vuelve y sale otro dispositivo
+LOCATION_EPSILON_KM = .15   # evita recalcular por redondeos de geocodificación
 WAVE_COOLDOWN = 20          # segundos entre oleadas automáticas por aviso
 CONTAIN_WORK = 90           # medios × segundos de trabajo en el lugar para contener: 2 camiones 45 s, 3 en 30 s, 5 en 18 s
 WATCH_SECONDS = 25
@@ -186,6 +188,72 @@ class AutoDispatch:
         self.director.event('return', 'Regresa · ' + resource['name'], 'Fin de la vigilancia de la simulación; la unidad sigue ocupada hasta llegar a sede.',
                             incident_id=assignment['incident_id'], resource_id=rid)
 
+    @staticmethod
+    def report_run_id(incident: dict) -> str | None:
+        return (incident.get('demo_report') or {}).get('run_id')
+
+    def reconcile_locations(self, incidents: list[dict], now: float) -> bool:
+        """Reconcilia una corrección de ubicación de la misma llamada.
+
+        El overlay puede cambiar de un grupo FIRMS/localidad a un aviso puntual y, con ello,
+        cambiar también el id visible. La identidad estable es el run de la llamada. Las
+        unidades próximas se enrutan desde su posición actual; las lejanas regresan y quedan
+        disponibles solo al alcanzar su sede. `ensure` completará después el mínimo en el
+        destino nuevo con unidades libres.
+        """
+        current = {run_id: incident for incident in incidents if (run_id := self.report_run_id(incident))}
+        candidates: list[tuple[str, dict, dict, float]] = []
+        with self.director.lock:
+            for rid, assignment in self.director.state['assignments'].items():
+                if assignment.get('status') in {'returning', 'transporting'}:
+                    continue
+                run_id = assignment.get('report_run_id')
+                # Compatibility for call-only assignments saved before report_run_id existed.
+                if not run_id and str(assignment.get('incident_id', '')).startswith('demo:'):
+                    run_id = str(assignment['incident_id'])[5:]
+                    assignment['report_run_id'] = run_id
+                incident = current.get(run_id)
+                if not incident:
+                    continue
+                target = [incident['lon'], incident['lat']]
+                if assignment.get('incident_id') == incident['id'] and km(assignment.get('target', target), target) <= LOCATION_EPSILON_KM:
+                    continue
+                origin = self.director.vehicle_origin(assignment['resource'])
+                candidates.append((rid, deepcopy(assignment), deepcopy(incident), km(origin, target)))
+
+        changed = False
+        for rid, snapshot, incident, distance in candidates:
+            if distance > LOCATION_REDIRECT_KM:
+                with self.director.lock:
+                    assignment = self.director.state['assignments'].get(rid)
+                    if not assignment or assignment.get('id') != snapshot.get('id'):
+                        continue
+                    self.go_home(rid, assignment, now)
+                    self.director.event('location_correction', 'Ubicación corregida · sale un dispositivo nuevo',
+                                        f'{assignment["resource"]["name"]} estaba a {distance:.1f} km del punto corregido y regresa a base.',
+                                        incident_id=incident['id'], resource_id=rid)
+                    self.director.save()
+                    changed = True
+                continue
+
+            plan = {'revision': 'auto-location', 'summary': 'Ubicación corregida: se redirigen los medios próximos', 'actions': [{
+                'type': 'reassign', 'incident_id': incident['id'], 'resource_id': rid,
+                'reason': 'Corrección de la misma llamada; continúa desde su posición actual por proximidad al nuevo punto.'}]}
+            context = {'revision': 'auto-location', 'incidents': [incident],
+                       'resources': deepcopy(list(self.director.state['resources'].values()))}
+            prepared = self.director.prepare(plan, context)
+            with self.director.lock:
+                assignment = self.director.state['assignments'].get(rid)
+                if not assignment or assignment.get('id') != snapshot.get('id'):
+                    continue
+                self.director.apply(plan, prepared, f'location:{uuid.uuid4().hex[:8]}')
+                self.director.event('location_correction', 'Medio redirigido al punto corregido',
+                                    f'{assignment["resource"]["name"]} estaba a {distance:.1f} km y continúa sin volver a su sede.',
+                                    incident_id=incident['id'], resource_id=rid)
+                self.director.save()
+                changed = True
+        return changed
+
     def lifecycle(self, incident: dict, record: dict, fields: dict, report: dict, now: float) -> bool:
         """Evolución ilustrativa para avisos sin escenario de sala: contención con trabajo sostenido,
         vigilancia, retirada y cierre. Nunca modifica las observaciones NASA ni confirma extinción real."""
@@ -211,6 +279,10 @@ class AutoDispatch:
         if phase == 'active':
             # Extinción progresiva: cada medio en el lugar suma trabajo; más recursos, contención antes.
             suppression = sum(1 if a['resource']['kind'] == 'fire_engine' else 2 if a['resource']['kind'] == 'helicopter' else 0 for a in arrived)
+            operations = self.director.operations
+            record['waiting_suppression'] = bool(operations and operations.held(identifier, suppression=True))
+            if record['waiting_suppression']:
+                suppression = 0
             record['suppression_power'] = suppression
             if suppression >= 1:
                 record['suppression_since'] = record['suppression_since'] if record['suppression_since'] is not None else now
@@ -268,6 +340,7 @@ class AutoDispatch:
         changed = False
         reports = payload.get('demo', {}).get('field_reports', {})
         incidents = reported(payload)
+        changed |= self.reconcile_locations(incidents, now)
         with self.director.lock:
             for incident in incidents:
                 identifier = incident['id']

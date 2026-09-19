@@ -54,7 +54,13 @@ y dashboard con aprobación humana.
 - [[2026-09-18]] — agente de voz web + vault
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
-## Estado actual (resumen rápido, 2026-09-19)
+## Estado actual (resumen rápido, 2026-09-20)
+- **Tráfico local discreto:** solo con zoom cercano y junto a unidades terrestres, máximo 48 coches;
+  avería puntual identificada como simulación para el ensayo visual de recálculo. No modifica rutas reales.
+  [[Dashboard y simulador#Tráfico visual local (2026-09-20)|Criterios y verificación]].
+- **Recálculos visuales esporádicos:** una ruta terrestre resaltada cada cierto tiempo, con motivos
+  aleatorios de viento/tráfico/acceso y mensajes de simulación en el historial. Solo frontend;
+  no cambia decisiones, rutas ni datos meteorológicos. [[Dashboard y simulador#FlareAI actual: recálculos visuales esporádicos (2026-09-20)|Detalles y límites]].
 - **Presentación nueva:** centro y datos estáticos locales; dinámicos en Twin; solo 112 web, sin 123.
   Testimonios evaluados por el director, parte telefónico al llegar, refuerzos obligatorios, ES-Alert
   excepcional con veto, PDF y cerebro con Markdown local. Director original actualizado con autorización;

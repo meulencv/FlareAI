@@ -66,6 +66,14 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   `python -m unittest test_autodispatch test_director test_scene test_operations test_presentation test_demo`.
   `verify_scene.py` pasa todo el recorrido con la capa activa pero su paso final del marcador 123 está
   obsoleto (el botón 123 se retiró del frontend antes de este cambio).
+- Una corrección de ubicación conserva el `demo_report.run_id`: las asignaciones guardan `report_run_id`.
+  `AutoDispatch.reconcile_locations` redirige desde la posición actual si están a ≤20 km del punto corregido;
+  si están más lejos, regresan y `ensure` envía medios nuevos. No presentar la corrección como otro incendio.
+  Los canvas animados y el seguimiento de cámara se limitan a ~30 Hz y DPR 1,5 para mantener fluido el zoom.
+- Al cerrar un incendio, `static/operations.js` retira del mapa la llamada 112 y sus testigos, sin borrar
+  historial ni informes. Usa primero la fase de `/api/director` (escenario/auto) para no esperar al
+  refresco de `/api/data`; también retira operaciones con informe final o aviso cancelado. Colgar no
+  oculta avisos todavía activos. Regresión de retirada real de marcadores en `test_operations.mjs`.
 
 ## Presentación: centro local y datos dinámicos Twin (19/09/2026, revisión final)
 
@@ -209,6 +217,32 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 - Run real verificado `87e54d53-bfb5-489e-8def-b3ab2d6f932b`: contexto Tarragona, plan del LLM,
   dos camiones y ruta local 2,08 km. Entrada de llamada fixture, NO nueva prueba de audio real.
   Mypy global conserva un error previo ajeno en `sms_demo.py:271`; los archivos del director pasan.
+
+## Tráfico visual local (20/09/2026)
+
+- `static/traffic.js`: solo con zoom >13 (opacidad completa a 14), alrededor de unidades terrestres
+  visibles, usando la posición del marcador para respetar pausa/movimiento reducido. Radio máximo
+  650 m y 220 px con fundido periférico; 24 tramos, hasta dos coches por tramo y 48 en total.
+- Barcelona consulta únicamente cajas locales cuantizadas de la red preparada; fuera de esa red
+  reutiliza segmentos de rutas existentes, nunca vuelos ni trayectorias aproximadas. No descarga
+  carreteras nuevas. Invalida descargas al alejar, ocultar, quedar sin unidades o cambiar de sesión.
+- Los recálculos visuales solo se ensayan en vista cercana con la unidad visible. El motivo de tráfico
+  es una avería simulada: coche detenido y rótulo durante seis segundos, unos 80 m por delante.
+  No se inventa una avería como explicación de un recálculo real ni se cambian rutas/ETA del servidor.
+- Pruebas: Node `--test test_scene.mjs test_director.mjs`; recorrido Chromium con Leaflet/director reales
+  y API fixture comprobó 21 coches, avería, pausa, zoom, zona vacía, móvil y cierre sin errores JS.
+  Las capturas `.local/traffic-local-desktop.png` y `traffic-local-mobile.png` son fixtures, no tráfico real.
+
+## Recálculos visuales aleatorios (20/09/2026)
+
+- `static/director.js::createRouteRehearsal` espera 12–24 s y luego 45–90 s entre ensayos de 6 s
+  sobre una sola ruta terrestre visible en marcha, nunca vuelos ni aproximaciones. Viento/tráfico/acceso
+  son motivos de **simulación**, no observaciones ni decisiones LLM. Capa SVG independiente;
+  no altera rutas, tiempos, NOAA, SQL/Twin ni dispara peticiones adicionales.
+- `static/scene.js` mezcla cronológicamente hasta 40 eventos visuales locales con el historial real;
+  se distinguen y no se guardan. Prioridad a eventos reales; cancela con pausa, pestaña oculta,
+  desconexión, nueva sesión o revisión de ruta. Movimiento reducido conserva resaltado sin animación.
+- Regresiones: `.local/node-v22.19.0-darwin-arm64/bin/node --test test_director.mjs test_scene.mjs`.
 
 ## Bomberos 123, ES-Alert móvil y manos libres (19/09/2026)
 
@@ -511,3 +545,22 @@ Si el vault no existe todavía, créalo con esta misma estructura antes de escri
    (`grep -rn "sk_live_\|sk-\|Bearer " HappyRobot-Vault/`, ajustando el patrón al secreto
    relevante).
 8. Resume al usuario qué notas se crearon/actualizaron, enlazando el índice.
+
+## Cerebro y PDF (20/09/2026)
+
+- `reports.base_notes()` define cuatro notas curadas enlazadas, visibles sin operaciones previas.
+  `decision_memories()` incorpora esa base y hasta 30 memorias al contexto existente del director;
+  no cambia ni publica workflows. Disponibilidad en contexto no demuestra uso por cada decisión.
+- `/api/brain` combina base, aprendizajes e informes. El grafo claro y minimalista de `static/operations.js`
+  ofrece búsqueda, selección, enlaces entrantes/salientes, desplazamiento, zoom y refresco al estar abierto.
+  `.brain-view .brain-graph` debe superar la especificidad de `svg:not(.leaflet-zoom-animated)`:
+  esa regla de iconos lo dejaba en 20 px de ancho. Verificar dimensiones reales, no solo presencia de nodos.
+  `mergeBrainNotes()` muestra cuatro notas locales de inmediato, fusiona por ID y admite servidores antiguos;
+  solo indica contexto IA conectado si el backend también devuelve las cuatro notas base.
+  Los Markdown base se sincronizan a `FlareAI-Memoria/`; su origen no se atribuye a aprendizaje de IA.
+- PDF stdlib con encabezado, tipografías regular/negrita, tarjetas de balance, secciones y paginación.
+  Es un informe final del simulacro; mantiene estimaciones y metodología, sin presentar créditos emitidos.
+- Verificación enfocada: `.venv/bin/python -m unittest test_presentation.ReportTests -v`,
+  Node `--test test_operations.mjs`, Ruff y recorrido Playwright con API fixture (no llamadas/cloud).
+  Comprobación posterior sobre la web real en 8090: dimensiones del grafo, búsqueda, selección, móvil y API caída.
+  Capturas claras en `evidence/brain-light-desktop.png` y `evidence/brain-light-mobile.png`.

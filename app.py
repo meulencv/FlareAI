@@ -353,14 +353,12 @@ class Handler(SimpleHTTPRequestHandler):
             elif route.path == '/api/director/history' and self.store.director and self.store.db:
                 self.send_json(self.store.db.director_history(self.store.director.session_id))
             elif route.path == '/api/brain' and self.store.presentation:
-                from reports import report_markdown, sync_memories
+                from reports import brain_notes, sync_memories
                 cloud = cast(TwinDatabase, self.store.db)
-                def brain_notes():
+                def load_brain():
                     sync_memories(cloud)
-                    notes = [row['data'] | {'kind': 'memory'} for row in cloud.documents('memory')]
-                    notes += [row['data'] | {'kind': 'report', 'markdown': report_markdown(row['data'])} for row in cloud.documents('report')]
-                    return notes
-                self.send_json({'notes': cloud.cached('brain', 5, brain_notes)})
+                    return brain_notes(cloud)
+                self.send_json({'notes': cloud.cached('brain', 5, load_brain)})
             elif re.fullmatch(r'/api/reports/[a-f0-9]{24}\.pdf', route.path) and self.store.presentation:
                 from reports import pdf_bytes, report_markdown
                 identifier = route.path.rsplit('/', 1)[1].removesuffix('.pdf')

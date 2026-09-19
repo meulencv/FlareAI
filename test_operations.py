@@ -44,6 +44,29 @@ class OperationTests(unittest.TestCase):
         self.assertEqual(requested_resources(fields, {'ambulancias': 4, 'ambulancia': 3}), {'ambulance': 2})
         self.assertEqual(requested_resources({'bomberos': '100'}), {'fire_engine': 100})
 
+    def test_suppression_waits_for_requested_firefighters_not_medical_transport(self):
+        from types import SimpleNamespace
+        from operations import Operations
+        operations = Operations.__new__(Operations)
+        request = {'kind': 'fire_engine', 'quantity': 1, 'fulfilled': 0, 'resource_ids': [], 'status': 'pending'}
+        operations.director = SimpleNamespace(state={'assignments': {}, 'operations': {'fire': {'started_at': 0, 'requests': {'truck': request}}}})
+        operations.outbound = SimpleNamespace(jobs={'fire': {'status': 'completed'}})
+        self.assertTrue(operations.held('fire', suppression=True))
+        request.update(fulfilled=1, resource_ids=['truck'], status='fulfilled')
+        self.assertTrue(operations.held('fire', suppression=True), 'Una asignación ausente no prueba llegada')
+        assignment = {'incident_id': 'fire', 'status': 'blocked'}
+        operations.director.state['assignments']['truck'] = assignment
+        self.assertTrue(operations.held('fire', suppression=True))
+        assignment['status'] = 'onscene'
+        self.assertFalse(operations.held('fire', suppression=True))
+        assignment['incident_id'] = 'other'
+        self.assertTrue(operations.held('fire', suppression=True))
+        request['status'] = 'cancelled'
+        self.assertFalse(operations.held('fire', suppression=True))
+        request.update(kind='ambulance', status='pending', fulfilled=0, resource_ids=[])
+        self.assertFalse(operations.held('fire', suppression=True))
+        self.assertTrue(operations.held('fire'), 'Los sanitarios pendientes aún retienen el cierre')
+
     def test_first_dispatch_requires_complete_evidence_assessment(self):
         from director import validate_plan
         context = {'revision': 'v', 'presentation': True, 'resources': [],

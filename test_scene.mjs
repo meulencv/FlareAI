@@ -1,13 +1,83 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { trafficProgress, trafficOpacity } from './static/traffic.js';
+import { createTraffic, trafficProgress, trafficOpacity, localTrafficRoads, trafficRouteRoads, TRAFFIC_LIMIT } from './static/traffic.js';
 import { priorityLine, extinctionLine, engagedHospitals, HOSPITAL_THREAT_LIMIT } from './static/scene.js';
 import { patrolTargets, engagedStations } from './static/director.js';
 
 test('los coches desaparecen lejos y entran progresivamente al acercarse', () => {
   assert.equal(trafficOpacity(10), 0);
-  assert.ok(trafficOpacity(12) > 0 && trafficOpacity(12) < 1);
+  assert.equal(trafficOpacity(12.5), 0);
+  assert.equal(trafficOpacity(13), 0);
+  assert.ok(trafficOpacity(13.5) > 0 && trafficOpacity(13.5) < 1);
   assert.equal(trafficOpacity(14), 1);
+});
+
+test('tráfico escaso solo en carreteras próximas a las unidades, no por todo el mapa', () => {
+  const road = (id, lat) => ({ id, coordinates: [[2.17, lat], [2.175, lat]] });
+  const near = road('near', 41.4), distant = road('far', 41.43);
+  const vehicles = [{ lon: 2.172, lat: 41.4 }];
+  assert.deepEqual(localTrafficRoads([distant, near], vehicles), [near]);
+  assert.deepEqual(localTrafficRoads([near], []), []);
+  assert.deepEqual(localTrafficRoads([near], [{ lon: 2.25, lat: 41.4 }]), []);
+  const many = Array.from({ length: 1000 }, (_, i) => road(String(i), 41.4 + i / 1000000));
+  assert.ok(localTrafficRoads(many, vehicles).length <= TRAFFIC_LIMIT / 2);
+  assert.deepEqual(localTrafficRoads(many, vehicles), localTrafficRoads([...many].reverse(), vehicles));
+});
+
+test('fuera de la red preparada reutiliza geometrías de rutas, nunca rectas aproximadas ni vuelos', () => {
+  const route = { coordinates: [[-3.7, 40.4], [-3.701, 40.401], [-3.702, 40.401]], edge_ids: ['a', 'b'] };
+  const vehicles = [{ route }, { route }, { route: { ...route, approximate: true } }, { route: { ...route, mode: 'air' } }];
+  assert.deepEqual(trafficRouteRoads(vehicles).map(r => r.id), ['a', 'b']);
+  assert.deepEqual(trafficRouteRoads([{ route: { ...route, approximate: true } }]), []);
+  assert.deepEqual(trafficRouteRoads([{ route: { ...route, mode: 'air' } }]), []);
+});
+
+test('el canvas limpia tráfico lejano, pausa el movimiento y descarta descargas tardías', async t => {
+  const frames = new Map(), draws = [], requests = [];
+  let serial = 0, zoom = 14, vehicles = [{ lat: 41.4, lon: 2.17,
+    route: { coordinates: [[2.168, 41.4], [2.172, 41.4]] } }];
+  const ctx = { setTransform() {}, clearRect() { draws.length = 0; }, save() {}, restore() {}, rotate() {}, fillRect() {},
+    translate(x, y) { draws.push([x, y]); } };
+  const canvas = { style: {}, dataset: {}, setAttribute() {}, getContext: () => ctx };
+  const document = { hidden: false, createElement: () => canvas, addEventListener() {} };
+  const globals = {
+    window: { devicePixelRatio: 2 }, matchMedia: () => ({ matches: false, addEventListener() {} }),
+    requestAnimationFrame: callback => { frames.set(++serial, callback); return serial; }, cancelAnimationFrame: id => frames.delete(id),
+  };
+  for (const [key, value] of Object.entries(globals)) {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, key);
+    Object.defineProperty(globalThis, key, { value, configurable: true, writable: true });
+    t.after(() => { if (descriptor) Object.defineProperty(globalThis, key, descriptor); else Reflect.deleteProperty(globalThis, key); });
+  }
+  const map = {
+    getZoom: () => zoom, getSize: () => ({ x: 800, y: 600 }), getPane: () => ({ append() {} }), on() {},
+    getBounds: () => ({ contains: ([lat, lon]) => Math.abs(lat - 41.4) < .003 && Math.abs(lon - 2.17) < .004 }),
+    containerPointToLayerPoint: () => ({ x: 0, y: 0 }),
+    latLngToContainerPoint: ([lat, lon]) => ({ x: 400 + (lon - 2.17) * 100000, y: 300 - (lat - 41.4) * 100000 }),
+  };
+  const traffic = createTraffic({ map, L: { DomUtil: { setPosition() {} } }, document, getVehicles: () => vehicles,
+    fetch: (url, options) => new Promise(resolve => requests.push({ url, options, resolve })) });
+  const tick = time => { const callbacks = [...frames.values()]; frames.clear(); callbacks.forEach(callback => callback(time)); };
+  traffic.update({ enabled: true }, 'one'); tick(100);
+  assert.equal(requests.length, 1);
+  assert.ok(Number(canvas.dataset.cars) > 0 && Number(canvas.dataset.cars) <= TRAFFIC_LIMIT);
+  assert.ok(draws.every(([x, y]) => Math.hypot(x - 400, y - 300) <= 220));
+  const moving = JSON.stringify(draws); tick(150);
+  assert.notEqual(JSON.stringify(draws), moving);
+  traffic.setPaused(true); tick(200);
+  const frozen = JSON.stringify(draws); traffic.update({ enabled: true }, 'one'); tick(400);
+  assert.equal(JSON.stringify(draws), frozen);
+  assert.equal(requests.length, 1, 'no duplica la petición pendiente');
+  zoom = 12; traffic.update({ enabled: true }, 'one'); tick(500);
+  assert.equal(canvas.dataset.cars, '0'); assert.equal(canvas.style.opacity, '0');
+  assert.equal(requests[0].options.signal.aborted, true);
+  requests[0].resolve({ ok: true, json: async () => ({ roads: [{ id: 'stale', coordinates: [[2.168, 41.4], [2.172, 41.4]] }] }) });
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(canvas.dataset.roads, '0'); assert.equal(canvas.dataset.cars, '0');
+  zoom = 14; vehicles = []; traffic.update({ enabled: true }, 'two'); tick(600);
+  assert.equal(canvas.dataset.cars, '0'); assert.equal(requests.length, 1);
+  vehicles = [{ lat: 41.43, lon: 2.17 }]; traffic.update({ enabled: true }, 'two'); tick(700);
+  assert.equal(canvas.dataset.cars, '0'); assert.equal(requests.length, 1);
 });
 
 test('ningún coche cruza la barrera y el tapón queda aguas arriba', () => {
@@ -23,6 +93,7 @@ test('prioridad en una sola línea y ronda incluye sensores sin fabricar llamada
   assert.equal(extinctionLine({ phase: 'active', suppression_power: 0, extinguished_pct: 0 }), 'Fuego creciendo · medios en camino');
   assert.equal(extinctionLine({ phase: 'active', suppression_power: 4, extinguished_pct: 37 }), 'Extinción simulada 37 % · 4 medios trabajando · más medios, antes');
   assert.equal(extinctionLine({ phase: 'watching', suppression_power: 4, extinguished_pct: 90 }), '');
+  assert.match(extinctionLine({ phase: 'active', waiting_suppression: true, suppression_power: 3 }), /esperando llamada o refuerzos/);
   const sensor = { id: 'sensor', sensor_report: { source: 'FIRMS' } };
   assert.equal(patrolTargets([sensor], {}).length, 1);
   assert.equal(patrolTargets([{ ...sensor, scenario: { phase: 'closed' } }], {}).length, 0);
@@ -52,6 +123,7 @@ test('solo se encienden el hospital del traslado y la sede que moviliza', () => 
 
 test('la superficie de riesgo sigue la huella del fuego con margen reducido y sesgo a favor del viento', async () => {
   const { threatOutline, THREAT_MARGIN_KM } = await import('./static/scene.js');
+  assert.ok(THREAT_MARGIN_KM <= .08, 'halo pegado al fuego: como mucho 80 metros de margen base');
   const record = { lat: 41.4, lon: 2.17, radius_km: .5, wind_to: 90 };
   const east = 111.32 * Math.cos(record.lat * Math.PI / 180);
   const ring = Array.from({ length: 33 }, (_, i) => {

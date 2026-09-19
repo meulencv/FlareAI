@@ -1,10 +1,11 @@
 import time
 import unittest
+import math
 from copy import deepcopy
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from autodispatch import BASELINE, WAVE_COOLDOWN, pick
+from autodispatch import BASELINE, LOCATION_REDIRECT_KM, WAVE_COOLDOWN, pick
 from director import Director
 
 
@@ -25,7 +26,7 @@ class Atlas:
 
 class AutoDispatchTests(unittest.TestCase):
     def setUp(self):
-        self.payload = {'incidents': [{'id': 'fire', 'name': 'Aviso', 'lat': 41, 'lon': 1, 'demo_report': {'summary': {}}, 'weather': {}}], 'demo': {'field_reports': {}}}
+        self.payload = {'incidents': [{'id': 'fire', 'name': 'Aviso', 'lat': 41, 'lon': 1, 'demo_report': {'summary': {}, 'run_id': 'call-1'}, 'weather': {}}], 'demo': {'field_reports': {}}}
         self.store = SimpleNamespace(db=Mock(), demo=SimpleNamespace(session_id='test'), payload=lambda: deepcopy(self.payload))
         self.router = Mock()
         self.router.route.side_effect = lambda start, end, **kwargs: {'coordinates': [list(start), list(end)], 'cumulative_km': [0, 1], 'duration_seconds': 90, 'distance_km': 1}
@@ -140,6 +141,34 @@ class AutoDispatchTests(unittest.TestCase):
         self.director.step()
         self.assertTrue(all(a['status'] == 'returning' for a in self.assignments()))
         self.assertEqual(self.auto.records['fire']['phase'], 'releasing')
+
+    def test_near_location_correction_redirects_existing_units_from_current_position(self):
+        self.director.step()
+        before = set(self.director.state['assignments'])
+        for assignment in self.assignments():
+            assignment['started_at'] = time.time() - 10
+        self.payload['incidents'] = [{'id': 'demo:call-1', 'name': 'Sagrada Familia', 'lat': 41, 'lon': 1.05,
+                                      'demo_report': {'summary': {}, 'run_id': 'call-1'}, 'weather': {}}]
+        self.director.step()
+        self.assertEqual(set(self.director.state['assignments']), before)
+        self.assertTrue(all(a['incident_id'] == 'demo:call-1' for a in self.assignments()))
+        self.assertTrue(all(a['target'] == [1.05, 41] for a in self.assignments()))
+        self.assertTrue(all(a['report_run_id'] == 'call-1' for a in self.assignments()))
+        self.assertEqual(sum(e['kind'] == 'location_correction' for e in self.director.state['events']), len(before))
+
+    def test_far_location_correction_returns_old_units_and_dispatches_new_ones(self):
+        self.director.step()
+        old = set(self.director.state['assignments'])
+        far_lon = 1 + (LOCATION_REDIRECT_KM + 5) / (111.32 * math.cos(math.radians(41)))
+        self.payload['incidents'] = [{'id': 'demo:call-1', 'name': 'Punto corregido', 'lat': 41, 'lon': far_lon,
+                                      'demo_report': {'summary': {}, 'run_id': 'call-1'}, 'weather': {}}]
+        self.director.step()
+        old_assignments = [self.director.state['assignments'][rid] for rid in old]
+        self.assertTrue(all(a['status'] == 'returning' for a in old_assignments))
+        replacements = [a for rid, a in self.director.state['assignments'].items() if rid not in old]
+        self.assertTrue(replacements)
+        self.assertTrue(all(a['incident_id'] == 'demo:call-1' for a in replacements))
+        self.assertTrue(any(e['kind'] == 'location_correction' and 'nuevo' in e['message'] for e in self.director.state['events']))
 
     def test_scene_incident_follows_scene_phase_and_never_dispatches_in_release(self):
         self.payload['incidents'][0]['scenario'] = {'phase': 'releasing', 'radius_km': .3}

@@ -28,14 +28,20 @@ export function createCameraTour({ map, L, now = () => performance.now(), reques
     if (distance < 16 && Math.abs(start.zoom - zoom) < .15) return;
     const overview = distance < 80 ? Math.min(start.zoom, zoom)
       : Math.max(map.getMinZoom(), Math.min(start.zoom, zoom, map.getBoundsZoom(L.latLngBounds([origin, target]), false, L.point(160, 180))) - .7);
-    const duration = distance < 80 ? 1400 : 3200, token = generation;
-    let previous = now(), elapsed = 0;
+    const duration = distance < 80 ? 900 : 2400, token = generation;
+    let previous = now(), elapsed = 0, lastPaint = -Infinity;
     function tick(timestamp) {
       if (token !== generation) return;
       elapsed += Math.max(0, Math.min(50, timestamp - previous)); previous = timestamp;
       const progress = Math.min(1, elapsed / duration);
-      const view = cinematicFrame(start, end, overview, progress);
-      map.setView(map.unproject(L.point(view.center.x, view.center.y), 0), view.zoom, { animate: false });
+      // setView dispara la reproyección de todas las capas Leaflet. A 60 Hz saturaba
+      // especialmente pantallas Retina; 30 Hz mantiene el viaje suave y deja tiempo
+      // de CPU a los canvas y a la interacción.
+      if (progress === 1 || timestamp - lastPaint >= 32) {
+        const view = cinematicFrame(start, end, overview, progress);
+        map.setView(map.unproject(L.point(view.center.x, view.center.y), 0), view.zoom, { animate: false });
+        lastPaint = timestamp;
+      }
       frame = progress < 1 ? requestFrame(tick) : 0;
     }
     frame = requestFrame(tick);
@@ -84,6 +90,12 @@ export function routePosition(route, progress) {
   return points[low].map((value, axis) => points[low - 1][axis] + (value - points[low - 1][axis]) * fraction);
 }
 
+export function vehicleCameraView(assignment, now, reduced = false) {
+  const progress = reduced ? (assignment.status === 'onscene' ? 1 : 0) : (now - assignment.started_at) / assignment.travel_seconds;
+  const [lon, lat] = assignment.held_position || routePosition(assignment.route, progress);
+  return { center: [lat, lon], zoom: assignment.resource.kind === 'helicopter' ? 14 : 15.5 };
+}
+
 export function engagedStations(stations, assignments) {
   const engaged = new Set(Object.values(assignments || {}).map(a => `${a.resource?.station_id}:${a.resource?.kind}`));
   return (stations || []).filter(station => engaged.has(`${station.station_id}:${station.kind}`));
@@ -91,6 +103,49 @@ export function engagedStations(stations, assignments) {
 
 export function freshEvents(events, sequence, now) {
   return events.filter(event => event.sequence > sequence && now - event.at < 90);
+}
+
+export function createRouteRehearsal({ random = Math.random } = {}) {
+  let active = null, nextAt = null;
+  const delay = (minimum, spread) => minimum + random() * spread;
+  function eligible(a, now) {
+    return a?.status === 'enroute' && a.resource.kind !== 'helicopter' && !a.route.approximate
+      && a.route.coordinates.length > 1 && now >= a.started_at && a.started_at + a.travel_seconds - now > 10;
+  }
+  function step({ assignments, now, enabled, busy, visible }) {
+    if (!enabled) { active = null; nextAt = null; return null; }
+    if (busy) {
+      if (active) { active = null; nextAt = now + delay(45, 45); }
+      return null;
+    }
+    if (active) {
+      const a = assignments[active.resource_id];
+      if (!eligible(a, now) || a.id !== active.assignment_id || a.route_revision !== active.revision) {
+        active = null; nextAt = now + delay(45, 45); return null;
+      }
+      if (now < active.until) return null;
+      const event = { ...active.event, at: now, message: 'Ruta revisada · simulación',
+        reason: `${a.resource.name} · ensayo visual completado; se conserva el itinerario asignado, sin cambiar la ETA ni enviar órdenes.` };
+      active = null; nextAt = now + delay(45, 45);
+      return event;
+    }
+    if (!Object.values(assignments).some(a => eligible(a, now))) { nextAt = null; return null; }
+    if (nextAt === null) { nextAt = now + delay(12, 12); return null; }
+    if (now < nextAt) return null;
+    const candidates = Object.values(assignments).filter(a => eligible(a, now) && visible(a));
+    nextAt = now + delay(45, 45);
+    if (!candidates.length) return null;
+    const a = candidates[Math.floor(random() * candidates.length)];
+    const reason = ['Viento cambiado', 'Vehículo averiado', 'Acceso alternativo'][Math.floor(random() * 3)];
+    const event = { kind: 'route_rehearsal', visual: true, at: now, resource_id: a.resource.id, incident_id: a.incident_id,
+      message: `${reason} · simulación · recalculando ruta`,
+      reason: `${a.resource.name} · ensayo visual aleatorio, no una observación ni una decisión del LLM. No modifica el viento, la ruta ni los tiempos del servidor.` };
+    const progress = (now - a.started_at) / a.travel_seconds;
+    const obstruction = reason === 'Vehículo averiado' ? routePosition(a.route, progress + .08 / a.route.cumulative_km.at(-1)) : null;
+    active = { resource_id: a.resource.id, assignment_id: a.id, revision: a.route_revision, until: now + 6, obstruction, event };
+    return event;
+  }
+  return { step, get active() { return active; }, reset() { active = null; nextAt = null; } };
 }
 
 export function directorWarning(status) {
@@ -221,18 +276,23 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   const operationView = createOperationView({ document, fetch, map, L, findIncident });
   const $ = id => document.getElementById(id);
   const routes = L.layerGroup().addTo(map), stations = L.layerGroup().addTo(map), alerts = L.layerGroup().addTo(map);
-  const vehicles = new Map();
+  const vehicles = new Map(), rehearsal = createRouteRehearsal(), rehearsalLayer = L.layerGroup().addTo(map);
+  const rehearsalRenderer = L.svg({ pane: 'response-routes' });
+  let rehearsalKey = null;
   map.createPane("response-routes"); map.getPane("response-routes").style.zIndex = 420;
   map.createPane("response-vehicles"); map.getPane("response-vehicles").style.zIndex = 425;
   map.attributionControl.addAttribution('Rutas OSM/OSRM y caché local © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Corregir mapa</a>');
-  let state = null, session = null, sequence = 0, loading = false, paused = false, frame = 0, offset = 0;
+  let state = null, session = null, sequence = 0, loading = false, paused = false, frame = 0, offset = 0, lastVisualTick = 0;
   let queue = [], current = null, shownUntil = 0, lastContact = 0, contextUntil = 0, routeKey = "";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   const cameraTour = createCameraTour({ map, L });
   const aura = createAura($("agent-aura"), { reduced });
   const evidence = createEvidenceView({ document, fetch, getData, getCameras, openCamera: item => { manual(); openCamera(item); } });
   let following = true, armed = false, nextVisit = 0, lastTarget = "", lastEvidence = "", evidenceAt = 0;
-  const sceneView = createSceneView({ map, L, document, fetch, findIncident, focus: id => { const incident = findIncident(id); if (incident) { manual(); focus(incident); map.setView([incident.lat, incident.lon], 13, { animate: false }); } } });
+  const sceneView = createSceneView({ map, L, document, fetch, findIncident,
+    getTrafficVehicles: () => [...vehicles.values()].filter(v => v.assignment.resource.kind !== 'helicopter' && !v.assignment.route.approximate)
+      .map(v => ({ lat: v.marker.getLatLng().lat, lon: v.marker.getLatLng().lng, route: v.assignment.route })),
+    focus: id => { const incident = findIncident(id); if (incident) { manual(); focus(incident); map.setView([incident.lat, incident.lon], 15.5, { animate: false }); } } });
   map.on('zoom', () => { if (!state?.scenario || map.getZoom() >= 11) stations.addTo(map); else stations.remove(); });
 
   function followControl() {
@@ -244,20 +304,16 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   }
   function visit(incident, review = false) {
     beforeMove(); focus(incident);
-    cameraTour.bounds(selectionBounds(incident), 12.5, reduced.matches);
+    cameraTour.bounds(selectionBounds(incident), 15.5, reduced.matches);
     contextUntil = Date.now() + 45000; lastTarget = `incident:${incident.id}`;
     if (review && (lastEvidence !== incident.id || Date.now() - evidenceAt > 60000)) {
       evidence.show(incident); lastEvidence = incident.id; evidenceAt = Date.now();
     } else if (lastEvidence !== incident.id) evidence.hide();
   }
-  function followVehicle(assignment, overview = false) {
+  function followVehicle(assignment) {
     beforeMove(); evidence.hide();
-    if (overview) cameraTour.bounds(assignment.route.coordinates.map(([lon, lat]) => [lat, lon]), 13.5, reduced.matches);
-    else {
-      const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((Date.now() + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
-      const [lon, lat] = assignment.held_position || routePosition(assignment.route, progress);
-      cameraTour.go([lat, lon], assignment.resource.kind === 'helicopter' ? 12 : 14, reduced.matches);
-    }
+    const view = vehicleCameraView(assignment, (Date.now() + offset) / 1000, reduced.matches);
+    cameraTour.go(view.center, view.zoom, reduced.matches);
     lastTarget = `vehicle:${assignment.resource.id}`;
   }
   // Solo el título de la decisión, abajo en el centro; la explicación vive en el historial.
@@ -280,7 +336,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     if (incident && ["report", "focus", "context", "watch", "arrived", "field_report"].includes(event.kind)) visit(incident, ["report", "context", "watch"].includes(event.kind));
     if (event.resource_id && ["dispatch", "reassign", "return", "vehicle"].includes(event.kind)) {
       const assignment = state?.assignments?.[event.resource_id];
-      if (assignment) followVehicle(assignment, event.kind !== "vehicle");
+      if (assignment) followVehicle(assignment);
     }
   }
   function patrol() {
@@ -317,7 +373,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       if (!vehicles.has(resource.id)) {
         const marker = L.marker([resource.lat, resource.lon], { pane: "response-vehicles", title: resource.name,
           icon: L.divIcon({ className: `response-vehicle ${helicopter ? "helicopter" : police ? "police" : ambulance ? 'ambulance' : "fire-engine"}`, html: helicopter ? HELICOPTER : ambulance ? AMBULANCE : VEHICLE, iconSize: [30, 28], iconAnchor: [15, 14] }) }).addTo(map);
-        vehicles.set(resource.id, { marker, assignment, route });
+        vehicles.set(resource.id, { marker, assignment, route, lastPoint: null });
       } else Object.assign(vehicles.get(resource.id), { assignment, route });
       const label = document.createElement("span");
       label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : ambulance ? 'Ambulancia' : "Camión"} · ${resource.name} · ${assignment.status === 'blocked' ? 'detenido · vía cortada' : assignment.status === 'transporting' ? 'traslado a hospital' : assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km${assignment.route.approximate ? ' · trayectoria aproximada' : ''} · tiempo visual acelerado`;
@@ -332,6 +388,27 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     }
   }
 
+  function renderRehearsal() {
+    const active = map.getZoom() > 13 ? rehearsal.active : null;
+    if (active === rehearsalKey) return;
+    rehearsalKey = active; rehearsalLayer.clearLayers();
+    if (!active) return;
+    const a = state.assignments[active.resource_id], points = a.route.coordinates.map(([lon, lat]) => [lat, lon]);
+    L.polyline(points, { pane: 'response-routes', renderer: rehearsalRenderer, color: '#9180cd', weight: 9, opacity: .18, interactive: false }).addTo(rehearsalLayer);
+    L.polyline(points, { pane: 'response-routes', renderer: rehearsalRenderer, color: '#7560bd', weight: 4, opacity: .9,
+      dashArray: '12 16', className: 'route-rehearsal', interactive: false }).addTo(rehearsalLayer);
+    const [lon, lat] = active.obstruction || routePosition(a.route, (active.event.at - a.started_at) / a.travel_seconds);
+    if (active.obstruction) L.marker([lat, lon], { pane: 'response-vehicles', interactive: false,
+      icon: L.divIcon({ className: 'traffic-breakdown', html: '<svg viewBox="0 0 32 24" aria-hidden="true"><rect x="3" y="9" width="19" height="9" rx="3"/><path d="M7 9l3-5h7l3 5M5 18v3m14-3v3M25 4l6 10H19zM25 7v3m0 1v1"/></svg>', iconSize: [32, 24], iconAnchor: [16, 12] }) }).addTo(rehearsalLayer);
+    L.marker([lat, lon], { pane: 'response-vehicles', interactive: false,
+      icon: L.divIcon({ className: 'route-rehearsal-label', html: active.obstruction ? 'Avería · simulación' : 'Recalculando · demo', iconSize: [144, 24], iconAnchor: [72, 40] }) }).addTo(rehearsalLayer);
+  }
+
+  function stopRehearsal() {
+    rehearsal.reset(); renderRehearsal();
+    if (current?.kind === 'route_rehearsal') { current = null; hideCaption(); }
+  }
+
   function renderAlerts() {
     alerts.clearLayers();
     for (const [id, alert] of Object.entries(state.alerts || {})) {
@@ -343,24 +420,39 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     }
   }
 
-  function tick() {
+  function tick(timestamp = performance.now()) {
     frame = 0;
     if (document.hidden) return;
+    if (lastVisualTick && timestamp - lastVisualTick < 32) {
+      frame = requestAnimationFrame(tick);
+      return;
+    }
+    lastVisualTick = timestamp;
     const now = Date.now(), connected = now - lastContact < 10000;
     if (current && now > shownUntil) { current = null; hideCaption(); }
+    if (queue.length && current?.kind === 'route_rehearsal') stopRehearsal();
     if (!paused && !current && queue.length) {
       const event = queue[0];
       if (!event.incident_id || findIncident(event.incident_id) || ['cancelled', 'field_report', 'blocked'].includes(event.kind)) show(queue.shift());
       else if (now - (event.queuedAt || event.at * 1000 - offset || now) > 15000) queue.shift();
     }
-    if (connected && following && armed && !paused && !current && !queue.length && !cameraTour.moving() && now > nextVisit) patrol();
+    const rehearsalEvent = rehearsal.step({ assignments: state?.assignments || {}, now: (now + offset) / 1000,
+      enabled: connected && !paused && map.getZoom() > 13 && ['idle', 'watching'].includes(state?.status),
+      busy: queue.length > 0 || Boolean(current && !current.visual) || cameraTour.moving(),
+      visible: a => { const point = vehicles.get(a.resource.id)?.marker.getLatLng(); return point && map.getBounds().contains(point); },
+    });
+    renderRehearsal();
+    if (rehearsalEvent) { sceneView.addVisualEvent(rehearsalEvent); show(rehearsalEvent); }
+    if (connected && following && armed && !paused && !current && !rehearsal.active && !queue.length && !cameraTour.moving() && now > nextVisit) patrol();
     evidence.tick(now); sceneView.tick();
     if (contextUntil && now > contextUntil) { contextUntil = 0; clearContext(); }
     aura.set(connected && (state?.status === "thinking" || current && !["error", "blocked"].includes(current.kind)));
-    if (connected && !paused) for (const { marker, assignment } of vehicles.values()) {
+    if (connected && !paused) for (const vehicle of vehicles.values()) {
+      const { marker, assignment } = vehicle;
       const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((now + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
       const [lon, lat] = assignment.held_position || routePosition(assignment.route, progress);
-      marker.setLatLng([lat, lon]);
+      const key = `${lat.toFixed(6)},${lon.toFixed(6)}`;
+      if (key !== vehicle.lastPoint) { marker.setLatLng([lat, lon]); vehicle.lastPoint = key; }
     }
     frame = requestAnimationFrame(tick);
   }
@@ -375,7 +467,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       if (session !== next.session_id) {
         sequence = 0; queue = []; current = null; session = next.session_id;
         armed = false; lastTarget = ""; lastEvidence = ""; routeKey = ""; contextUntil = 0;
-        cameraTour.cancel(); evidence.hide();
+        cameraTour.cancel(); evidence.hide(); stopRehearsal();
         if (Number.isFinite(map.getZoom())) clearContext();
         hideCaption();
       }
@@ -389,7 +481,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     } catch {
       $('director-warning').textContent = directorWarning('disconnected');
       $('director-warning').hidden = false;
-      aura.set(false);
+      aura.set(false); stopRehearsal();
       if (state && state.status !== "disconnected") {
         state.status = "disconnected"; queue = []; cameraTour.cancel(); evidence.hide();
         show({ kind: "error", message: "Conexión con el director interrumpida", reason: "La vista conserva el último estado recibido." });
@@ -398,7 +490,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cameraTour.cancel(); evidence.hide(); queue = []; current = null; hideCaption(); }
+    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cameraTour.cancel(); evidence.hide(); stopRehearsal(); queue = []; current = null; hideCaption(); }
     else { refresh(); if (!frame) frame = requestAnimationFrame(tick); }
   });
   refresh(); setInterval(refresh, 500); frame = requestAnimationFrame(tick);
@@ -412,7 +504,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       if (!call || call.state === "located" || call.state === 'field_report') return;
       queue.push({ kind: call.error ? "error" : "call", message: call.error || (call.state === "needs_location" ? "Precisando la ubicación del aviso" : call.state === "not_fire" ? "Aviso revisado · incendio no confirmado" : call.ended ? "Llamada finalizada" : "Llamada entrante · recogiendo datos"), reason: "" });
     },
-    setPaused(value) { paused = value; sceneView.setPaused(value); aura.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },
+    setPaused(value) { paused = value; sceneView.setPaused(value); aura.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); stopRehearsal(); } document.body.classList.toggle("motion-paused", value); },
     manual,
   };
 }
