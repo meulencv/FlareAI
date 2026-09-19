@@ -239,6 +239,65 @@ alrededor del centro del foco. Cuando la extensión proyectada supera ese radio,
 El mínimo es simbólico: no altera `incident.footprint`, área o distancia. La regresión geográfica
 sigue vigente cuando se dibuja a escala real; otra prueba verifica tamaño mínimo y animación de lejos.
 
+### Webcall de demo y confirmación automática
+
+`demo.py::HappyRobotProvider` reutiliza `happyrobot-112/server.py` para pedir un token de voz
+LiveKit y consultar sesiones/mensajes de las llamadas creadas por esta demo. La API key se carga
+solo en backend desde `happyrobot-112/.env`. El marcador conserva su funcionamiento independiente;
+la integración usa `/112/` y no requiere Twin ni modifica el workflow remoto al arrancar.
+
+`DemoBridge` extrae únicamente argumentos de `actualizar_ficha` en tool calls del asistente,
+conserva correcciones y distingue `waiting`, `not_fire`, `needs_location` y `located`. No confirma
+por confianza FIRMS ni por inferencias desde la transcripción libre. Solo consulta llamadas que
+ha creado; cookies y propiedad del run impiden consultar/controlar llamadas de otro navegador.
+
+La ubicación se intenta resolver contra los topónimos locales y, cuando no basta, CartoCiudad/IGN.
+Se eligió este geocodificador por su cobertura de direcciones españolas sin clave. Se exige
+coincidencia inequívoca y coordenadas dentro de España; no se toma el primer candidato sin más.
+Una localidad representa su posición aproximada, no el lugar exacto del incendio. La cercanía se
+mide a la huella con Shapely (≤3 km) para evitar perder focos alargados cuyo centro queda lejos.
+
+Sin foco cercano se genera `source_kind=call`, con soporte circular ilustrativo de 80 m de radio,
+`geometry_role=illustrative_report_location`, cero observaciones y área/FRP/brillo desconocidos.
+No es un perímetro térmico ni quemado. El overlay no muta registros NASA ni inserta confirmaciones
+oficiales: añade `confirmation.demo=true`, fuente, fecha, caducidad a 24 h y evidencia local en
+`/api/demo/report/<run_id>`. Una corrección de ubicación o falsa alarma sustituye el overlay.
+
+La migración 3 conserva `flare_demo_sessions` y `flare_demo_calls` como respaldo SQL de campos
+estructurados; no guarda audio/transcript completo. Cada arranque online genera UUID y estado
+nuevos, sin restaurar llamadas anteriores ni borrar su respaldo. `--offline` no activa la demo.
+HappyRobot conserva sus propias sesiones según la política de la organización.
+
+Contrato integrado:
+
+- `POST /112/api/session`: cookie automática por navegador, sin código ni contraseña.
+- `GET /112/api/status`: configuración local y validez de la cookie, no comprobación de audio.
+- `POST /112/api/call`: crea una webcall y devuelve token LiveKit temporal, nunca la API key.
+- `GET /112/api/brief?run_id=...`: ficha y estado de la llamada propia.
+- `POST /112/api/stop`: deja 20 s de margen para recuperar las últimas actualizaciones.
+- `GET /api/demo/setup`: configuración del enlace, solo clientes loopback del puerto principal.
+- `GET /api/demo/report/<run_id>`: evidencia de un aviso de la sesión actual, solo puerto principal.
+
+El servidor móvil escucha solo en loopback:8112 y rechaza rutas ajenas al marcador. `demo.py
+publish` comprueba que `/api/data` devuelve 404 antes de crear un Quick Tunnel. No publica el
+puerto 8090. Descarta variables `HAPPYROBOT_*`, `TUNNEL_*`, `CLOUDFLARE_*` y usa configuración
+vacía/HOME propio de cloudflared. El móvil recibe HTTPS, cookie Secure/HttpOnly/SameSite y CSP
+limitada al SDK y endpoints de voz. Sin código significa acceso a la demo para cualquiera que
+conozca la URL, no autenticación fuerte ni protección de cuota de producción.
+
+El backend consulta HappyRobot cada 2 s; el mapa se actualiza cada 2,5 s y la ficha móvil cada
+0,9 s. El foco notificado se selecciona automáticamente cuando cambia su ubicación; los refrescos
+posteriores no reencuadran continuamente. El enlace público se lee al cargar la página del mapa.
+
+Verificación: pruebas HTTP con proveedor simulado (foco existente, nuevo aviso, corrección,
+aislamiento, propiedad y origen), reinicio con respaldo PostgreSQL conservado y filtrado del
+entorno del túnel. Chromium verificó HTTPS público sin mocks, SDK de voz cargado, sesión segura
+sin código y enlace del mapa. El workflow se consultó por GET: publicado/live. En la sesión del
+19/09/2026 entró una webcall real sobre Tarragona: HappyRobot devolvió mensajes de usuario/asistente
+y tool call `actualizar_ficha`. `/api/data` incorporó el aviso y Chromium lo seleccionó automáticamente
+con clase `confirmed`, etiqueta demo y sin errores JS. No se inyectaron mensajes simulados en el
+servidor activo. La calidad de escucha en el móvil queda pendiente de valoración humana.
+
 ## 3. FIRMS: detección térmica
 
 Fuentes probadas mediante GET sin autenticación:

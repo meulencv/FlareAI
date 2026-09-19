@@ -60,7 +60,6 @@ El dashboard nuevo la reutiliza como agente de voz de reserva cuando no hay Twin
 https://platform.eu.happyrobot.ai/hackspainteam3/workflows → 9 workflows "SOS · …". Cada
 ejecución es un *run* con sus nodos; las llamadas tienen *session* con transcripción y audio.
 
-<<<<<<< HEAD
 ## Prueba SMS independiente (2026-09-19)
 
 La aplicación activa es ahora FlareAI; los comandos SOS anteriores corresponden al código
@@ -148,7 +147,4 @@ es una prueba de un único chat privado. Reiniciar exige conectar y vincular de 
 27 pruebas con mocks pasan (15 SMS + 12 Telegram), además de compilación Python y ESLint.
 Página local comprobada HTTP 200. Pendientes autenticación del webhook y prueba de entrega con el usuario.
 
-Relacionado: [[SOS Crisis Engine - arquitectura]] · [[Dashboard y simulador]] · [[Base de datos local embebida]] · [[Cómo desplegar - sos deploy]] · [[2026-09-19]]
-=======
 Relacionado: [[Simulador 112 con ficha en directo]] · [[SOS Crisis Engine - arquitectura]] · [[Dashboard y simulador]] · [[Base de datos local embebida]] · [[Cómo desplegar - sos deploy]]
->>>>>>> ed145ce457308d5be77042688e45522c987bf3c8

@@ -41,7 +41,7 @@ y dashboard con aprobación humana.
 - [[Escenario demo - giro de viento]]
 - [[Cómo desplegar - sos deploy]]
 - [[Cómo arrancar todo]]
-- [[Simulador 112 con ficha en directo]] (web call aislada + resumen visual)
+- [[Simulador 112 con ficha en directo]] (webcall integrada con mapa, sesión sin código y túnel móvil aislado)
 - Legacy 2026-09-18: [[FlareAI Web Voice - workflow]] · [[Web app - server y frontend]]
 
 ### Referencia
@@ -55,7 +55,6 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-19)
-<<<<<<< HEAD
 - **Atlas local de emergencias de FlareAI**: generados y verificados SQLite, GeoJSON y manifiesto;
   25.136 entidades, 22.575 georreferenciadas y presencia en las 52 provincias/ciudades autónomas.
   Pendientes 2.561 registros oficiales sin ubicación fiable; cobertura no exhaustiva ni
@@ -70,13 +69,17 @@ y dashboard con aprobación humana.
 - **SMS pendiente del mentor**: autenticación resuelta, pero un envío autorizado terminó en
   Telnyx 40305 por asociación al perfil de mensajería. El Twilio gestionado comprado no aparece
   como toll-free seleccionable. No hay entrega confirmada ni se compraron números desde el agente.
-  Detalles en [[Cómo arrancar todo]] y [[2026-09-19]]. Los puntos siguientes describen el estado histórico de SOS.
-=======
+  Detalles en [[Cómo arrancar todo]] y [[2026-09-19]].
 
 - **Activo: FlareAI**, observatorio Python + Leaflet en la raíz, servidor online en :8090.
   La implementación S.O.S. descrita en las notas anteriores vive en `versión-anterior/`.
-- **Simulador 112 aislado:** `happyrobot-112/`, workflow propio publicado, voz Ana HR en español
-  y ficha en directo desde el transcript. Servidor local en :8112; no conecta con el 112 real.
+- **Webcall 112 → mapa:** marcador `happyrobot-112/` servido por `app.py` en :8112, aislado del
+  mapa en :8090. `demo.py publish` publica solo el marcador por HTTPS temporal. Sin código de
+  vinculación; sesión limpia por arranque, avisos rojos etiquetados demo, sin Twin ni llamada al
+  112 real. Véase [[Simulador 112 con ficha en directo]]. Workflow publicado/live y HTTPS con
+  sesión segura verificados. **Webcall real de Tarragona → aviso confirmado demo en mapa**,
+  con mensajes/tool de HappyRobot y selección automática comprobados; pendiente valoración
+  humana de la escucha en móvil.
 - **Datos activos en PostgreSQL local:** 511.226 celdas, 44.787 instalaciones OSM y 2.926 cámaras;
   fuentes, instantáneas FIRMS/GFS, focos, observaciones y metadatos de cartografía/medios en SQL.
   Esquema compatible en tipos con Twin, sin PostGIS; ninguna escritura remota. Véase [[2026-09-19]].
@@ -87,12 +90,11 @@ y dashboard con aprobación humana.
 - **Fuego:** la misma animación en todas las escalas, con radio visual mínimo de 16 px, sin icono
   estático. Confirmado = rojo; sin confirmar = gris. No modifica la geometría medida y la confianza
   FIRMS no es confirmación. Véase [[2026-09-19]].
-- **Verificación del proyecto activo:** 45 tests Python (incluyendo SQL), 42 JavaScript y prueba en navegador de
-  escritorio/móvil. Arquitectura y comandos actuales en `README.md`, `docs/IMPLEMENTACION.md`
-  y `AGENTS.md` de la raíz.
+- **Verificación del proyecto activo:** 57 tests Python (incluyendo SQL), 6 del marcador,
+  42 JavaScript, Ruff/mypy/ESLint y comprobaciones de navegador/HTTPS. Arquitectura y comandos
+  actuales en `README.md`, `docs/IMPLEMENTACION.md` y `AGENTS.md` de la raíz.
 
 ### Estado histórico de HappyRobot (implementación apartada)
->>>>>>> ed145ce457308d5be77042688e45522c987bf3c8
 - 🧹 **Plataforma vaciada (2026-09-19, tarde)**: los 9 workflows SOS se **borraron** de HappyRobot a
   petición del usuario (sin Twin no servían). Siguen definidos como código: `python -m sos deploy`
   los vuelve a crear en una pasada cuando haya Twin. En la org solo quedan `FlareAI Web Voice`
@@ -107,8 +109,4 @@ y dashboard con aprobación humana.
 - ✅ 12 tests (`.venv/bin/python -m pytest -q tests`). Commit `be1bb86` + docs.
 - 🔑 Secretos solo en `.env` / variables de workflow; nunca en repo ni vault.
 
-<<<<<<< HEAD
-Relacionado: [[2026-09-19]] · [[Cómo arrancar todo]] · [[Base de datos local embebida]]
-=======
 Relacionado: [[2026-09-19]] · [[Cómo arrancar todo]] · [[SOS Crisis Engine - arquitectura]]
->>>>>>> ed145ce457308d5be77042688e45522c987bf3c8

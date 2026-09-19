@@ -98,6 +98,24 @@ class DemoTests(unittest.TestCase):
         self.assertNotIn('confirmation', fresh.overlay([item], dict(original.weather), datetime.now(timezone.utc))[0])
 
 
+class PublishTests(unittest.TestCase):
+    def test_tunnel_environment_excludes_provider_and_cloudflare_credentials(self):
+        import io
+        import os
+        from unittest.mock import patch
+        from urllib.error import HTTPError
+        from demo import ROOT, publish
+        process = Mock(stdout=[], pid=12345)
+        process.wait.return_value = 0
+        responses = [io.BytesIO(b'{"integrated":true,"configured":true}'), HTTPError('http://127.0.0.1:8112/api/data', 404, 'Not Found', {}, None)]
+        environment = {'PATH': '/usr/bin', 'HAPPYROBOT_API_KEY': 'fixture', 'TUNNEL_TOKEN': 'fixture', 'CLOUDFLARE_API_TOKEN': 'fixture'}
+        with patch.dict(os.environ, environment, clear=True), patch('demo.urlopen', side_effect=responses), patch('pathlib.Path.is_file', return_value=True), patch('pathlib.Path.exists', return_value=False), patch('signal.signal'), patch('subprocess.Popen', return_value=process) as popen:
+            publish()
+        self.assertEqual(popen.call_args.kwargs['env'], {'PATH': '/usr/bin', 'HOME': str(ROOT / '.local/cloudflared')})
+        self.assertEqual(popen.call_args.args[0][-1], 'http://127.0.0.1:8112')
+        process.terminate.assert_called_once()
+
+
 class DemoHTTPTests(unittest.TestCase):
     def test_mobile_isolation_ownership_and_map_update(self):
         import json

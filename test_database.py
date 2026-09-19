@@ -47,6 +47,26 @@ class DatabaseTests(unittest.TestCase):
         image = picture(self.store.incidents[0], 'natural', True, self.db)
         self.assertIn('/satellite/', image['url'])
 
+    def test_demo_restart_ignores_persisted_calls_and_browser_sessions(self):
+        from contextlib import nullcontext
+        from unittest.mock import Mock
+        from uuid import uuid4
+        from test_demo import message
+        with self.db.connect() as conn, conn.transaction(force_rollback=True):
+            with patch.object(self.db, 'connect', side_effect=lambda: nullcontext(conn)), patch('demo.HappyRobotProvider', return_value=Mock()):
+                original = Store(offline=True, database=self.db, demo_enabled=True)
+                token = original.demo.open_browser()
+                run = str(uuid4())
+                original.demo.register(run, token)
+                original.demo.accept(run, [message()])
+                self.assertTrue(any(i.get('demo_report') for i in original.payload()['incidents']))
+                fresh = Store(offline=True, database=self.db, demo_enabled=True)
+                self.assertNotEqual(original.demo.session_id, fresh.demo.session_id)
+                self.assertFalse(fresh.demo.authorized(token))
+                self.assertEqual(fresh.payload()['demo']['calls'], [])
+                self.assertFalse(any(i.get('demo_report') for i in fresh.payload()['incidents']))
+                self.assertEqual(conn.execute('SELECT count(*) AS n FROM flare_demo_calls WHERE id=%s', (run,)).fetchone()['n'], 1)
+
     def test_only_verified_integrable_recent_media_is_visible(self):
         from contextlib import nullcontext
         from datetime import timedelta
