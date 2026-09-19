@@ -23,6 +23,12 @@ primero `README.md` y `docs/IMPLEMENTACION.md`.
   viento/temperatura.
 - `detectar.py` — descarga y filtro geográfico/temporal de CSV globales NASA FIRMS (VIIRS).
 - `incidents.py` — agrupación de focos, asignación de provincia, huellas y métricas derivadas.
+- `build_emergency_db.py` — atlas independiente de infraestructura de emergencias. Python >=3.10,
+  Shapely 2.x y SQLite JSON1/RTree, sin ecCodes. Compila `emergencias_espana.db`, GeoJSON y
+  manifiesto; fuentes originales en `data/emergency_sources/`. Verificar con
+  `python -m unittest test_emergency_db -v` y `python build_emergency_db.py --verify`;
+  reconstruir sin red con `python build_emergency_db.py --offline`. No confundir cobertura
+  nacional con exhaustividad ni disponibilidad operativa. Un único escritor por caché/salida.
 - `satellite.py` — imágenes NASA GIBS (natural/SWIR) con caché en disco y control de cobertura.
 - `static/` — frontend: `index.html`, `app.js`, `flow.js` (geometría/partículas/índice
   geográfico), `flames.js` (renderizador Canvas 2D de llamas/corrientes), `simulation.js`,
