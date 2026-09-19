@@ -43,6 +43,20 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Traffic Lab de Lucía (aislado)
+
+- `traffic_lab/` conserva su propio servidor, frontend, dependencias, muestras y workflow.
+  Leer `traffic_lab/AGENTS.md` antes de modificarlo. No integrarlo automáticamente con el mapa,
+  la base de datos ni el marcador 112. Puerto propio: 8790, solo loopback.
+- En este Mac se verificó con Python 3.12.11 en `traffic_lab/.venv/`, separado de la `.venv/`
+  raíz (Python 3.14). Mantener las versiones de `traffic_lab/requirements.txt` sin instalarlas
+  en el entorno de FlareAI. Intérprete auxiliar y herramientas locales bajo `.local/`.
+- Desde la raíz: `traffic_lab/.venv/bin/python traffic_lab/launch.py --local` arranca sin
+  HappyRobot. Pruebas: `traffic_lab/.venv/bin/python -m unittest discover -s traffic_lab -v`.
+- No ejecutar `launch.py` con clave, `happyrobot.py deploy`, `publish-draft` ni `verify.py --cloud`
+  como parte de una comprobación de merge: pueden crear/modificar workflows o consumir cuota.
+  `verify.py` sobrescribe el informe versionado; conservar las evidencias originales de Lucía.
+
 ## Demo webcall 112 integrada
 
 - `demo.py` reutiliza el proveedor de `happyrobot-112/server.py`; no necesita Twin. Requiere
