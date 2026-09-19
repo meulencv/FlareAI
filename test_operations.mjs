@@ -11,13 +11,26 @@ test('el cerebro muestra cuatro notas base sin API y conecta respuestas antiguas
   const base = mergeBrainNotes();
   assert.equal(base.length, 4);
   assert.ok(base.every(note => note.links.every(id => base.some(target => target.id === id))));
-  const old = [{ id: 'report-1', kind: 'report', title: 'Informe' }];
+  const old = [{ id: 'memory-1', kind: 'memory', title: 'Aprendizaje' }];
   assert.equal(mergeBrainNotes(old).length, 5);
   assert.deepEqual(mergeBrainNotes(old).at(-1).links, ['base-learning']);
-  assert.deepEqual(old, [{ id: 'report-1', kind: 'report', title: 'Informe' }]);
+  assert.deepEqual(old, [{ id: 'memory-1', kind: 'memory', title: 'Aprendizaje' }]);
   const remote = base.map(note => ({ ...note, text: 'Versión del servidor' }));
   assert.equal(mergeBrainNotes(remote).length, 4);
   assert.ok(mergeBrainNotes(remote).every(note => note.text === 'Versión del servidor'));
+});
+
+test('el cerebro excluye informes y sus enlaces sin perder aprendizajes ni mutar la API', () => {
+  const notes = [
+    { id: 'report-1', kind: 'report', title: 'Informe final', markdown: 'Contenido del PDF' },
+    { id: 'memory-1', kind: 'memory', title: 'Aprendizaje', links: ['base-learning', 'report-1'], reports: ['report-1'] },
+  ];
+  const snapshot = globalThis.structuredClone(notes), merged = mergeBrainNotes(notes);
+  assert.equal(merged.length, 5);
+  assert.ok(merged.every(note => note.kind !== 'report'));
+  assert.deepEqual(merged.at(-1).links, ['base-learning']);
+  assert.deepEqual(merged.at(-1).reports, []);
+  assert.deepEqual(notes, snapshot);
 });
 
 test('el feed distingue webcall de testimonios sintéticos y conserva sus evaluaciones', () => {

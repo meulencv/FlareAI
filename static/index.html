@@ -32,15 +32,17 @@
       <header><div><span class="eyebrow">CENTRO DE COORDINACIÓN · DEMO</span><h2 id="decision-title">Cada decisión, su porqué.</h2></div><button id="history-close" aria-label="Cerrar historial">×</button></header>
       <p id="scene-status" role="status"></p>
       <div class="cycle-key">Vigilar → Detectar → Contrastar → Decidir → Actuar → Cerrar</div>
-      <details id="scene-controls" hidden>
-        <summary>Control del escenario · Barcelona</summary>
-        <p>Datos reales al inicio. Lo que alteras aquí es simulación visible, no una emergencia real.</p>
-        <div class="scene-buttons"><button id="scene-barcelona">Ver Barcelona</button><button data-scene-action="exercise">Aviso de ejercicio · Collserola</button><button data-scene-action="closure">Cortar vía en ruta</button><button data-scene-action="congestion">Crear tapón</button></div>
-        <label>Aviso activo<select id="scene-incident" aria-label="Aviso del escenario"></select></label>
-        <button data-scene-action="wind">Girar viento · escenario</button>
-        <div class="field-form"><label>Equipo<select id="scene-role"><option>bomberos</option><option>sanitarios</option><option>policía</option></select></label><label>Parte<select id="scene-report"><option>empeora</option><option>heridos</option><option>contenido</option><option>reactivación</option></select></label><button id="scene-field">Registrar parte simulado</button></div>
-        <p id="scene-feedback" role="status"></p>
-      </details>
+      <section id="impact-stats" aria-labelledby="impact-title">
+        <div class="impact-heading"><h3 id="impact-title">Impacto de FlareAI</h3><span>SESIÓN · DEMO</span></div>
+        <div class="impact-grid">
+          <div class="impact-card"><span>CO₂ evitado</span><strong id="impact-co2">—</strong><small id="impact-co2-note">Estimación de escenario</small></div>
+          <div class="impact-card"><span>Valor potencial del carbono</span><strong id="impact-carbon">—</strong><small id="impact-carbon-note">Valor hipotético · no ingresos</small></div>
+          <div class="impact-card"><span>Superficie preservada</span><strong id="impact-area">—</strong><small id="impact-area-note">Estimación de escenario</small></div>
+          <div class="impact-card"><span>Operaciones evaluadas</span><strong id="impact-operations">0</strong><small>Con balance de impacto</small></div>
+        </div>
+        <p id="impact-status" role="status">Las estimaciones aparecerán al finalizar una intervención.</p>
+        <details class="impact-method"><summary>Cómo se calcula</summary><p>Balance de las intervenciones de esta sesión frente al mismo escenario sin intervención. Superficie y CO₂ son estimaciones no calibradas, no mediciones. El rango económico usa los precios hipotéticos del modelo (10–60 €/t), no una cotización: no acredita ahorro de prevención, ingresos ni créditos emitidos. No incluye costes operativos; los escenarios pueden solaparse.</p></details>
+      </section>
       <div id="scene-summary"></div>
       <p id="history-count">Esperando los primeros pasos…</p>
       <ol id="decision-history" aria-label="Historial cronológico de decisiones"></ol>

@@ -102,7 +102,7 @@ export function engagedStations(stations, assignments) {
 }
 
 export function freshEvents(events, sequence, now) {
-  return events.filter(event => event.sequence > sequence && now - event.at < 90);
+  return events.filter(event => event.kind !== 'report_ready' && event.sequence > sequence && now - event.at < 90);
 }
 
 export function createRouteRehearsal({ random = Math.random } = {}) {

@@ -182,10 +182,13 @@ def main():
                 expect(page.locator('.witness-marker')).to_have_count(0, timeout=15000)
                 page.locator('#brain-toggle').click()
                 expect(page.locator('#brain-view')).to_be_visible()
-                page.locator('.brain-notes button', has_text='Operación ·').click()
-                expect(page.locator('.brain-article')).to_contain_text('sin esperar al regreso a base')
-                pdf = page.request.get(url + page.locator('.report-download').get_attribute('href'))
-                assert pdf.ok and pdf.body().startswith(b'%PDF-1.4')
+                expect(page.locator('.brain-notice').first).to_contain_text('Contexto IA conectado')
+                expect(page.locator('.brain-notes button', has_text='Operación ·')).to_have_count(0)
+                expect(page.locator('.report-download, a[href^="/api/reports/"]')).to_have_count(0)
+                expect(page.locator('.brain-view')).not_to_contain_text('Informe')
+                page.locator('.brain-notes button', has_text='Cerrar el ciclo y aprender').click()
+                expect(page.locator('.brain-article')).to_contain_text('conservar las lecciones observadas')
+                assert any(note['kind'] == 'report' for note in page.request.get(url + '/api/brain').json()['notes'])
                 assert list((Path(temporary) / 'vault').glob('*.md'))
                 page.screenshot(path=str(ROOT / '.local/presentation-brain.png'))
                 phone = browser.new_page(viewport={'width': 390, 'height': 844})
@@ -194,7 +197,7 @@ def main():
                 expect(phone.locator('[data-number="112"]')).to_be_visible()
                 assert not errors, errors
                 browser.close()
-            print('Presentación verificada: 6 avisos, refuerzos, hospital, retirada inmediata, PDF antes de llegar a base, cerebro y 112 sin 123. Voz y LLM fixtures; rutas reales cacheadas; sin llamadas reales.')
+            print('Presentación verificada: 6 avisos, refuerzos, hospital, retirada inmediata, cerebro sin informes ni descargas PDF y 112 sin 123. Voz y LLM fixtures; rutas reales cacheadas; sin llamadas reales.')
     finally:
         if server:
             server.shutdown()

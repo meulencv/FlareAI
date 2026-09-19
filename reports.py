@@ -50,7 +50,7 @@ def base_notes() -> list[dict]:
         ('base-evidence', 'Contrastar antes de decidir', 'Cruzar la ubicación y los testimonios con los partes de equipos y las fuentes disponibles. Una anomalía térmica es una señal de contraste, no una confirmación oficial de incendio.', ['base-weather', 'base-resources']),
         ('base-weather', 'Viento y territorio', 'Revisar dirección, intensidad y fecha del viento junto a población, vegetación e instalaciones próximas. Separar observaciones actuales de datos históricos y del escenario calculado.', ['base-evidence', 'base-resources']),
         ('base-resources', 'Recursos y accesos', 'Comprobar disponibilidad y recorrido antes de asignar una unidad. Repartir la cobertura entre sedes y conservar alternativas cuando un acceso esté cortado. La proximidad no garantiza el acceso.', ['base-learning']),
-        ('base-learning', 'Cerrar el ciclo y aprender', 'Conservar decisiones, partes y resultados con su procedencia. La llegada de un vehículo no confirma la extinción. Al cerrar, vincular el informe y las lecciones observadas para la siguiente revisión.', ['base-evidence']),
+        ('base-learning', 'Cerrar el ciclo y aprender', 'Conservar decisiones, partes y resultados con su procedencia. La llegada de un vehículo no confirma la extinción. Al cerrar, conservar las lecciones observadas para la siguiente revisión.', ['base-evidence']),
     ]
     return [{'id': key, 'title': title, 'text': text, 'kind': 'base', 'source': 'curated_base', 'links': links,
              'reports': []} for key, title, text, links in entries]

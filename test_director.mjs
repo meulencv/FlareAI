@@ -49,6 +49,12 @@ test('la voz usa una sola salida mezclada, selecciona altavoz y libera audio sin
   assert.ok(elements.every(e => e.removed));
 });
 
+test('el director no anuncia informes aunque el backend los siga generando', () => {
+  const events = [{ sequence: 1, at: 100, kind: 'return' }, { sequence: 2, at: 101, kind: 'report_ready' }];
+  assert.deepEqual(freshEvents(events, 0, 102), [events[0]]);
+  assert.equal(events.length, 2);
+});
+
 test('los bloqueos del director tienen explicación persistente y no aparentan despacho', () => {
   for (const status of ['error', 'auth_required', 'unconfigured', 'standby', 'disconnected']) assert.ok(directorWarning(status));
   for (const status of ['idle', 'thinking', 'watching', 'disabled']) assert.equal(directorWarning(status), '');

@@ -33,11 +33,14 @@ export function mergeBrainNotes(notes = []) {
     ['base-evidence', 'Contrastar antes de decidir', 'Cruzar la ubicación y los testimonios con los partes de equipos y las fuentes disponibles. Una anomalía térmica es una señal de contraste, no una confirmación oficial de incendio.', ['base-weather', 'base-resources']],
     ['base-weather', 'Viento y territorio', 'Revisar dirección, intensidad y fecha del viento junto a población, vegetación e instalaciones próximas. Separar observaciones actuales de datos históricos y del escenario calculado.', ['base-evidence', 'base-resources']],
     ['base-resources', 'Recursos y accesos', 'Comprobar disponibilidad y recorrido antes de asignar una unidad. Repartir la cobertura entre sedes y conservar alternativas cuando un acceso esté cortado. La proximidad no garantiza el acceso.', ['base-learning']],
-    ['base-learning', 'Cerrar el ciclo y aprender', 'Conservar decisiones, partes y resultados con su procedencia. La llegada de un vehículo no confirma la extinción. Al cerrar, vincular el informe y las lecciones observadas para la siguiente revisión.', ['base-evidence']],
+    ['base-learning', 'Cerrar el ciclo y aprender', 'Conservar decisiones, partes y resultados con su procedencia. La llegada de un vehículo no confirma la extinción. Al cerrar, conservar las lecciones observadas para la siguiente revisión.', ['base-evidence']],
   ];
   const merged = new Map(entries.map(([id, title, text, links]) => [id, { id, title, text, links, kind: 'base', source: 'curated_base', reports: [] }]));
-  for (const note of notes) merged.set(note.id, { ...note, links: note.links || (note.kind === 'base' ? [] : ['base-learning']) });
-  return [...merged.values()];
+  for (const note of notes) {
+    if (note.kind === 'report') continue;
+    merged.set(note.id, { ...note, reports: [], links: note.links || (note.kind === 'base' ? [] : ['base-learning']) });
+  }
+  return [...merged.values()].map(note => ({ ...note, links: note.links.filter(id => merged.has(id)) }));
 }
 
 export function createScenarioEditor({ document, fetch, onOpen = () => {} }) {
@@ -210,7 +213,7 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
   const notice = node('p', 'Abriendo el baúl de conocimiento…', 'brain-notice');
   const workspace = node('div', '', 'brain-workspace'), sidebar = node('nav', '', 'brain-notes');
   const graphPanel = node('div', '', 'brain-graph-panel');
-  const graph = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); graph.setAttribute('viewBox', '0 0 800 600'); graph.setAttribute('aria-label', 'Grafo de conocimiento: base, aprendizajes e informes'); graph.classList.add('brain-graph');
+  const graph = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); graph.setAttribute('viewBox', '0 0 800 600'); graph.setAttribute('aria-label', 'Grafo de conocimiento: base y aprendizajes'); graph.classList.add('brain-graph');
   const graphTools = node('div', '', 'brain-graph-tools');
   const resetGraph = node('button', 'Centrar grafo'); resetGraph.onclick = centerGraph;
   function centerGraph() {
@@ -218,23 +221,20 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
     graph.setAttribute('viewBox', `${bounds.x + bounds.width / 2 - width / 2} ${bounds.y + bounds.height / 2 - height / 2} ${width} ${height}`);
   }
   graphTools.append(node('span', 'GRAFO GLOBAL'), resetGraph);
-  graphPanel.append(graphTools, graph, node('div', 'Violeta · Base    /    Turquesa · Aprendizaje    /    Coral · Informe', 'brain-legend'));
+  graphPanel.append(graphTools, graph, node('div', 'Violeta · Base    /    Turquesa · Aprendizaje', 'brain-legend'));
   const article = node('article', '', 'brain-article'); article.append(node('p', 'Selecciona un nodo para explorar sus conexiones.'));
   workspace.append(sidebar, graphPanel, article); brain.append(heading, search, notice, workspace);
   document.body.append(button, settingsButton, settingsPanel, brain);
   let records = [], memories = mergeBrainNotes(), lastFocus, selectedId, lastBrainLoad = 0, loadingBrain = false, baseSynced = false, needsCenter = true;
-  const labels = { base: 'Conocimiento base', memory: 'Aprendizaje de operación', report: 'Informe final', vault: 'Baúl de conocimiento' };
-  const vault = { id: 'vault', title: 'FlareAI · Memoria', kind: 'vault', text: 'La base de conocimiento, los aprendizajes y los informes de cada operación, conectados en un mismo lugar.\n\nSelecciona una nota para explorar sus vínculos. Arrastra el fondo o usa la rueda para recorrer el grafo.' };
-  const targets = item => [...(item.links || []), ...(item.reports || []), ...(item.kind === 'base' ? ['vault'] : [])];
+  const labels = { base: 'Conocimiento base', memory: 'Aprendizaje de operación', vault: 'Baúl de conocimiento' };
+  const vault = { id: 'vault', title: 'FlareAI · Memoria', kind: 'vault', text: 'La base de conocimiento y los aprendizajes de cada operación, conectados en un mismo lugar.\n\nSelecciona una nota para explorar sus vínculos. Arrastra el fondo o usa la rueda para recorrer el grafo.' };
+  const targets = item => [...(item.links || []), ...(item.kind === 'base' ? ['vault'] : [])];
   function close() { brain.hidden = true; button.setAttribute('aria-expanded', 'false'); lastFocus?.focus(); }
   back.onclick = close;
   brain.addEventListener('keydown', event => { if (event.key === 'Escape') close(); });
   function select(item) {
     selectedId = item.id;
     article.replaceChildren(node('span', labels[item.kind], 'brain-note-kind'), node('h2', item.title));
-    if (item.kind === 'report') {
-      const link = node('a', 'Descargar informe PDF', 'report-download'); link.href = `/api/reports/${encodeURIComponent(item.id)}.pdf`; link.target = '_blank'; link.rel = 'noopener'; article.append(link);
-    }
     for (const line of (item.markdown || item.text || '').split('\n')) {
       if (!line.trim() || line.startsWith('# ')) continue;
       article.append(node(line.startsWith('## ') ? 'h3' : 'p', line.replace(/^## |^- /g, '')));
@@ -284,7 +284,7 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
       for (const [key, value] of Object.entries({ x1: from.x, y1: from.y, x2: to.x, y2: to.y })) line.setAttribute(key, value);
       line.dataset.from = a; line.dataset.to = b; graph.append(line);
     }
-    for (const kind of ['base', 'memory', 'report']) {
+    for (const kind of ['base', 'memory']) {
       sidebar.append(node('h3', `${labels[kind]} · ${matches.filter(item => item.kind === kind).length}`));
       for (const item of matches.filter(item => item.kind === kind)) {
         const choice = node('button', item.title); choice.dataset.note = item.id; choice.onclick = () => select(item); sidebar.append(choice);
@@ -294,7 +294,7 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
       const position = positions.get(item.id), group = document.createElementNS(graph.namespaceURI, 'g');
       group.dataset.note = item.id;
       group.setAttribute('transform', `translate(${position.x} ${position.y})`); group.setAttribute('tabindex', '0'); group.setAttribute('role', 'button'); group.setAttribute('aria-label', item.title);
-      const circle = document.createElementNS(graph.namespaceURI, 'circle'); circle.setAttribute('r', item.kind === 'vault' ? '20' : item.kind === 'base' ? '11' : '8'); circle.setAttribute('fill', { vault: '#8574a8', base: '#a390be', memory: '#67a995', report: '#d9977b' }[item.kind]);
+      const circle = document.createElementNS(graph.namespaceURI, 'circle'); circle.setAttribute('r', item.kind === 'vault' ? '20' : item.kind === 'base' ? '11' : '8'); circle.setAttribute('fill', { vault: '#8574a8', base: '#a390be', memory: '#67a995' }[item.kind]);
       const text = document.createElementNS(graph.namespaceURI, 'text'); text.setAttribute('y', '32'); text.setAttribute('text-anchor', 'middle'); text.textContent = item.title.length > 30 ? item.title.slice(0, 28) + '…' : item.title;
       group.append(circle, text); group.onclick = () => select(item); group.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(item); } }; graph.append(group);
     }
@@ -330,7 +330,7 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
       baseSynced = notes.filter(item => item.kind === 'base').length >= 4;
       memories = mergeBrainNotes(notes); renderBrain();
       if (needsCenter && !brain.hidden) { centerGraph(); needsCenter = false; }
-      notice.textContent = `4 notas base · ${memories.filter(item => item.kind === 'memory').length} aprendizajes · ${memories.filter(item => item.kind === 'report').length} informes · ${baseSynced ? 'Contexto IA conectado' : 'Base local'}`;
+      notice.textContent = `4 notas base · ${memories.filter(item => item.kind === 'memory').length} aprendizajes · ${baseSynced ? 'Contexto IA conectado' : 'Base local'}`;
     } catch { notice.textContent = 'Base local disponible. No se pudo actualizar el historial; se conservan las notas cargadas.'; }
     finally { loadingBrain = false; }
   }
@@ -347,16 +347,15 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
     if (item.source === 'webcall') {
       box.append(node('small', PHONE[record.outbound?.status] || 'Seguimiento del incidente'));
       if (record.assessment?.summary) box.append(node('small', record.assessment.summary));
-      if (record.report_id) box.append(node('small', 'Operación completada · informe PDF en Cerebro', 'witness-report'));
     } else if (item.assessment) {
       box.append(node('small', `${LABELS[item.assessment.status] || 'Evaluación pendiente'} · ${item.assessment.reason || ''}`));
     } else box.append(node('small', 'Testimonio simulado · pendiente de evaluar'));
     return box;
   }
-  function iconFor(item, record) {
+  function iconFor(item) {
     const status = item.assessment?.status || 'pending';
     const note = item.source === 'webcall' ? 'Llamada 112' : 'Llamada registrada';
-    return L.divIcon({ className: `witness-marker ${item.source === 'webcall' ? 'real-call' : 'simulated'} credibility-${status}${record.report_id && item.source === 'webcall' ? ' has-report' : ''}`,
+    return L.divIcon({ className: `witness-marker ${item.source === 'webcall' ? 'real-call' : 'simulated'} credibility-${status}`,
       html: `<span class="witness-body">${PERSON}<span class="witness-note">${note}</span></span>`, iconSize: [22, 26], iconAnchor: [11, 26], tooltipAnchor: [0, -24] });
   }
   function renderWitnesses(state) {
@@ -372,12 +371,12 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
         const key = JSON.stringify([item.assessment?.status, record.report_id, record.outbound?.status, record.assessment?.summary, Math.round(radius * 20)]);
         let entry = markers.get(item.id);
         if (!entry) {
-          const marker = L.marker(witnessPosition(item, incident, radius), { icon: iconFor(item, record), pane: 'witnesses', keyboard: false, riseOnHover: true, alt: `${item.speaker}: ${item.text}` });
+          const marker = L.marker(witnessPosition(item, incident, radius), { icon: iconFor(item), pane: 'witnesses', keyboard: false, riseOnHover: true, alt: `${item.speaker}: ${item.text}` });
           marker.bindTooltip(tooltipFor(item, record), { direction: 'top', className: 'witness-tooltip', opacity: 1 });
           marker.addTo(witnesses);
           entry = { marker, key }; markers.set(item.id, entry);
         } else if (entry.key !== key) {
-          entry.marker.setIcon(iconFor(item, record)); entry.marker.setTooltipContent(tooltipFor(item, record));
+          entry.marker.setIcon(iconFor(item)); entry.marker.setTooltipContent(tooltipFor(item, record));
           entry.marker.setLatLng(witnessPosition(item, incident, radius)); entry.key = key;
         }
       }

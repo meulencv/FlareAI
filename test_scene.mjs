@@ -1,20 +1,84 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTraffic, trafficProgress, trafficOpacity, localTrafficRoads, trafficRouteRoads, TRAFFIC_LIMIT } from './static/traffic.js';
-import { createSceneView, priorityLine, extinctionLine, engagedHospitals, HOSPITAL_THREAT_LIMIT } from './static/scene.js';
+import { createSceneView, priorityLine, extinctionLine, engagedHospitals, HOSPITAL_THREAT_LIMIT, sessionImpact } from './static/scene.js';
+
+const impactRecord = (id, metrics = {}) => ({ id, report_id: `report-${id}`, reported: true,
+  metrics: { avoided_area_ha: 12, avoided_co2_t: 50, carbon_value_eur: [500, 1500, 3000], ...metrics } });
+
+test('impacto acumula informes únicos de la sesión, no avisos activos ni duplicados', () => {
+  const first = impactRecord('first'), second = impactRecord('second');
+  const state = { operations: { incidents: [first, second, { ...first }, { id: 'active' }] } };
+  const before = JSON.stringify(state);
+  assert.deepEqual(sessionImpact(state), { reports: 2, area: 24, co2: 100, carbon: [1000, 6000], areaCount: 2, co2Count: 2, carbonCount: 2 });
+  assert.equal(JSON.stringify(state), before);
+  assert.equal(sessionImpact({}).co2, null);
+  assert.equal(sessionImpact({ operations: { incidents: [] } }).reports, 0);
+});
+
+test('impacto distingue cero, cobertura parcial y datos desconocidos o no válidos', () => {
+  const sea = impactRecord('sea', { avoided_co2_t: null, carbon_value_eur: null });
+  const land = impactRecord('land');
+  const partial = sessionImpact({ operations: { incidents: [sea, land] } });
+  assert.equal(partial.reports, 2);
+  assert.equal(partial.co2Count, 1);
+  assert.equal(partial.carbonCount, 1);
+  assert.equal(partial.co2, 50);
+  assert.equal(sessionImpact({ operations: { incidents: [sea] } }).co2, null);
+  const zero = impactRecord('zero', { avoided_area_ha: 0, avoided_co2_t: 0, carbon_value_eur: [0, 0, 0] });
+  assert.equal(sessionImpact({ operations: { incidents: [zero] } }).co2, 0);
+  const invalid = impactRecord('invalid', { avoided_area_ha: -1, avoided_co2_t: NaN, carbon_value_eur: [0, Infinity] });
+  assert.equal(sessionImpact({ operations: { incidents: [invalid] } }).carbon, null);
+  assert.equal(sessionImpact({ operations: { incidents: [invalid] } }).area, null);
+});
 import { patrolTargets, engagedStations } from './static/director.js';
 
 test('la sala no crea canvas de tráfico ni solicita carreteras para coches', () => {
   const elements = new Map(), requests = [];
   const node = () => ({ hidden: true, dataset: {}, style: {}, append() {}, replaceChildren() {}, setAttribute() {} });
-  const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, node()); return elements.get(id); },
-    createElement(tag) { assert.notEqual(tag, 'canvas'); return node(); }, querySelectorAll: () => [] };
+  const document = { getElementById(id) {
+    assert.ok(!['scene-controls', 'scene-barcelona', 'scene-field', 'scene-incident'].includes(id));
+    if (!elements.has(id)) elements.set(id, node()); return elements.get(id);
+  }, createElement(tag) { assert.notEqual(tag, 'canvas'); return node(); }, querySelectorAll: () => [] };
   const group = () => ({ addTo() { return this; }, clearLayers() {}, remove() {} });
   const map = { on() {}, getZoom: () => 16 };
   const view = createSceneView({ map, L: { layerGroup: group }, document, fetch: url => requests.push(url), focus() {} });
   view.update({ session_id: 'no-traffic', status: 'watching', events: [], assignments: {} });
   view.tick();
+  assert.equal(elements.get('impact-co2').textContent, '—');
+  const completed = { session_id: 'no-traffic', operations: { incidents: [impactRecord('done')] } };
+  view.update(completed);
+  view.update(completed);
+  assert.equal(elements.get('impact-co2').textContent, '50 t');
+  assert.equal(elements.get('impact-area').textContent, '12 ha');
+  assert.equal(elements.get('impact-operations').textContent, '1');
+  assert.match(elements.get('impact-carbon').textContent, /500–3000 €/);
+  view.update({ session_id: 'new-session' });
+  assert.equal(elements.get('impact-co2').textContent, '—');
+  assert.equal(elements.get('impact-operations').textContent, '0');
   assert.deepEqual(requests, []);
+});
+
+test('el historial oculta informes tanto en directo como al recuperar la sesión', async () => {
+  const elements = new Map();
+  const node = () => ({ hidden: true, dataset: {}, style: {}, children: [],
+    append(...children) { this.children.push(...children); }, replaceChildren() { this.children = []; }, setAttribute() {} });
+  const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, node()); return elements.get(id); },
+    createElement: node, querySelectorAll: () => [] };
+  const group = () => ({ addTo() { return this; }, clearLayers() {}, remove() {} });
+  const events = [{ sequence: 1, at: 100, kind: 'return', message: 'Regreso a base' },
+    { sequence: 2, at: 101, kind: 'report_ready', message: 'Informe disponible' }];
+  const view = createSceneView({ map: { on() {}, getZoom: () => 16 }, L: { layerGroup: group }, document,
+    fetch: async () => ({ ok: true, json: async () => ({ session_id: 'reports-hidden', events }) }), focus() {} });
+  view.update({ session_id: 'reports-hidden', events, assignments: {} });
+  const check = () => {
+    assert.equal(elements.get('decision-history').children.length, 1);
+    assert.match(elements.get('history-count').textContent, /^1 pasos/);
+  };
+  check();
+  await elements.get('history-toggle').onclick();
+  check();
+  assert.equal(events.length, 2);
 });
 
 test('los coches desaparecen lejos y entran progresivamente al acercarse', () => {

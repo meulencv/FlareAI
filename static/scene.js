@@ -1,3 +1,19 @@
+export function sessionImpact(state) {
+  const records = new Map();
+  for (const record of state?.operations?.incidents || []) {
+    if (record.report_id) records.set(record.report_id, record.metrics || {});
+  }
+  const metrics = [...records.values()];
+  const valid = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const areas = metrics.map(m => m.avoided_area_ha).filter(valid);
+  const co2 = metrics.map(m => m.avoided_co2_t).filter(valid);
+  const carbon = metrics.map(m => m.carbon_value_eur).filter(values => Array.isArray(values) && values.length >= 2 && values.every(valid));
+  const sum = values => values.length ? values.reduce((total, value) => total + value, 0) : null;
+  return { reports: records.size, area: sum(areas), co2: sum(co2),
+    carbon: carbon.length ? [sum(carbon.map(values => Math.min(...values))), sum(carbon.map(values => Math.max(...values)))] : null,
+    areaCount: areas.length, co2Count: co2.length, carbonCount: carbon.length };
+}
+
 export function priorityLine(record) {
   return record ? `Prioridad ${Number(record.priority).toFixed(1)}/10 · ${record.priority_reason}` : '';
 }
@@ -72,23 +88,24 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
     if (map.getZoom() >= 11 && state?.scenario) hospitals.addTo(map); else hospitals.remove();
   }
   map.on('zoom', visibility);
-  async function post(action, extra = {}) {
-    $('scene-feedback').textContent = 'Aplicando cambio del escenario…';
-    try {
-      const response = await fetch('/api/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, incident_id: $('scene-incident').value, ...extra }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'No se pudo aplicar el cambio');
-      $('scene-feedback').textContent = 'Cambio aplicado · observa la reacción y el historial.';
-    } catch (error) { $('scene-feedback').textContent = error.message; }
+  function renderImpact() {
+    const impact = sessionImpact(state);
+    const number = value => value.toLocaleString('es-ES', { maximumFractionDigits: 1 });
+    const coverage = count => count === impact.reports ? 'Estimación de escenario' : `${count}/${impact.reports} operaciones · cobertura parcial`;
+    $('impact-co2').textContent = impact.co2 === null ? '—' : `${number(impact.co2)} t`;
+    $('impact-area').textContent = impact.area === null ? '—' : `${number(impact.area)} ha`;
+    $('impact-carbon').textContent = impact.carbon === null ? '—' : `${impact.carbon.map(value => value.toLocaleString('es-ES', { maximumFractionDigits: 0 })).join('–')} €`;
+    $('impact-operations').textContent = String(impact.reports);
+    $('impact-co2-note').textContent = impact.co2 === null ? 'Sin datos suficientes' : coverage(impact.co2Count);
+    $('impact-area-note').textContent = impact.area === null ? 'Sin datos suficientes' : coverage(impact.areaCount);
+    $('impact-carbon-note').textContent = impact.carbon === null ? 'Sin datos suficientes' : `Hipotético · no ingresos${impact.carbonCount < impact.reports ? ` · ${impact.carbonCount}/${impact.reports} operaciones` : ''}`;
+    $('impact-status').textContent = impact.reports ? 'Balance acumulado de la sesión · estimaciones, no ahorros acreditados.' : 'Las estimaciones aparecerán al finalizar una intervención.';
   }
   toggle.onclick = () => {
     panel.hidden = !panel.hidden; toggle.setAttribute('aria-expanded', String(!panel.hidden));
     if (!panel.hidden) { $('agent-evidence').hidden = true; loadHistory(); }
   };
   $('history-close').onclick = () => { panel.hidden = true; toggle.setAttribute('aria-expanded', 'false'); toggle.focus(); };
-  $('scene-barcelona').onclick = () => { map.fitBounds([[41.34, 2.05], [41.48, 2.27]], { animate: false }); };
-  for (const button of document.querySelectorAll('[data-scene-action]')) button.onclick = () => post(button.dataset.sceneAction);
-  $('scene-field').onclick = () => post('field', { role: $('scene-role').value, report: $('scene-report').value });
   $('cancel-alert').onclick = async () => {
     const id = $('cancel-alert').dataset.id;
     try {
@@ -123,24 +140,17 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
       if (!response.ok) throw new Error('Historial no disponible');
       const result = await response.json();
       if (token !== session || result.session_id !== session) return;
-      for (const event of result.events) events.set(event.sequence, event);
+      for (const event of result.events) if (event.kind !== 'report_ready') events.set(event.sequence, event);
       history();
     } catch { $('history-count').textContent = 'Historial SQL no disponible; se conservan los eventos recibidos.'; }
     finally { historyLoading = false; }
   }
   function renderWorld() {
     const scene = state?.scenario;
-    $('scene-controls').hidden = !scene;
+    renderImpact();
     $('scene-status').textContent = !scene ? 'Observatorio · escenario de sala desactivado' : state.status === 'unconfigured' || state.status === 'auth_required' ? 'Director no conectado · sin nuevas decisiones IA' : `Director: ${{ thinking: 'decidiendo', watching: 'vigilando', idle: 'vigilando', error: 'reintentando', limited: 'límite de cuota' }[state.status] || state.status} · escenario simulado`;
     if (!scene) return;
-    const select = $('scene-incident'), selected = select.value;
     const records = Object.values(scene.incidents).filter(r => !r.linked_call_id);
-    const options = records.filter(r => r.phase !== 'closed').map(r => [r.id, r.name]);
-    if (JSON.stringify(options) !== select.dataset.options) {
-      select.dataset.options = JSON.stringify(options); select.replaceChildren();
-      for (const [id, name] of options) { const option = node('option', name); option.value = id; select.append(option); }
-      if (options.some(([id]) => id === selected)) select.value = selected;
-    }
     $('scene-summary').replaceChildren();
     for (const record of records) {
       const card = node('button', '', 'scene-incident-card');
@@ -189,7 +199,7 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
     update(next) {
       state = next; offset = (next.server_time || Date.now() / 1000) * 1000 - Date.now();
       if (session !== next.session_id) { session = next.session_id; events = new Map(); visualEvents = []; renderedSequence = -1; mapKey = ''; if (!panel.hidden) loadHistory(); }
-      for (const event of next.events || []) events.set(event.sequence, event);
+      for (const event of next.events || []) if (event.kind !== 'report_ready') events.set(event.sequence, event);
       history(); renderWorld();
       const invalidated = [...events.values()].reverse().find(e => e.kind === 'invalidated');
       $('plan-invalidated').hidden = !invalidated || Date.now() + offset - invalidated.at * 1000 > 16000;

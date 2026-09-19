@@ -560,6 +560,17 @@ Si el vault no existe todavía, créalo con esta misma estructura antes de escri
    relevante).
 8. Resume al usuario qué notas se crearon/actualizaron, enlazando el índice.
 
+## Informes retirados del frontend (20/09/2026, petición posterior)
+
+- El usuario permite limitar la retirada al frontend. Cerebro conserva base y aprendizajes, pero excluye
+  notas `report`, enlaces a informes, descargas PDF, contadores y leyenda de informes. Director e historial
+  omiten eventos `report_ready`, también al recuperar el historial. No volver a mostrar esta funcionalidad.
+- La generación backend, sus endpoints y los documentos existentes se conservan porque comparten el cierre
+  con las memorias. No se cambian extinción, regreso ni retirada de testigos; `reported`/`report_id` siguen
+  siendo señales internas de finalización. No se borran datos ni se modifican workflows.
+- Regresiones: Node `--test test_operations.mjs test_scene.mjs test_director.mjs`; `verify_presentation.py`
+  comprueba que el backend conserva el informe pero Cerebro no lo muestra ni ofrece descargas.
+
 ## Cerebro y PDF (20/09/2026)
 
 - `reports.base_notes()` define cuatro notas curadas enlazadas, visibles sin operaciones previas.
@@ -598,3 +609,13 @@ Si el vault no existe todavía, créalo con esta misma estructura antes de escri
   UI aislada: `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_presentation.py --editor`.
   Usa voz/LLM fixtures, atlas/grafo cacheado y HTTP real, sin llamadas ni cloud. Las otras rutas del
   verificador conservan expectativas históricas: `--editor` permite probar este panel independientemente.
+
+## Estadísticas en el historial (20/09/2026)
+
+- El bloque «Control del escenario · Barcelona» se sustituye por cuatro tarjetas de impacto; los controles
+  quedan en el editor del lápiz. `static/scene.js::sessionImpact` suma métricas finales de la sesión desde
+  `operations.incidents`, deduplicadas por `report_id`, sin mostrar informes ni enlaces PDF.
+- CO₂ evitado, superficie preservada y valor hipotético del carbono usan el modelo backend existente;
+  no son ahorro de prevención acreditado, ingresos ni créditos. Se indica cobertura parcial y se conserva
+  «sin datos» en lugar de inventar ceros. La cuarta tarjeta cuenta operaciones con balance disponible.
+- Verificación rápida: Node `--test test_scene.mjs test_operations.mjs test_director.mjs` (43 pruebas).
