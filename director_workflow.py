@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import re
 import secrets
+import time
 import uuid
 
 from database import Database
@@ -73,7 +74,7 @@ def unwrap(value):
     return value.get('data', value) if isinstance(value, dict) else value
 
 
-def deploy(database: Database) -> dict:
+def deploy(database: Database, name: str = NAME, policy: str = PROMPT) -> dict:
     provider = HappyRobotProvider()
     client = provider.client
     if not client.key:
@@ -83,14 +84,14 @@ def deploy(database: Database) -> dict:
         print('El director ya está publicado; no se modifica automáticamente.')
         return config
     if not config.get('workflow_id'):
-        workflow = unwrap(client.request('POST', '/workflows/', {'name': NAME, 'icon': 'brain'}))
+        workflow = unwrap(client.request('POST', '/workflows/', {'name': name, 'icon': 'brain'}))
         identifier = str(uuid.UUID(workflow['id']))
         workflow = unwrap(client.request('GET', f'/workflows/{identifier}'))
-        config = {'workflow_id': identifier, 'version_id': workflow['latest_version']['id'], 'name': NAME, 'published': False}
+        config = {'workflow_id': identifier, 'version_id': workflow['latest_version']['id'], 'name': name, 'published': False}
         database.director_setting(config)
     identifier, version = config['workflow_id'], config['version_id']
     workflow = unwrap(client.request('GET', f'/workflows/{identifier}'))
-    if workflow.get('name') != NAME or workflow['latest_version']['id'] != version or workflow['latest_version'].get('is_published'):
+    if workflow.get('name') != name or workflow['latest_version']['id'] != version or workflow['latest_version'].get('is_published'):
         raise RuntimeError('El workflow remoto no coincide con el borrador propio; se requiere revisión')
 
     def node(body):
@@ -107,8 +108,9 @@ def deploy(database: Database) -> dict:
         database.director_setting(config)
     trigger_body = {'type': 'trigger', 'event_id': '01929b66-a335-7514-a159-cae2fe715286', 'name': 'Cambio del entorno',
                     'webhook_payload': {'context_json': '{}'},
-                    'configuration': {'enhanced_security': True, 'auth_type': 'api_key', 'api_key': config['hook_key']}}
+                    'configuration': {'params': ['context_json'], 'enhanced_security': True, 'auth_type': 'api_key', 'api_key': config['hook_key']}}
     trigger = node(trigger_body)
+    trigger = unwrap(client.request('GET', f'/versions/{version}/nodes/{trigger["id"]}'))
     client.request('PUT', f'/versions/{version}/nodes/{trigger["id"]}', {**trigger_body, 'type': trigger['type']})
     trigger_detail = unwrap(client.request('GET', f'/versions/{version}/nodes/{trigger["id"]}'))
     config['hook_url'] = trigger_detail['webhook_urls']['production']
@@ -123,7 +125,7 @@ def deploy(database: Database) -> dict:
     prompt = unwrap(client.request('GET', f'/versions/{version}/nodes/{prompt_summary["id"]}'))
     client.request('PUT', f'/versions/{version}/nodes/{prompt["id"]}', {
         'type': 'prompt', 'name': 'Política del director', 'configuration': prompt.get('configuration') or {},
-        'prompt_md': context_prompt(trigger['id']),
+        'prompt_md': policy.replace('{{CONTEXT_VARIABLE}}', '{{' + trigger['id'] + '.data.context_json}}'),
         'model': {'type': 'static', 'static': {'id': 'gpt-5.6-sol-low', 'name': 'gpt-5.6-sol'}}})
     tool = node({'type': 'tool', 'name': 'publicar_plan', 'parent_node_id': prompt['id'], 'function': {
         'description': paragraph('Entrega una propuesta estructurada al ejecutor local. El acuse NO implica ejecución: disponibilidad, revisión y rutas se validan localmente.'),
@@ -315,6 +317,13 @@ def replace_voice_prompt(client, workflow_id: str, expected_name: str, expected_
     if client.request('GET', running_path).get('data'):
         raise RuntimeError('Ha entrado una llamada; el borrador queda preparado sin sustituir la versión viva')
     published = unwrap(client.request('POST', f'/versions/{version}/publish', {'environment': 'production', 'unpublish_version_id': expected_version}))
+    if not published.get('is_live') or not published.get('is_published'):
+        for _ in range(3):
+            current = unwrap(client.request('GET', f'/workflows/{workflow_id}'))['latest_version']
+            if current['id'] == version and current.get('is_live') and current.get('is_published'):
+                published = current
+                break
+            time.sleep(.5)
     if not published.get('is_live') or not published.get('is_published') or published.get('test_errors') or published.get('missing_variables'):
         raise RuntimeError('Revisa el resultado de publicación de voz y sus validaciones')
     return {'workflow_id': workflow_id, 'version_id': version, 'previous_version_id': expected_version,

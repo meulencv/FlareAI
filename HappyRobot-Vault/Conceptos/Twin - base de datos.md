@@ -23,9 +23,26 @@ Tipos de columna: `int8 int4 float8 float4 text boolean timestamp uuid jsonb`. F
 **sin PostGIS** (geometría en Python: haversine/rumbo, ver [[Motor de riesgo]]).
 Límites: SELECT ≤ 500 filas / 1 MB; timeout 20 s (5 s vía MCP).
 
-## Estado en nuestra organización (importante)
+## Estado actual, revisión posterior del 19/09/2026
 
-- A fecha 2026-09-19 Twin **no está provisionado**: `GET /twin/schema` → `404 "Twin database
+Twin ya responde a `GET /twin/schema`. La credencial habitual de voz permite leer el esquema pero
+recibió 403 al ejecutar SQL; la credencial facilitada específicamente para Twin ejecutó `SELECT 1`
+correctamente. No se guardan sus valores en el vault.
+
+La decisión actual es **Twin para datos dinámicos; atlas, grafos y cachés en local**. `twin.py` crea
+`flare_live_sessions`, `flare_live_calls`, `flare_live_state`, `flare_live_events`, `flare_live_settings`,
+`flare_live_documents`, `flare_live_leases`, `flare_live_web_requests` y `flare_contacts`.
+Se verificaron estado/eventos sin duplicados, contactos ordenados y reserva idempotente de webcalls.
+
+Los `int8` llegan como strings y se normalizan por el tipo de columna. Una respuesta truncada obliga
+a paginar; nunca se interpreta como un resultado completo. El endpoint rechazó una sentencia
+`WITH … INSERT`: se usa una función PostgreSQL versionada para guardar estado y eventos atómicamente.
+Una conexión HTTP no mantiene una transacción ni un advisory lock entre peticiones; el director usa
+un lease renovable. Más detalles en [[2026-09-19#Presentación con testimonios, Twin y parte telefónico]].
+
+## Estado inicial de la organización (histórico)
+
+- Al principio del 2026-09-19 Twin **no estaba provisionado**: `GET /twin/schema` → `404 "Twin database
   not available"`. Se activa en la web: **Settings → Twin Database → Enable Twin** (permiso
   *Manage Twin database instance*), o pidiéndolo al soporte del hackathon.
 - La API key actual **no tiene `twin.manage`**: `POST /twin/sql` → `403 "API key cannot perform

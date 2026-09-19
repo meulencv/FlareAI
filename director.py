@@ -38,6 +38,19 @@ def fingerprint(payload: dict) -> str:
         {k: i.get(k) for k in ('id', 'lat', 'lon', 'demo_report', 'responder_report', 'weather', 'footprint')} for i in reported(payload)]})
 
 
+def anchor(payload: dict) -> str:
+    """Condiciones que un plan en vuelo necesita para seguir siendo ejecutable.
+
+    Cambia con una corrección de ubicación, una retirada o una invalidación del escenario
+    (corte de vía, giro de viento, parte de campo), no con el relato creciente de la llamada.
+    """
+    return digest({'revision': payload.get('scenario_plan_revision', payload.get('scenario_revision')),
+                   'status': payload.get('status'),
+                   'incidents': [{'id': i['id'], 'lat': i.get('lat'), 'lon': i.get('lon'),
+                                  'location': (i.get('demo_report') or {}).get('location'),
+                                  'cancelled': (i.get('demo_report') or {}).get('cancelled')} for i in reported(payload)]})
+
+
 def extract_plan(messages: list[dict]) -> dict | None:
     def visit(value):
         if isinstance(value, str):
@@ -82,6 +95,22 @@ def validate_plan(plan: dict, context: dict) -> dict:
         raise ValueError('Máximo ocho acciones')
     incidents = {i['id'] for i in context['incidents']}
     resources = {r['id'] for r in context['resources']}
+    if context.get('presentation'):
+        assessments = plan.get('assessments', [])
+        if not isinstance(assessments, list):
+            raise ValueError('Evaluaciones no válidas')
+        for incident in context['incidents']:
+            if not incident.get('testimonies') or incident.get('assessment'):
+                continue
+            assessment = next((a for a in assessments if isinstance(a, dict) and a.get('incident_id') == incident['id']), None)
+            if not assessment or not isinstance(assessment.get('summary'), str) or not assessment['summary'].strip():
+                raise ValueError('Falta la conclusión de los testimonios')
+            verdicts = assessment.get('testimonies', [])
+            expected = {t['id'] for t in incident['testimonies']}
+            if not isinstance(verdicts, list) or len(verdicts) != len(expected) or any(not isinstance(v, dict) for v in verdicts):
+                raise ValueError('Falta evaluar todos los testimonios')
+            if {v.get('id') for v in verdicts} != expected or any(v.get('status') not in {'supported', 'uncertain', 'unlikely', 'prank'} for v in verdicts):
+                raise ValueError('Evaluación de testimonios incompleta o inválida')
     used = set()
     for action in actions:
         if not isinstance(action, dict) or action.get('type') not in ACTION_TYPES:
@@ -250,6 +279,7 @@ class Director:
         self.router = router if router is not None else LocalRouter(self.db)
         self.atlas = atlas if atlas is not None else EmergencyAtlas()
         self.lock = threading.RLock()
+        self.stop_event = threading.Event()
         self.state: dict[str, Any] = {'session_id': self.session_id, 'mode': 'demo', 'status': 'idle' if self.planner.ready else 'unconfigured',
                                       'sequence': 0, 'events': [], 'resources': {}, 'assignments': {}, 'alerts': {},
                                       'last_fingerprint': '', 'last_review': 0, 'pending': None, 'history': [], 'runs': [],
@@ -257,6 +287,7 @@ class Director:
         self.retry_at = 0.0
         self.failure_count = 0
         self.scene = None
+        self.operations = None
         self.scene_saved_at = 0.0
         if getattr(store, 'hackathon', False) is True:
             from scene import Scene
@@ -271,6 +302,10 @@ class Director:
                         self.state['resources'][resource['id']] = resource
             self.event('watch', 'Vigilancia de Barcelona, Collserola y costa', 'FIRMS, 112, NOAA y atlas reales; evolución, tráfico y recursos simulados. España permanece completa.')
 
+        if getattr(store, 'presentation', False) is True:
+            from operations import Operations
+            self.operations = Operations(self)
+
     def station_inventory(self) -> list[dict]:
         stations: dict[str, dict] = {}
         for resource in self.state['resources'].values():
@@ -283,7 +318,8 @@ class Director:
     def public_state(self) -> dict:
         with self.lock:
             return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time(), 'stations': self.station_inventory(),
-                'scenario': deepcopy(self.scene.data) if self.scene else None, 'pending_alerts': deepcopy(self.state.get('pending_alerts', {}))}
+                'scenario': deepcopy(self.scene.data) if self.scene else None, 'pending_alerts': deepcopy(self.state.get('pending_alerts', {})),
+                'operations': self.operations.public_state() if self.operations else None}
 
     def alert_feed(self, after: int | None = None) -> dict:
         with self.lock:
@@ -407,6 +443,11 @@ class Director:
                                     'reinforcements': 'Solicitudes de bomberos en responder_report.fields.refuerzos; valorar recursos libres y reassign entre incidentes con motivo y cobertura restante.'},
                    'omitted_incidents': max(0, len(reported(payload)) - 8),
                    'limits': 'Capacidades ficticias. Atlas no exhaustivo. Sin tráfico ni rutas de emergencia. Potencial no es probabilidad. No confirmar extinción por llegada de vehículos.'}
+        if self.operations:
+            for incident in incidents:
+                incident.update(self.operations.context(incident['id']))
+            context['presentation'] = True
+            context['memories'] = self.db.cached('memories', 30, lambda: self.db.documents('memory'))[-30:]
         if self.scene:
             context['scenario'] = deepcopy(self.scene.data)
             context['capabilities'].update(ambulance='Ambulancias ficticias desde hospitales/bases del atlas. Riesgo vital, humo sobre barrio o población amenazada requieren valorar sanitario y policía, no solo camiones.',
@@ -450,7 +491,10 @@ class Director:
                 if kind == 'reassign' and current['status'] != 'blocked' and current['incident_id'] == item['incident_id'] and current.get('target') == item['target']:
                     raise ValueError('El recurso ya está asignado a ese destino')
                 fields = (incidents.get(item.get('incident_id'), {}).get('responder_report') or {}).get('fields', {})
-                if resource['kind'] == 'helicopter' and kind != 'return' and not (self.scene and (scene.get('maritime') or scene.get('medical') or scene.get('priority', 0) >= 7) or fields.get('helicoptero') == 'solicitado' or fields.get('incendio') == 'confirmado' and fields.get('evolucion') in {'empeora', 'critico'}):
+                from operations import requested_resources
+                field_versions = (incidents.get(item.get('incident_id'), {}).get('responder_report') or {}).get('field_versions', {})
+                requested_air = requested_resources(fields, field_versions).get('helicopter', 0) > 0
+                if resource['kind'] == 'helicopter' and kind != 'return' and not (self.scene and (scene.get('maritime') or scene.get('medical') or scene.get('priority', 0) >= 7) or requested_air or fields.get('incendio') == 'confirmado' and fields.get('evolucion') in {'empeora', 'critico'}):
                     item['route_error'] = True
                     item['blocked_reason'] = 'Apoyo aéreo pendiente de solicitud explícita o empeoramiento confirmado en un parte de bomberos.'
                     prepared.append(item)
@@ -483,14 +527,14 @@ class Director:
             if kind == 'alert':
                 incident = incidents[item['incident_id']]
                 fields = (incident.get('responder_report') or {}).get('fields', {})
-                population = incident.get('environment', {}).get('population', {}).get('residents') or 0
-                urban_pct = incident.get('environment', {}).get('landcover', {}).get('percentages', {}).get('urbano') or 0
-                urban = fields.get('zona_urbana') == 'si' or fields.get('zona_urbana') != 'no' and population > 0 and urban_pct >= 5
-                item['mobile_alert'] = fields.get('incendio') not in {'descartado', 'extinguido'} and (bool(self.scene) or fields.get('es_alert') == 'solicitado' or fields.get('incendio') == 'confirmado' and urban)
+                from operations import alert_allowed
+                item['mobile_alert'] = alert_allowed(fields)
             prepared.append(item)
         return prepared
 
     def apply(self, plan: dict, actions: list[dict], run_id: str) -> None:
+        if self.operations:
+            self.operations.accept_assessments(plan)
         blocked = any(action.get('route_error') for action in actions)
         self.event('decision', 'Plan con rutas pendientes; revisando alternativas' if blocked else plan['summary'], plan['summary'] if blocked else '', run_id=run_id)
         if self.scene:
@@ -585,6 +629,11 @@ class Director:
             moved = self.advance()
             if moved:
                 self.save()
+            if self.operations:
+                self.operations.tick(payload)
+                if not self.operations.ready():
+                    self.state['status'] = 'collecting'
+                    return
             pending = self.state['pending']
         if not self.planner.ready or time.monotonic() < self.retry_at:
             return
@@ -599,11 +648,13 @@ class Director:
                 return
             if plan is None:
                 raise RuntimeError('El agente no entregó un plan a tiempo')
-            actions = self.prepare(plan, pending['context']) if current == pending['fingerprint'] else []
-            fresh = fingerprint(self.store.payload())
+            key = anchor if pending.get('anchor') else fingerprint
+            expected = pending.get('anchor') or pending['fingerprint']
+            executable = key(payload) == expected
+            actions = self.prepare(plan, pending['context']) if executable else []
             with self.lock:
-                if fresh != pending['fingerprint'] or current != pending['fingerprint']:
-                    self.event('superseded', 'El aviso ha cambiado; revisando el plan')
+                if not executable or key(self.store.payload()) != expected:
+                    self.event('superseded', 'El aviso ha cambiado de ubicación o de condiciones; revisando el plan')
                     self.state['last_fingerprint'] = ''
                 else:
                     previous = deepcopy(self.state)
@@ -642,29 +693,30 @@ class Director:
         run_id = self.planner.start(context)
         with self.lock:
             self.state['runs'].append(time.time())
-            self.state['pending'] = {'run_id': run_id, 'context': context, 'fingerprint': current, 'started_at': time.time()}
+            self.state['pending'] = {'run_id': run_id, 'context': context, 'fingerprint': current,
+                                     'anchor': anchor(payload), 'started_at': time.time()}
             self.save()
 
     def loop(self) -> None:
-        with self.db.verification_lock(804030) as acquired:
-            if not acquired:
+        while not self.stop_event.is_set():
+            with self.db.verification_lock(804030) as acquired:
                 with self.lock:
-                    self.state['status'] = 'standby'
-                return
-            while True:
-                try:
-                    self.step()
-                except Exception as error:
-                    with self.lock:
-                        authentication = isinstance(error, PermissionError) or getattr(error, 'status', None) in {401, 403}
-                        if authentication:
-                            self.planner.ready = False
-                        self.failure_count += 1
-                        self.state['status'], self.state['pending'] = 'auth_required' if authentication else 'error', None
-                        self.event('error', 'Director pendiente de autenticación' if authentication else 'Director temporalmente no disponible', 'Sin nuevas movilizaciones. Se conservan las asignaciones existentes.')
-                        self.retry_at = time.monotonic() + min(300, 15 * 2 ** min(self.failure_count, 5))
-                        try:
-                            self.save()
-                        except Exception:
-                            pass
-                threading.Event().wait(.5 if self.scene else 2)
+                    self.state['status'] = ('idle' if self.planner.ready else 'unconfigured') if acquired else 'standby'
+                while acquired and not self.stop_event.is_set():
+                    try:
+                        self.step()
+                    except Exception as error:
+                        with self.lock:
+                            authentication = isinstance(error, PermissionError) or getattr(error, 'status', None) in {401, 403}
+                            if authentication:
+                                self.planner.ready = False
+                            self.failure_count += 1
+                            self.state['status'], self.state['pending'] = 'auth_required' if authentication else 'error', None
+                            self.event('error', 'Director pendiente de autenticación' if authentication else 'Director temporalmente no disponible', 'Sin nuevas movilizaciones. Se conservan las asignaciones existentes.')
+                            self.retry_at = time.monotonic() + min(300, 15 * 2 ** min(self.failure_count, 5))
+                            try:
+                                self.save()
+                            except Exception:
+                                pass
+                    self.stop_event.wait(.5 if self.scene else 2)
+            self.stop_event.wait(2)

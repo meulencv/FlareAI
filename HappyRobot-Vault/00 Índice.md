@@ -55,6 +55,13 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-19)
+- **Presentación nueva:** centro y datos estáticos locales; dinámicos en Twin; solo 112 web, sin 123.
+  Testimonios evaluados por el director, parte telefónico al llegar, refuerzos obligatorios, ES-Alert
+  excepcional con veto, PDF y cerebro con Markdown local. Director original actualizado con autorización;
+  24 testimonios evaluados por LLM real. Llamada real: principal no disponible y respaldo atendido.
+  **Pendientes:** publicar la App 112, configuración privada persistente, confirmar experiencia de audio
+  y ensayos live integrados. No se ha limpiado todavía la plataforma sin confirmación de IDs.
+  [[2026-09-19#Presentación con testimonios, Twin y parte telefónico|Implementación y límites actuales]].
 - **Estabilidad Barcelona:** eliminado el tope local de 30 runs/hora que impedía despachar tras
   varios avisos; no era agotamiento demostrado de HappyRobot. Despacho terrestre real verificado,
   pruebas backend/UI completas y aviso persistente de fallo del director. Helicóptero no garantizado

@@ -2,6 +2,54 @@
 
 **España, bajo observación.** Mapa blanco con anomalías térmicas NASA, viento y temperatura NOAA, imágenes satelitales y un escenario visual orientado por el viento.
 
+## Presentación: centro local, 112 web y Twin
+
+La configuración nueva mantiene el centro y el motor Python **en el ordenador**. Atlas, grafos y cachés
+siguen locales; Twin conserva únicamente los datos dinámicos. **123 se ha retirado**: al llegar bomberos,
+HappyRobot llama al contacto principal de Twin y, si no atiende, al respaldo.
+
+```bash
+.venv/bin/python app.py --presentation --host 127.0.0.1 --port 8090
+```
+
+Necesita `FLAREAI_TWIN_API_KEY` en el entorno o en `.env.presentation` privado, además de la configuración
+112 existente. El agente no ha podido guardar ese archivo por la protección de archivos ignorados.
+El comando anterior **no hace llamadas telefónicas**. Añadir `--allow-outbound` solo al autorizar un ensayo
+real; lee todos los números de `flare_contacts`, nunca de constantes del programa.
+
+- Una webcall produce 24 testimonios sintéticos, con cadencia 0,5–2 s. La IA evalúa el conjunto, sin conocer
+  las etiquetas de referencia, y moviliza medios. El feed distingue webcall y actores de simulación.
+- En presentación no se disparan giros de viento ni cortes programados inesperados; siguen disponibles
+  en los controles del escenario para ensayarlos explícitamente. Cerrar el servidor libera el turno de
+  sala; tras una caída abrupta, otra instancia reintenta adquirirlo al caducar el lease.
+- Los partes telefónicos tienen autoridad superior. Las solicitudes explícitas se ejecutan con seguimiento;
+  si falta una unidad o ruta, la petición queda pendiente, no se inventa un despacho.
+- ES-Alert es excepcional: petición explícita o situación crítica en el parte, con veto de tres segundos.
+- El cierre produce PDF, estadísticas ilustrativas y notas útiles, sin forzar aprendizajes. **Cerebro**, abajo
+  a la derecha, abre el grafo. Los Markdown reales se conservan en `FlareAI-Memoria/`, con datos también en Twin.
+- Hectáreas, vidas potencialmente salvadas, CO2 y valor del carbono son estimaciones de escenario con supuestos
+  visibles, no mediciones ni créditos certificados. El informe incluye una breve explicación de su posible mercado.
+
+**Estado del alojamiento 112:** código preparado, publicación pendiente de acceso a HappyRobot Apps.
+`python package_112.py` genera el paquete Next.js sin secretos. No depende de un túnel al centro local:
+la App comparte llamadas y alertas mediante Twin. Configurar la URL en `flare_live_settings['phone-web']`.
+Las variables privadas de la App son `HAPPYROBOT_API_KEY`, `TWIN_API_KEY`, `HAPPYROBOT_WORKFLOW_ID`,
+`DEMO_ACCESS_CODE` y `DEMO_COOKIE_SECRET` (mínimo 32 caracteres). El centro usa el mismo código en
+`FLAREAI_DEMO_ACCESS_CODE`; sus enlaces locales lo transportan en el fragmento, no en consultas HTTP.
+
+```bash
+.venv/bin/python -m unittest test_twin test_operations test_presentation -v
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_presentation.py
+```
+
+La prueba de navegador usa voz y planes fixture, rutas reales cacheadas y no llama. `--cloud` comprueba el
+LLM real y consume cuota; `--phone` realiza llamadas reales y requiere autorización específica. Ya se ha
+verificado un plan real con 24 testimonios y una llamada real al respaldo; en ese parte no se registraron
+peticiones de recursos. Falta publicar el 112 y completar ensayos live integrados antes de presentarlo como listo.
+
+Las secciones históricas que describen 123 o almacenamiento totalmente local quedan sustituidas por este
+apartado para el modo de presentación; se conservan como referencia de la implementación anterior.
+
 ## Arranque
 
 Servidor Python + PostgreSQL; frontend Leaflet sin compilación ni claves API. Las carreteras usan

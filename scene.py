@@ -63,7 +63,7 @@ def visual_geometry(record: dict) -> dict:
 class Scene:
     def __init__(self, director) -> None:
         self.director = director
-        director.state['scenario'] = {'enabled': True, 'revision': 0, 'incidents': {}, 'candidates': {},
+        director.state['scenario'] = {'enabled': True, 'revision': 0, 'plan_revision': 0, 'incidents': {}, 'candidates': {},
                                       'closures': {}, 'congestion': {}, 'hospitals': [], 'automatic': True,
                                       'label': 'SIMULACIÓN DE SALA · no moviliza servicios reales'}
         self.samples: dict[str, list] = {}
@@ -98,7 +98,7 @@ class Scene:
                     self.change('contained', 'Parte de campo: se retira el aviso', 'No se borran las observaciones NASA. Regresan las unidades de demo.', identifier)
                 continue
             if not call and not item.get('scene_report'):
-                if not sensor_candidate(item, now):
+                if getattr(self.director, 'operations', None) or not sensor_candidate(item, now):
                     continue
                 valid.add(identifier)
                 if identifier not in self.data['candidates']:
@@ -117,6 +117,12 @@ class Scene:
                         record.update(phase='contained', phase_at=now)
                     elif fields.get('evolucion') in {'empeora', 'critico'} or fields.get('refuerzos') == 'solicitado':
                         record.update(phase='active', medical=True, suppression_since=None)
+                    from operations import requested_resources
+                    requests = requested_resources(fields, field.get('field_versions'))
+                    if requests and record['phase'] not in {'releasing', 'closed'}:
+                        record.update(phase='active', suppression_since=None)
+                    if requests.get('ambulance'):
+                        record['medical'] = True
                     self.invalidate(identifier, 'Un parte de campo modifica la situación del aviso')
                 summary = (call or {}).get('summary', {})
                 signature = repr(sorted(summary.items()))
@@ -164,6 +170,7 @@ class Scene:
         self.data['candidates'] = {k: v for k, v in self.data['candidates'].items() if k in valid or k in self.data['incidents']}
 
     def invalidate(self, identifier: str | None, cause: str) -> None:
+        self.data['plan_revision'] = self.data.get('plan_revision', 0) + 1
         self.change('invalidated', 'Plan anterior invalidado · recalculando', cause, identifier)
         self.director.state['last_fingerprint'] = ''
 
@@ -207,13 +214,18 @@ class Scene:
                 continue
             elapsed = max(0, now - record['last_tick'])
             record['last_tick'] = now
+            operations = getattr(self.director, 'operations', None)
+            held = bool(operations and operations.held(identifier))
+            record['waiting_field_report'] = held
+            record['peak_radius_km'] = max(record.get('peak_radius_km', 0), record['radius_km'])
+            record['peak_exposed_population'] = max(record.get('peak_exposed_population', 0), record.get('exposed_population', 0))
             assignments = [a for a in self.director.state['assignments'].values() if a.get('incident_id') == identifier]
             suppression = sum(1 if a['resource']['kind'] == 'fire_engine' else 2 if a['resource']['kind'] == 'helicopter' else 0
                               for a in assignments if a['status'] == 'onscene')
             old_band = int(record['radius_km'] * 4)
             if phase == 'active':
                 record['radius_km'] = min(.15 if record['maritime'] else 1.2, record['radius_km'] + min(elapsed, 10) * .0025)
-                if suppression >= 2:
+                if suppression >= 2 and not held:
                     record['suppression_since'] = record['suppression_since'] if record['suppression_since'] is not None else now
                     if now - record['suppression_since'] >= 45:
                         record.update(phase='contained', phase_at=now)
@@ -234,7 +246,7 @@ class Scene:
             elif phase == 'watching' and now - record['phase_at'] >= 45:
                 record.update(phase='releasing', phase_at=now)
                 self.change('release', 'Retirada escalonada del dispositivo', 'Se solicita regreso de camiones, patrullas, ambulancias y aire; no se liberan hasta llegar a base.', identifier)
-            elif phase == 'releasing' and not assignments:
+            elif phase == 'releasing' and not assignments and not held:
                 record.update(phase='closed', phase_at=now, radius_km=.02)
                 self.change('closed', 'Cerrado · seguro en el escenario', 'Sin reactivación durante la vigilancia y medios de regreso en base. Relato conservado; datos NASA intactos.', identifier)
             self.risk(record)
@@ -256,6 +268,7 @@ class Scene:
                     item['sensor_report'] = {'certainty': 'thermal_anomaly', 'severity': record['priority'], 'source': 'NASA FIRMS', 'demo': True}
             result['incidents'].append(item)
         result['scenario_revision'] = self.data['revision']
+        result['scenario_plan_revision'] = self.data.get('plan_revision', 0)
         return result
 
     def command(self, body: dict) -> None:

@@ -188,6 +188,24 @@ class ExecutionTests(unittest.TestCase):
         self.router.route.assert_not_called()
         self.assertEqual(self.director.state['events'][-1]['kind'], 'superseded')
 
+    def test_growing_call_summary_dispatches_and_reviews_afterwards(self):
+        from director import anchor
+        self.director.state['pending']['anchor'] = anchor(self.payload)
+        self.payload['incidents'][0]['demo_report']['summary'] = {'riesgos': 'el llamante sigue describiendo el humo'}
+        self.director.step()
+        self.assertIn('truck', self.director.state['assignments'])
+        self.assertNotEqual(self.director.state['events'][-1]['kind'], 'superseded')
+        self.payload['incidents'][0]['demo_report']['summary'] = {'riesgos': 'ahora informa de personas atrapadas'}
+        self.assertNotEqual(self.director.state['last_fingerprint'], fingerprint(self.payload))
+
+    def test_location_correction_still_supersedes_an_in_flight_plan(self):
+        from director import anchor
+        self.director.state['pending']['anchor'] = anchor(self.payload)
+        self.payload['incidents'][0]['demo_report']['location'] = {'lat': 41.5, 'lon': 2.1, 'precision': 'address'}
+        self.director.step()
+        self.assertEqual(self.director.state['assignments'], {})
+        self.assertEqual(self.director.state['events'][-1]['kind'], 'superseded')
+
     def test_correction_while_computing_route_does_not_execute(self):
         def change(*args):
             self.payload['incidents'] = []
@@ -347,7 +365,7 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(self.director.alert_feed(1)['events'][0]['kind'], 'cancel')
         self.assertFalse(self.director.state['alerts'])
 
-    def test_director_alert_needs_confirmed_fire_and_urban_context(self):
+    def test_director_alert_requires_explicit_request_or_extreme_part(self):
         plan = {**self.plan, 'actions': [{'type': 'alert', 'incident_id': 'fire', 'reason': 'Humo cerca de viviendas'}]}
         action = self.director.prepare(plan, self.context)[0]
         self.assertFalse(action['mobile_alert'])
@@ -357,6 +375,8 @@ class ExecutionTests(unittest.TestCase):
         self.context['incidents'][0]['environment'] = {'population': {'residents': 20}, 'landcover': {'percentages': {'urbano': 0}}}
         self.assertFalse(self.director.prepare(plan, self.context)[0]['mobile_alert'])
         self.context['incidents'][0]['responder_report'] = {'fields': {'incendio': 'confirmado', 'zona_urbana': 'si'}}
+        self.assertFalse(self.director.prepare(plan, self.context)[0]['mobile_alert'])
+        self.context['incidents'][0]['responder_report']['fields']['evolucion'] = 'critico'
         action = self.director.prepare(plan, self.context)[0]
         self.assertTrue(action['mobile_alert'])
         self.director.apply(plan, [action], 'notify')

@@ -1,35 +1,35 @@
 {
-  "analysis_at_utc": "2026-09-19T15:44:31.618485+00:00",
+  "analysis_at_utc": "2026-09-19T20:11:35.130040+00:00",
   "window_hours": 24,
-  "selected_observations": 171,
+  "selected_observations": 248,
   "boundary_sha256": "27ccbe16a21a63f9e7c380fd5570aed790bd501e431be156c0ca9e062413bc25",
   "sources": [
     {
       "source": "noaa20",
-      "rows_global": 111667,
-      "rows_spain_before_time_filter": 103,
-      "rows_spain_selected": 72,
-      "latest_global_observation_utc": "2026-09-19T13:38:00+00:00",
-      "age_of_latest_global_hours": 2.109,
-      "sha256": "579cc76430392b1dbdc8cb00af35ce957c3c6789fb66092cdb7a41ad4110290b"
+      "rows_global": 116876,
+      "rows_spain_before_time_filter": 126,
+      "rows_spain_selected": 95,
+      "latest_global_observation_utc": "2026-09-19T16:56:00+00:00",
+      "age_of_latest_global_hours": 3.26,
+      "sha256": "78f004a30ac360b971e9a14b67b357a2cb2fb4cd17202950c1967987726b307a"
     },
     {
       "source": "noaa21",
-      "rows_global": 103885,
+      "rows_global": 117860,
       "rows_spain_before_time_filter": 106,
       "rows_spain_selected": 72,
-      "latest_global_observation_utc": "2026-09-19T13:33:00+00:00",
-      "age_of_latest_global_hours": 2.192,
-      "sha256": "78cd784e522fb4dcb94433a1ca41fae9aa9172af84a038f1afad78360988e336"
+      "latest_global_observation_utc": "2026-09-19T17:39:00+00:00",
+      "age_of_latest_global_hours": 2.543,
+      "sha256": "2f589f90390250ed88f18fba3a359edac7637d773b49cf0047dd7b94286101fc"
     },
     {
       "source": "snpp",
-      "rows_global": 106606,
-      "rows_spain_before_time_filter": 58,
-      "rows_spain_selected": 27,
-      "latest_global_observation_utc": "2026-09-19T12:23:00+00:00",
-      "age_of_latest_global_hours": 3.359,
-      "sha256": "469fa350ca5e3a622fc9e353493df193a8a9bc85d1d1af87a5094967bc7c9525"
+      "rows_global": 118309,
+      "rows_spain_before_time_filter": 112,
+      "rows_spain_selected": 81,
+      "latest_global_observation_utc": "2026-09-19T17:24:00+00:00",
+      "age_of_latest_global_hours": 2.793,
+      "sha256": "d8f3e088f0f97a3670f0a8d0c1a9ce90ee6b063af94393a1f87d40a10da3ae0e"
     }
   ]
 }

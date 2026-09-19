@@ -422,8 +422,10 @@ fetch('/api/demo/setup').then(response => response.ok ? response.json() : null).
   $("demo-link").hidden = !setup?.ready;
   $("alert-demo-link").hidden = !setup?.ready;
   if (setup?.public_url) {
-    $("demo-link").href = `${setup.public_url}/112/`;
-    $("alert-demo-link").href = `${setup.public_url}/112/alerts/`;
+    $("demo-link").href = setup.phone_url || `${setup.public_url}/112/`;
+    $("alert-demo-link").href = setup.alert_url || `${setup.public_url}/112/alerts/`;
+  } else if (setup?.cloud) {
+    $("demo-link").textContent = '112 local · publicación pendiente';
   }
 }).catch(() => { $("demo-link").hidden = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden) stopPlay(); });

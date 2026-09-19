@@ -28,8 +28,8 @@ LABELS = {
 }
 
 
-def load_env() -> None:
-    path = ROOT / ".env"
+def load_env(path: Path | None = None) -> None:
+    path = path or ROOT / ".env"
     if not path.exists():
         return
     for raw_line in path.read_text(encoding="utf-8").splitlines():

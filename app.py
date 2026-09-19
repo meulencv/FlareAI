@@ -4,6 +4,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import re
 import socket
 import threading
@@ -13,7 +14,7 @@ from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from socketserver import BaseServer
 from typing import cast
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import psycopg
 
@@ -22,15 +23,18 @@ from database import Database, local_start
 from demo import DemoBridge, PHONE_ROOT
 from director import Director
 from territorial import Territorial
+from twin import TwinDatabase
 from gfs import DATA, ROOT, Snapshot, iso, update, utcnow
 from incidents import Collection, Incident, assemble, refresh_fires
 from satellite import picture
 
 
 class Store:
-    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False, hackathon: bool = False) -> None:
+    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False, hackathon: bool = False, presentation: bool = False, allow_outbound: bool = False) -> None:
         self.offline = offline
-        self.hackathon = hackathon
+        self.presentation = presentation
+        self.allow_outbound = allow_outbound
+        self.hackathon = hackathon or presentation
         self.db = database
         self.territorial = Territorial(database, offline) if database else None
         self.lock = threading.Lock()
@@ -221,23 +225,9 @@ class Handler(SimpleHTTPRequestHandler):
                 if not demo.authorized(owner):
                     raise PermissionError('Abre primero el marcador de la demo')
                 number = body.get('number', '112')
-                if number not in {'112', '123'}:
-                    raise ValueError('Número no disponible')
-                binding = None
-                if number == '123':
-                    incident = cast(dict, dict(self.store.find(str(body.get('incident_id', '')))))
-                    report = incident.get('demo_report')
-                    sensor = incident.get('sensor_report') or incident.get('scene_report')
-                    if not (report or sensor) or (report or {}).get('cancelled') or incident.get('scenario', {}).get('phase') in {'releasing', 'closed'}:
-                        raise ValueError('Aviso no disponible')
-                    resource_id = body.get('resource_id')
-                    if resource_id:
-                        assignment = self.store.director.public_state()['assignments'].get(resource_id) if self.store.director else None
-                        if not assignment or assignment['incident_id'] != incident['id'] or assignment['status'] == 'returning':
-                            raise ValueError('Recurso no asignado al aviso')
-                    binding = ({**report['location'], 'run_id': report['run_id']} if report else
-                               {'sensor_id': incident['id'], 'lat': incident['lat'], 'lon': incident['lon'], 'label': incident['name']}) | {'incident_id': incident['id'], 'resource_id': resource_id}
-                self.send_json(demo.create_call(owner, 'firefighter' if number == '123' else 'citizen', binding))
+                if number != '112':
+                    raise ValueError('Esta demo solo admite 112; bomberos recibe una llamada saliente')
+                self.send_json(demo.create_call(owner, 'citizen'))
             else:
                 demo.stop(str(body.get('run_id', '')), self.browser_token())
                 self.send_json({'ok': True})
@@ -318,8 +308,23 @@ class Handler(SimpleHTTPRequestHandler):
                 if self.client_address[0] not in {'127.0.0.1', '::1'}:
                     raise PermissionError('Configuración solo desde el ordenador local')
                 runtime = ROOT / '.local/demo-public.json'
-                public = json.loads(runtime.read_text()).get('url') if runtime.exists() else None
-                self.send_json({'public_url': public, 'local_url': '/112/',
+                tunnel = json.loads(runtime.read_text()).get('url') if runtime.exists() else None
+                public = tunnel
+                phone_url = alert_url = None
+                hosted_app = False
+                if self.store.presentation:
+                    configured = cast(TwinDatabase, self.store.db).setting('phone-web').get('url', '')
+                    target = urlsplit(configured)
+                    hosted = f'https://{target.netloc}' if target.scheme == 'https' and target.hostname and not target.username and not target.password else None
+                    hosted_app = bool(hosted)
+                    public = hosted or tunnel
+                    if hosted:
+                        fragment = '#' + urlencode({'code': os.environ['FLAREAI_DEMO_ACCESS_CODE']}) if os.environ.get('FLAREAI_DEMO_ACCESS_CODE') else ''
+                        phone_url = hosted + '/112/' + fragment
+                        alert_url = hosted + '/112/alerts/' + fragment
+                if not phone_url and tunnel:
+                    phone_url, alert_url = tunnel + '/112/', tunnel + '/112/alerts/'
+                self.send_json({'public_url': public, 'phone_url': phone_url, 'alert_url': alert_url, 'cloud': hosted_app, 'local_url': '/112/',
                                 'ready': bool(self.store.demo.provider.ready), 'session_id': self.store.demo.session_id})
             elif route.path.startswith('/api/demo/report/') and self.store.demo:
                 run_id = route.path.rsplit('/', 1)[1]
@@ -335,6 +340,22 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json({'roads': self.store.director.router.demo_roads(bounds), 'attribution': '© OpenStreetMap contributors · ODbL'})
             elif route.path == '/api/director/history' and self.store.director and self.store.db:
                 self.send_json(self.store.db.director_history(self.store.director.session_id))
+            elif route.path == '/api/brain' and self.store.presentation:
+                from reports import report_markdown, sync_memories
+                cloud = cast(TwinDatabase, self.store.db)
+                def brain_notes():
+                    sync_memories(cloud)
+                    notes = [row['data'] | {'kind': 'memory'} for row in cloud.documents('memory')]
+                    notes += [row['data'] | {'kind': 'report', 'markdown': report_markdown(row['data'])} for row in cloud.documents('report')]
+                    return notes
+                self.send_json({'notes': cloud.cached('brain', 5, brain_notes)})
+            elif re.fullmatch(r'/api/reports/[a-f0-9]{24}\.pdf', route.path) and self.store.presentation:
+                from reports import pdf_bytes, report_markdown
+                identifier = route.path.rsplit('/', 1)[1].removesuffix('.pdf')
+                report = cast(TwinDatabase, self.store.db).document('report:' + identifier)
+                if report is None:
+                    raise KeyError('Informe no encontrado')
+                self.send_bytes(pdf_bytes(report_markdown(report)), 'application/pdf')
             elif route.path == '/api/director':
                 self.send_json(self.store.director.public_state() if self.store.director else {'status': 'disabled', 'events': [], 'assignments': {}, 'alerts': {}})
             elif route.path == "/api/data":
@@ -380,7 +401,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise KeyError('Cartografía no importada')
                 self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js",
+                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js", "/operations.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()
@@ -407,21 +428,55 @@ if __name__ == "__main__":
     parser.add_argument("--offline", action="store_true")
     parser.add_argument('--mobile-port', type=int, default=8112)
     parser.add_argument('--hackathon', action='store_true', help='Activa el escenario de sala Barcelona; requiere red precargada')
+    parser.add_argument('--presentation', action='store_true', help='Centro local, estado dinámico Twin y flujo de presentación')
+    parser.add_argument('--allow-outbound', action='store_true', help='Autoriza llamadas reales a los contactos habilitados en Twin')
     options = parser.parse_args()
-    database = Database()
-    if not database.url:
-        local_start()
-    database.bootstrap()
-    Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True, hackathon=options.hackathon)
-    if Handler.store.director:
-        threading.Thread(target=Handler.store.director.loop, daemon=True).start()
-    if Handler.store.demo:
-        threading.Thread(target=Handler.store.demo.loop, daemon=True).start()
-        mobile = ThreadingHTTPServer(('127.0.0.1', options.mobile_port), MobileHandler)
-        threading.Thread(target=mobile.serve_forever, daemon=True).start()
-    if not options.offline:
-        threading.Thread(target=Handler.store.refresh_loop, daemon=True).start()
-        if Handler.store.territorial:
-            threading.Thread(target=Handler.store.territorial.verification_loop, daemon=True).start()
-    print(f"FlareAI · puerto {options.port}", flush=True)
-    ThreadingHTTPServer((options.host, options.port), Handler).serve_forever()
+    if options.presentation and options.offline:
+        parser.error('--presentation necesita Twin y HappyRobot online')
+    with ThreadingHTTPServer((options.host, options.port), Handler) as server:
+        mobile = None
+        worker = None
+        store = None
+        mobile_started = False
+        try:
+            if not options.offline:
+                mobile = ThreadingHTTPServer(('127.0.0.1', options.mobile_port), MobileHandler)
+            database: Database = TwinDatabase() if options.presentation else Database()
+            if not database.url:
+                local_start()
+            database.bootstrap()
+            store = Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True,
+                hackathon=options.hackathon, presentation=options.presentation, allow_outbound=options.allow_outbound)
+            if store.director:
+                worker = threading.Thread(target=store.director.loop, daemon=True)
+                worker.start()
+            if store.demo:
+                threading.Thread(target=store.demo.loop, daemon=True).start()
+            if mobile:
+                threading.Thread(target=mobile.serve_forever, daemon=True).start()
+                mobile_started = True
+            if not options.offline:
+                threading.Thread(target=store.refresh_loop, daemon=True).start()
+                if store.territorial:
+                    threading.Thread(target=store.territorial.verification_loop, daemon=True).start()
+            print(f"FlareAI · puerto {options.port}", flush=True)
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            if store and store.director:
+                store.director.stop_event.set()
+            if mobile_started and mobile:
+                mobile.shutdown()
+            if mobile:
+                mobile.server_close()
+            if store and store.demo:
+                store.demo.close()
+            if worker:
+                worker.join(timeout=25)
+            if store and store.demo and isinstance(store.db, TwinDatabase):
+                try:
+                    store.db.stop_room(store.demo.session_id)
+                except (RuntimeError, PermissionError):
+                    pass
+

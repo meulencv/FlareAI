@@ -36,7 +36,6 @@ import { createSpeakerOutput } from './audio.js';
   let polling = false;
   let stopping = false, starting = false;
   let muted = false, callGeneration = 0;
-  let firefighterReady = false, incidents = [], loadingIncidents = false;
   const speakerButton = document.querySelector('#speaker-button'), outputChoice = document.querySelector('#audio-output');
   const speaker = createSpeakerOutput({ window, document,
     onStatus(text, selected) { document.querySelector('#audio-note').textContent = text; speakerButton.setAttribute('aria-pressed', String(selected)); },
@@ -48,33 +47,6 @@ import { createSpeakerOutput } from './audio.js';
   });
   speakerButton.onclick = () => { if (room) void speaker.activate(true); };
   outputChoice.onchange = () => { if (!room) return; void speaker.select(outputChoice.value).catch(() => { document.querySelector('#audio-note').textContent = 'El móvil no permitió cambiar de salida. Usa su selector de audio del sistema.'; }); };
-  const incidentChoice = document.querySelector('#incident-choice'), resourceChoice = document.querySelector('#resource-choice');
-  const partLabels = { llegada: 'Llegada', incendio: 'Incendio', es_alert: 'ES-Alert demo', refuerzos: 'Refuerzos', helicoptero: 'Helicóptero', evolucion: 'Evolución', zona_urbana: 'Zona urbana', detalle: 'Detalle' };
-
-  function renderResources() {
-    const selected = resourceChoice.value;
-    resourceChoice.replaceChildren(new Option('Parte general, sin unidad', ''));
-    for (const resource of incidents.find(i => i.id === incidentChoice.value)?.resources || []) {
-      resourceChoice.add(new Option(`${{ helicopter: 'Helicóptero', ambulance: 'Ambulancia', police: 'Patrulla', fire_engine: 'Camión' }[resource.kind] || 'Unidad'} · ${resource.name} · ${resource.id.split(':').at(-1)}`, resource.id));
-    }
-    if ([...resourceChoice.options].some(o => o.value === selected)) resourceChoice.value = selected;
-  }
-  async function loadIncidents() {
-    if (!integrated || loadingIncidents || room) return;
-    loadingIncidents = true;
-    try {
-      const response = await fetch('/112/api/incidents', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Recarga el marcador para preparar la sesión');
-      incidents = (await response.json()).incidents;
-      const selected = incidentChoice.value;
-      incidentChoice.replaceChildren(new Option(incidents.length ? 'Selecciona un aviso activo' : 'Todavía no hay avisos; llama primero al 112', ''));
-      for (const incident of incidents) incidentChoice.add(new Option(`${incident.label} · ${incident.precision === 'locality' ? 'localidad aproximada' : 'ubicación concreta'}`, incident.id));
-      if (incidents.some(i => i.id === selected)) incidentChoice.value = selected;
-      renderResources();
-    } catch (error) { dialStatus.textContent = error.message; }
-    finally { loadingIncidents = false; }
-  }
-  incidentChoice.addEventListener('change', renderResources);
   document.querySelectorAll('[data-number]').forEach(button => button.onclick = () => { if (!room) { dialNumber = button.dataset.number; renderNumber(); } });
 
   function updateClock() {
@@ -92,16 +64,10 @@ import { createSpeakerOutput } from './audio.js';
       dialNumberElement.innerHTML = '<span class="placeholder">Introduce un número</span>';
       deleteButton.hidden = true;
     }
-    const firefighter = integrated && dialNumber === '123';
-    document.querySelector('#firefighter-selection').hidden = !firefighter;
-    document.body.classList.toggle('firefighter-mode', firefighter);
-    if (firefighter) {
-      dialStatus.textContent = firefighterReady ? 'Selecciona incidente y llama como bombero' : 'Voz de bomberos pendiente de configuración';
-      void loadIncidents();
-    } else if (dialNumber === "112") {
+    if (dialNumber === "112") {
       dialStatus.textContent = "Pulsa llamar para hablar con el operador";
     } else if (dialNumber) {
-      dialStatus.textContent = integrated ? 'Marca 112 o 123 (bomberos demo)' : 'Esta demo solo atiende el 112';
+      dialStatus.textContent = 'Esta demo solo atiende el 112';
     } else {
       dialStatus.textContent = "Marca 112 para iniciar la simulación";
     }
@@ -189,11 +155,6 @@ import { createSpeakerOutput } from './audio.js';
       updateSummary(data.summary);
       const locationNote = document.querySelector('#location-note');
       locationNote.textContent = data.location ? `${data.location.approximate || data.location.precision === 'locality' ? 'Ubicación aproximada' : 'Punto localizado'}: ${data.location.label}. ${data.location.reason || ''} ${data.location.source || ''} ${data.location.attribution || ''}` : '';
-      const part = document.querySelector('#part-details'); part.replaceChildren(); part.hidden = data.role !== 'firefighter';
-      for (const [key, label] of Object.entries(partLabels)) if (data.part?.[key]) {
-        const row = document.createElement('div'), term = document.createElement('dt'), value = document.createElement('dd');
-        term.textContent = label; value.textContent = data.part[key].replaceAll('_', ' '); row.append(term, value); part.append(row);
-      }
       syncState.textContent = data.map_status === 'field_report' ? 'Parte de bomberos registrado · demo'
         : data.map_status === 'located' ? (data.location?.approximate ? 'Aviso en el mapa · ubicación aproximada' : 'Aviso enviado al mapa · demo')
         : data.map_status === 'needs_location' ? 'Indica municipio y ubicación más precisa'
@@ -219,9 +180,8 @@ import { createSpeakerOutput } from './audio.js';
   }
 
   async function startCall(attempt) {
-    const firefighter = integrated && dialNumber === '123';
-    if (dialNumber !== '112' && !firefighter || firefighter && (!firefighterReady || !incidentChoice.value)) {
-      dialStatus.textContent = firefighter ? 'Selecciona un aviso activo y comprueba que bomberos está configurado' : 'Marca 112 o 123 para la demo';
+    if (dialNumber !== '112') {
+      dialStatus.textContent = 'Marca 112 para la demo';
       dialStatus.classList.add("error");
       return;
     }
@@ -229,17 +189,17 @@ import { createSpeakerOutput } from './audio.js';
 
     callButton.disabled = true;
     void speaker.prepare().catch(() => { document.querySelector('#audio-note').textContent = 'Pulsa Altavoz al conectar para habilitar el sonido.'; });
-    updateSummary({}); document.querySelector('#part-details').replaceChildren(); document.querySelector('#location-note').textContent = '';
-    document.querySelector('#contact-name').textContent = firefighter ? 'Central de bomberos' : 'Emergencias';
+    updateSummary({}); document.querySelector('#location-note').textContent = '';
+    document.querySelector('#contact-name').textContent = 'Emergencias';
     document.querySelector('.caller-avatar').textContent = dialNumber;
-    document.querySelector('.caller-number').textContent = `${dialNumber} · ${firefighter ? incidentChoice.selectedOptions[0].textContent : 'Simulación'}`;
+    document.querySelector('.caller-number').textContent = `${dialNumber} · Simulación`;
     setCallView(true);
     setMuted(false);
     setStatus("Llamando…");
     syncState.textContent = "Conectando con HappyRobot";
     timer.textContent = "00:00";
 
-    const response = await post('call', { number: dialNumber, ...(firefighter ? { incident_id: incidentChoice.value, resource_id: resourceChoice.value || null } : {}) });
+    const response = await post('call', { number: dialNumber, request_id: crypto.randomUUID() });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "No se pudo iniciar la llamada");
     if (attempt !== callGeneration) { if (integrated) void post('stop', { run_id: payload.run_id }); return; }
@@ -355,22 +315,20 @@ import { createSpeakerOutput } from './audio.js';
   async function prepareDemo() {
     if (!integrated) return;
     callButton.disabled = true;
+    const accessCode = new URLSearchParams(window.location.hash.slice(1)).get('code') || '';
     if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
     try {
       const response = await fetch(`${apiBase}/api/status`);
       const result = await response.json();
       if (!result.configured) throw new Error('HappyRobot no está configurado en el ordenador.');
       if (!result.browser_ready) {
-        const session = await post('session');
+        const session = await post('session', { access_code: accessCode });
         if (!session.ok) throw new Error('No se pudo preparar la demo. Recarga para reintentar.');
       }
-      firefighterReady = result.firefighter_configured === true;
       document.querySelector('#demo-numbers').hidden = false;
       document.querySelector('#alert-receiver-link').hidden = false;
       callButton.disabled = false;
-      dialStatus.textContent = '112: ciudadano · 123: bomberos. Solo simulación.';
-      void loadIncidents();
-      window.setInterval(() => { if (dialNumber === '123' && !document.hidden) void loadIncidents(); }, 5000);
+      dialStatus.textContent = '112 · Llamada ciudadana de simulación.';
     } catch (error) { dialStatus.textContent = error.message; }
   }
   updateClock();

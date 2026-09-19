@@ -8,6 +8,8 @@ export function createAlertReceiver({ document, window, fetch }) {
   const $ = id => document.getElementById(id);
   let audio = null, oscillator = null, soundGain = null, wakeLock = null, session = null, sequence = 0;
   let armed = false, loading = false, current = null, queue = [];
+  const accessCode = new URLSearchParams(window.location?.hash?.slice(1) || '').get('code') || '';
+  if (window.location?.hash) window.history.replaceState(null, '', window.location.pathname);
   function stopSound() {
     if (oscillator) { oscillator.onended = null; try { oscillator.stop(); } catch {} oscillator.disconnect(); oscillator = null; }
     soundGain?.disconnect(); soundGain = null;
@@ -87,7 +89,7 @@ export function createAlertReceiver({ document, window, fetch }) {
       if (!Audio) throw new Error('Este navegador no permite el sonido de la demo');
       audio ||= new Audio(); await audio.resume();
       if (audio.state !== 'running') throw new Error('No se pudo habilitar audio. Toca activar de nuevo.');
-      const response = await fetch('/112/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const response = await fetch('/112/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_code: accessCode }) });
       if (!response.ok) throw new Error('No se pudo vincular el receptor');
       const baseline = !armed; armed = true; document.body.dataset.armed = 'true';
       $('activate-alerts').textContent = 'Sonido habilitado';

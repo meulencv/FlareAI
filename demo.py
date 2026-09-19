@@ -34,9 +34,9 @@ PART_CHOICES = {
     'llegada': ('confirmada', 'en_camino'), 'incendio': ('confirmado', 'descartado', 'extinguido'),
     'es_alert': ('solicitado', 'no_solicitado'), 'refuerzos': ('solicitado', 'no_solicitado'),
     'helicoptero': ('solicitado', 'no_solicitado'), 'evolucion': ('estable', 'empeora', 'critico'),
-    'zona_urbana': ('si', 'no'),
+    'zona_urbana': ('si', 'no'), 'ambulancia': ('solicitado', 'no_solicitado'), 'policia': ('solicitado', 'no_solicitado'),
 }
-PART_FIELDS = (*PART_CHOICES, 'detalle', 'ubicacion')
+PART_FIELDS = (*PART_CHOICES, 'detalle', 'ubicacion', 'ambulancias', 'bomberos', 'helicopteros', 'policias', 'personas_asistidas')
 
 
 def normalized(text: str) -> str:
@@ -79,7 +79,9 @@ def extract_report(messages: list[dict], tool: str = 'actualizar_ficha', fields:
 
 def extract_part(messages: list[dict]) -> dict:
     values = extract_report(messages, 'actualizar_parte', PART_FIELDS)
-    return {key: value for key, value in values.items() if key not in PART_CHOICES or value in PART_CHOICES[key]}
+    counts = {'ambulancias', 'bomberos', 'helicopteros', 'policias', 'personas_asistidas'}
+    return {key: value for key, value in values.items() if (key not in PART_CHOICES or value in PART_CHOICES[key])
+            and (key not in counts or value.isascii() and value.isdigit() and 0 <= int(value) <= 100)}
 
 
 def canonical_address(text: str) -> str:
@@ -399,6 +401,8 @@ class DemoBridge:
         self.field_reports: dict[str, dict] = {}
         self.sensor_incidents: dict[str, dict] = {}
         self.db.start_demo(self.session_id)
+        self.cloud_polled_at = 0.0
+        self.cloud_error: str | None = None
 
     def open_browser(self) -> str:
         with self.lock:
@@ -526,7 +530,28 @@ class DemoBridge:
                 self.calls[run_id]['last_poll'] = time.monotonic()
                 self.polling.discard(run_id)
 
+    def discover_cloud_calls(self) -> None:
+        now = time.monotonic()
+        if getattr(self.db, 'dynamic_cloud', False) is not True or now - self.cloud_polled_at < 2:
+            return
+        self.cloud_polled_at = now
+        try:
+            rows = self.db.demo_calls(self.session_id)
+            with self.lock:
+                for row in rows:
+                    identifier = str(uuid.UUID(row['id']))
+                    if identifier not in self.calls:
+                        if len(self.calls) >= MAX_SESSION_CALLS:
+                            raise RuntimeError('Capacidad de sesión alcanzada')
+                        self.register(identifier, owner='cloud', role='citizen')
+                    if row.get('ended_at') and not self.calls[identifier].get('ended'):
+                        self.calls[identifier].update(ended=True, poll_until=now + 20)
+                self.cloud_error = None
+        except Exception:
+            self.cloud_error = 'No se pudieron sincronizar las llamadas de Twin; reintentando sin duplicarlas'
+
     def poll_once(self, wait: bool = True) -> None:
+        self.discover_cloud_calls()
         with self.lock:
             if self.closed.is_set():
                 return
@@ -569,7 +594,7 @@ class DemoBridge:
 
     def public_state(self) -> dict:
         with self.lock:
-            return {'session_id': self.session_id, 'version': self.version, 'latest_id': self.latest_id,
+            return {'session_id': self.session_id, 'version': self.version, 'latest_id': self.latest_id, 'cloud_error': self.cloud_error,
                     'field_reports': deepcopy(self.field_reports),
                     'last_update_role': max(self.calls.values(), key=lambda c: c.get('revision', 0), default={}).get('role'),
                     'calls': [{'id': key, 'role': c.get('role', 'citizen'), 'state': c['state'], 'location': (c['location'] or {}).get('label'), 'error': c.get('error'), 'ended': c.get('ended', False)}

@@ -49,6 +49,49 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Presentación: centro local y datos dinámicos Twin (19/09/2026, revisión final)
+
+- Decisión expresa: centro Python, atlas, grafos, cartografía y cachés siguen locales. **Twin solo para
+  datos dinámicos**: contactos, llamadas, partes, decisiones, asignaciones, informes y memorias. No migrar
+  el grafo de 48 MB ni el atlas estático. `twin.py::TwinDatabase` conserva los métodos estáticos de `Database`.
+- Modo nuevo: `app.py --presentation`; implica escenario Barcelona y Twin. `--allow-outbound` permite
+  llamadas telefónicas reales a contactos autorizados; sin él nunca llama. No activar en tests sin consentimiento.
+  123 retirado de HTTP/frontend; los partes llegan por workflow saliente vinculado a la llegada de bomberos.
+- `FLAREAI_TWIN_API_KEY` puede cargarse de `.env.presentation` (ignorado por Git). La clave ya instalada de
+  voz permite leer Twin pero no SQL; la facilitada para Twin sí. El agente no pudo escribir ese archivo por
+  protección de archivos ignorados: debe prepararlo el usuario. Nunca volcar claves ni teléfonos en docs.
+- `flare_contacts` tiene emisor, principal y respaldo con prioridad; valores solo en Twin, no en código.
+  `outbound.py` persiste el intento antes de llamar, prueba el respaldo tras fallo terminal y no repite
+  un inicio incierto. Llamada real autorizada: principal busy/SIP 480; respaldo completado en 71 s, run
+  `a3fc7f51-d439-40b2-a890-9b6d7299cd01`. Parte confirmado/crítico, sin peticiones de recursos registradas.
+- Director existente actualizado con autorización: workflow `01a0b948-d14b-7883-bb58-2c9a014f27f4`, versión
+  `01a0baae-e74e-7b09-8e65-a096fb403660`. Conserva hook literal. El director nuevo `01a0ba98-422f-7d5e-8bac-e27b846dafdc`
+  dio 401/502 al disparar y queda candidato a limpieza, no se usa. No re-publicar ante respuesta tardía:
+  verificar `is_live` por GET. Voz saliente: workflow `01a0ba93-b11b-7ed2-8e1d-2bc94b7eba1e`, live.
+- `operations.py`: 24 testimonios sintéticos cada 0,5–2 s, separados de la llamada real. El LLM recibe todos,
+  debe evaluarlos antes del primer despacho y no recibe las etiquetas de referencia. No hay planner ficticio
+  de respaldo. Solicitudes explícitas de bomberos se tramitan determinísticamente por mandato, con rutas,
+  disponibilidad y cumplimiento; no se confunden con decisiones LLM. Cierre espera parte y refuerzos en destino.
+- ES-Alert solo por solicitud explícita o evolución crítica comunicada en parte; urbano/humo no bastan.
+  Mantiene temporizador de servidor de 3 s y veto. Nunca envía Cell Broadcast ni moviliza servicios reales.
+- `reports.py`: informe, PDF stdlib y memorias breves en `FlareAI-Memoria/` (ignorado), enlazadas con Twin.
+  `static/operations.js` presenta testimonios y grafo. Impactos son supuestos no calibrados; superficie máxima
+  de escenario, no huella NASA. CO2 y precios 10/30/60 EUR/t son escenarios, no cotizaciones ni créditos emitidos.
+- 112 cloud: `happyrobot-112/cloud/route.js`, preparado para Next.js, con cookies firmadas, origen, código
+  privado de demo y reserva de llamada en Twin. `package_112.py` genera un ZIP sin secretos. Publicación aún
+  pendiente de acceso a HappyRobot Apps; no confundir paquete preparado con sitio desplegado. Los enlaces
+  cloud se leen de `flare_live_settings['phone-web'].url`; `FLAREAI_DEMO_ACCESS_CODE` se comparte en fragmento.
+- Twin devuelve int8 como strings y limita SELECT a 500 filas/1 MB. Lectura paginada rechaza truncamientos.
+  El endpoint rechazó WITH…INSERT; `flare_live_save_director_v1` guarda estado/eventos atómicamente. No fingir
+  transacciones persistentes por HTTP. Lease renovable para un único director, fallo explícito al perderlo.
+- Verificar: `python -m unittest test_twin test_operations test_presentation test_director test_scene test_demo -v`
+  y `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_presentation.py`.
+  `verify_presentation.py --cloud` consume un run LLM, sin teléfono; `--phone` llama realmente y exige permiso.
+  Run real `10f7c498-ee10-4bbc-a73e-f80ef0df9ade`: 24 testimonios evaluados, dos camiones, ambulancias y policía,
+  sin ES-Alert. Entrada fixture, no voz ciudadana humana. La verificación UI de presentación usa fixtures.
+- No borrar workflows antiguos sin lista/confirmación específica. Traffic Lab y prueba personal se mantienen
+  aparte. `verify_director_ui.py` conserva recorrido antiguo 123: usar `verify_presentation.py` para el nuevo flujo.
+
 ## Macro simulador de sala (revisión posterior del 19/09/2026)
 
 - Activar con `.venv/bin/python app.py --hackathon --host 127.0.0.1 --port 8090`. No recorta España.

@@ -1,5 +1,51 @@
 # Implementación de FlareAI
 
+## Presentación: revisión de arquitectura del 19/09/2026
+
+`--presentation` mantiene el centro local y activa la capa operativa de Twin. No es una migración del
+atlas ni de las carreteras: `TwinDatabase` hereda el almacenamiento estático/cachés de `Database` y solo
+sustituye sesiones, llamadas, estado del director, eventos, configuración operativa, contactos y documentos.
+Los teléfonos se leen de `flare_contacts` por rol/prioridad; no están en constantes del programa.
+
+`operations.py` prepara una oleada reproducible de 24 actores sintéticos, programados cada 0,5–2 s.
+La web muestra su procedencia; el evaluador no recibe etiquetas de referencia. La llamada original sigue
+siendo una fuente distinta. La primera evaluación debe cubrir todos los IDs antes del despacho. Las
+peticiones estructuradas de bomberos tienen ejecución obligatoria con reservas/rutas: son mandatos, no un
+planner determinista de respaldo ante una caída del LLM. Revisiones de la misma petición no duplican
+la cantidad, y un fallo al persistir revierte las asignaciones que aún no están confirmadas en Twin.
+
+Al llegar bomberos, `outbound.py` registra primero el intento y luego dispara su workflow. Los resultados
+busy/missed/voicemail/failed/canceled habilitan el contacto de respaldo. Un timeout de inicio es incierto:
+no se repite sin comprobarlo. `--allow-outbound` es imprescindible para llamadas físicas. El 123 ya no es
+un endpoint de llamada admitido. Los partes se vinculan internamente a incidente, coordenadas y unidad.
+
+ES-Alert queda limitado a solicitud explícita o evolución crítica comunicada por bomberos; una negación
+expresa o descarte/extinción lo impiden. La población y el humo urbano no bastan. Se conserva el veto de
+tres segundos en servidor y el receptor exclusivamente simulado. El ciclo espera el parte y los refuerzos
+antes de dar por concluida la operación, y conserva los traslados y regresos.
+
+Twin limita SELECT a 500 filas/1 MB, devuelve int8 como texto y no mantiene transacciones entre llamadas
+HTTP. El adaptador pagina y normaliza. La función versionada `flare_live_save_director_v1` guarda estado y
+eventos juntos. `flare_live_reserve_web_v1` serializa reservas de 112 y bloquea inicios duplicados. Un lease
+renovable evita dos escritores de sala. No existe fallback oculto a estado dinámico local.
+
+El marcador cloud se prepara como rutas Next.js y estáticos: `package_112.py` genera un ZIP sin secretos.
+`happyrobot-112/cloud/route.js` usa API keys solo en servidor, cookie firmada, origen y código privado de
+acceso en el fragmento del enlace. Un heartbeat de sala en Twin evita aceptar llamadas cuando el centro
+no está conectado. El centro incorpora esas llamadas desde Twin y devuelve allí sus fichas; no expone el
+puerto del dashboard. **Publicación en HappyRobot Apps aún pendiente de acceso/configuración del usuario.**
+
+`reports.py` genera PDF sin dependencia nueva, Markdown local y memorias breves enlazadas. `/api/brain`
+y `/api/reports/<id>.pdf` sirven la vista local. La superficie es la máxima elipse de simulación; el
+contrafactual conserva condiciones/horizonte. Biomasa, fracción quemada, vegetación y riesgo mortal son
+supuestos ficticios explícitos. Precios del carbono 10/30/60 EUR/t son escenarios, no mercado observado.
+Créditos emitidos = 0; cualquier valor comercial requiere metodología, adicionalidad y verificación.
+Los aprendizajes proceden de hechos de la operación, son opcionales y no se elevan a protocolos reales.
+
+Validación nueva: `verify_presentation.py` (fixtures, rutas/UI reales); `--cloud` usa el director real sin
+llamar; `--phone` llama a teléfonos reales y exige permiso. La documentación posterior que describe 123
+refleja el modo anterior y no sustituye estas reglas para la presentación.
+
 ## 1. Flujo de datos
 
 ```text

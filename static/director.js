@@ -2,6 +2,7 @@ import { selectionBounds } from "./context.js";
 import { imagePoints } from "./simulation.js";
 import { safeLink } from "./infrastructure.js";
 import { createSceneView, priorityLine } from './scene.js';
+import { createOperationView } from './operations.js';
 
 const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 
@@ -96,7 +97,7 @@ export function directorWarning(status) {
     error: 'Director temporalmente no disponible · reintento automático. Sin nuevos despachos hasta recuperar la conexión.',
     auth_required: 'Director sin autenticación · revisa la conexión con HappyRobot. No se están generando nuevos despachos.',
     unconfigured: 'Director no configurado · las llamadas no pueden movilizar recursos.',
-    standby: 'Director detenido en esta sesión · otro servidor tiene el control. Usa una sola instancia.',
+    standby: 'Director esperando el control de la sala · otro servidor o un reinicio reciente conserva el turno. Reintento automático.',
     disconnected: 'Sin conexión con el servidor · el mapa conserva el último estado recibido.',
   }[status] || '';
 }
@@ -216,6 +217,7 @@ const AMBULANCE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7h13l
 const HELICOPTER = '<svg viewBox="0 0 32 28" aria-hidden="true"><path class="rotor" d="M3 4h26"/><path d="M16 4v5M12 9h8l7 7v4H9l-5-7H1M9 16h17M12 20v4m10-4v4M8 25h19M18 10v6"/></svg>';
 
 export function createDirectorView({ map, L, document, fetch, focus, clearContext, findIncident, getData, getCameras, openCamera, beforeMove }) {
+  const operationView = createOperationView({ document, fetch });
   const $ = id => document.getElementById(id);
   const routes = L.layerGroup().addTo(map), stations = L.layerGroup().addTo(map), alerts = L.layerGroup().addTo(map);
   const vehicles = new Map();
@@ -374,7 +376,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       queue.push(...freshEvents(next.events || [], sequence, (Date.now() + offset) / 1000));
       queue = queue.slice(-16);
       sequence = next.sequence || 0; state = next; lastContact = Date.now();
-      renderAssignments(); renderAlerts(); sceneView.update(next);
+      renderAssignments(); renderAlerts(); sceneView.update(next); operationView.update(next);
       $('director-warning').textContent = directorWarning(next.status);
       $('director-warning').hidden = !directorWarning(next.status);
     } catch {

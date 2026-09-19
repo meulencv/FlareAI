@@ -67,12 +67,7 @@
     <section id="dialer-screen" class="screen dialer-screen" aria-labelledby="dialer-title">
       <h1 id="dialer-title" class="sr-only">Marcador telefónico</h1>
 
-      <nav id="demo-numbers" class="demo-numbers" hidden aria-label="Números de simulación"><button data-number="112">112 · Ciudadano</button><button data-number="123">123 · Bomberos</button></nav>
-      <div id="firefighter-selection" class="firefighter-selection" hidden>
-        <label>Incidente del parte<select id="incident-choice"><option value="">Selecciona un aviso activo</option></select></label>
-        <label>Unidad que informa<select id="resource-choice"><option value="">Parte general, sin unidad</option></select></label>
-        <small>123 es un número ficticio de esta demo, no un teléfono real.</small>
-      </div>
+      <nav id="demo-numbers" class="demo-numbers" hidden aria-label="Número de simulación"><button data-number="112">112 · Ciudadano</button></nav>
       <div class="number-area">
         <p id="dial-number" class="dial-number" aria-live="polite" aria-label="Número marcado">
           <span class="placeholder">Introduce un número</span>
@@ -178,7 +173,6 @@
       </dl>
 
       <p id="location-note" class="privacy-note" aria-live="polite"></p>
-      <dl id="part-details" class="brief-list" aria-live="polite" hidden></dl>
       <p class="privacy-note">Demo: la ficha básica puede actualizar el mapa local. La ubicación se consulta en OpenStreetMap/IGN; no indiques datos personales reales. No se guarda audio ni transcripción local.</p>
     </section>
   </main>
