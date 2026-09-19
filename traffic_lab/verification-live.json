@@ -1,0 +1,457 @@
+{
+  "verified_at": "2026-09-19T09:27:38.442440+00:00",
+  "http_checks": "passed",
+  "observations": [
+    {
+      "schema_version": "1.0",
+      "analyzed_at": "2026-09-19T09:27:39.627962+00:00",
+      "source": {
+        "camera_id": "08301",
+        "name": "M-30 · enlace M-607",
+        "url": "https://informo.madrid.es/cameras/Camara08301.jpg",
+        "mode": "live",
+        "downloaded_at": "2026-09-19T09:27:39.205267+00:00",
+        "source_updated_at": "2026-09-19T09:24:23+00:00",
+        "sha256": "4d8430456d66b940050be89c272ea239a94b21c4c45602a294cd57756fbc096e",
+        "roi_reference": "Encuadre del 19-09-2026; revisar si la cámara gira o cambia de zoom."
+      },
+      "freshness": "recent",
+      "quality": {
+        "status": "basic_checks_passed",
+        "issues": [],
+        "brightness": 121.9,
+        "contrast": 60.4,
+        "sharpness": 3477.5,
+        "width": 1280,
+        "height": 720
+      },
+      "zones": [
+        {
+          "id": "08301-left",
+          "name": "Calzada izquierda en imagen",
+          "polygon": [
+            [
+              0.0,
+              0.8
+            ],
+            [
+              0.4,
+              0.565
+            ],
+            [
+              0.65,
+              0.485
+            ],
+            [
+              0.36,
+              0.77
+            ],
+            [
+              0.08,
+              0.98
+            ],
+            [
+              0.0,
+              0.98
+            ]
+          ],
+          "vehicle_count": 3,
+          "box_coverage_pct": 1.9,
+          "density": "low",
+          "mean_detection_score": 0.495,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": [
+            {
+              "box": [
+                277,
+                498,
+                318,
+                522
+              ],
+              "label": "car",
+              "score": 0.648
+            },
+            {
+              "box": [
+                331,
+                474,
+                354,
+                494
+              ],
+              "label": "car",
+              "score": 0.506
+            },
+            {
+              "box": [
+                508,
+                479,
+                526,
+                498
+              ],
+              "label": "car",
+              "score": 0.332
+            }
+          ]
+        },
+        {
+          "id": "08301-centre",
+          "name": "Calzada central en imagen",
+          "polygon": [
+            [
+              0.15,
+              0.98
+            ],
+            [
+              0.52,
+              0.59
+            ],
+            [
+              0.62,
+              0.54
+            ],
+            [
+              0.5,
+              0.98
+            ]
+          ],
+          "vehicle_count": 0,
+          "box_coverage_pct": 0.0,
+          "density": "low",
+          "mean_detection_score": null,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": []
+        }
+      ],
+      "usable_for_route_review": false,
+      "requires_human_review": true,
+      "reason": "Solo evidencia visual; sin validación de encuadre, aforo, cierres y cobertura del tramo.",
+      "model": {
+        "name": "YOLOv8n COCO / ONNX",
+        "sha256": "65158dad735be799c2466fa15e260c09558080bd530b42a8d0c3d1b419afd8b5",
+        "license": "AGPL-3.0",
+        "detection_threshold": 0.3,
+        "nms_iou": 0.45,
+        "density_thresholds": [
+          0.12,
+          0.28
+        ],
+        "score_is_calibrated_probability": false
+      },
+      "warnings": [
+        "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+        "ROI manual y umbrales sin calibración estadística; revisar encuadre, oclusiones y detecciones."
+      ],
+      "elapsed_ms": 918
+    },
+    {
+      "schema_version": "1.0",
+      "analyzed_at": "2026-09-19T09:27:43.855262+00:00",
+      "source": {
+        "camera_id": "06303",
+        "name": "Plaza de Castilla · norte",
+        "url": "https://informo.madrid.es/cameras/Camara06303.jpg",
+        "mode": "live",
+        "downloaded_at": "2026-09-19T09:27:43.676445+00:00",
+        "source_updated_at": "2026-09-19T09:24:19+00:00",
+        "sha256": "3f413d10210815597fdc9c9cc7f073687b200b6bb46930ff123358d5d4e79c89",
+        "roi_reference": "Encuadre del 19-09-2026; sombras y árboles ocultan parte de la vía."
+      },
+      "freshness": "recent",
+      "quality": {
+        "status": "basic_checks_passed",
+        "issues": [],
+        "brightness": 97.5,
+        "contrast": 71.4,
+        "sharpness": 2996.8,
+        "width": 1280,
+        "height": 720
+      },
+      "zones": [
+        {
+          "id": "06303-upper",
+          "name": "Calzada superior en imagen",
+          "polygon": [
+            [
+              0.51,
+              0.1
+            ],
+            [
+              0.62,
+              0.17
+            ],
+            [
+              0.99,
+              0.49
+            ],
+            [
+              0.99,
+              0.59
+            ],
+            [
+              0.7,
+              0.6
+            ],
+            [
+              0.56,
+              0.31
+            ]
+          ],
+          "vehicle_count": 1,
+          "box_coverage_pct": 8.03,
+          "density": "low",
+          "mean_detection_score": 0.741,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": [
+            {
+              "box": [
+                1046,
+                293,
+                1152,
+                370
+              ],
+              "label": "car",
+              "score": 0.741
+            }
+          ]
+        },
+        {
+          "id": "06303-lower",
+          "name": "Calzada inferior en imagen",
+          "polygon": [
+            [
+              0.3,
+              0.38
+            ],
+            [
+              0.46,
+              0.36
+            ],
+            [
+              0.66,
+              0.67
+            ],
+            [
+              0.61,
+              0.75
+            ],
+            [
+              0.47,
+              0.7
+            ]
+          ],
+          "vehicle_count": 0,
+          "box_coverage_pct": 0.0,
+          "density": "low",
+          "mean_detection_score": null,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": []
+        }
+      ],
+      "usable_for_route_review": false,
+      "requires_human_review": true,
+      "reason": "Solo evidencia visual; sin validación de encuadre, aforo, cierres y cobertura del tramo.",
+      "model": {
+        "name": "YOLOv8n COCO / ONNX",
+        "sha256": "65158dad735be799c2466fa15e260c09558080bd530b42a8d0c3d1b419afd8b5",
+        "license": "AGPL-3.0",
+        "detection_threshold": 0.3,
+        "nms_iou": 0.45,
+        "density_thresholds": [
+          0.12,
+          0.28
+        ],
+        "score_is_calibrated_probability": false
+      },
+      "warnings": [
+        "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+        "ROI manual y umbrales sin calibración estadística; revisar encuadre, oclusiones y detecciones."
+      ],
+      "elapsed_ms": 1077
+    },
+    {
+      "schema_version": "1.0",
+      "analyzed_at": "2026-09-19T09:27:48.339869+00:00",
+      "source": {
+        "camera_id": "04301",
+        "name": "M-30 · O'Donnell · control de fallo",
+        "url": "https://informo.madrid.es/cameras/Camara04301.jpg",
+        "mode": "live",
+        "downloaded_at": "2026-09-19T09:27:48.228303+00:00",
+        "source_updated_at": "2026-09-09T07:48:15+00:00",
+        "sha256": "03a52a43b8c3b2fcc4e1cae231ba3c2a1d5daa269b7c0900745c8043c8245a30",
+        "roi_reference": "Sin zona calibrada: se observó un cartel de vídeo no disponible."
+      },
+      "freshness": "stale",
+      "quality": {
+        "status": "unusable",
+        "issues": [
+          "Resolución insuficiente o posible cartel de sustitución"
+        ],
+        "brightness": 91.5,
+        "contrast": 42.5,
+        "sharpness": 2898.3,
+        "width": 298,
+        "height": 217
+      },
+      "zones": [],
+      "usable_for_route_review": false,
+      "requires_human_review": true,
+      "reason": "Solo evidencia visual; sin validación de encuadre, aforo, cierres y cobertura del tramo.",
+      "model": {
+        "name": "YOLOv8n COCO / ONNX",
+        "sha256": "65158dad735be799c2466fa15e260c09558080bd530b42a8d0c3d1b419afd8b5",
+        "license": "AGPL-3.0",
+        "detection_threshold": 0.3,
+        "nms_iou": 0.45,
+        "density_thresholds": [
+          0.12,
+          0.28
+        ],
+        "score_is_calibrated_probability": false
+      },
+      "warnings": [
+        "Resolución insuficiente o posible cartel de sustitución",
+        "Sin zona de carretera configurada: no se clasifica tráfico",
+        "Fecha de actualización ausente, inválida o antigua",
+        "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+        "ROI manual y umbrales sin calibración estadística; revisar encuadre, oclusiones y detecciones."
+      ],
+      "elapsed_ms": 1
+    }
+  ],
+  "cloud_runs": [
+    {
+      "run_id": "b85df4a4-1ee8-4356-85f9-baeddc326f5c",
+      "result": {
+        "schema_version": "1.0",
+        "event": "traffic.observation.reviewed",
+        "camera_id": "08301",
+        "density": "low",
+        "current_visual_evidence": true,
+        "review_priority": "verify_evidence",
+        "operator_summary": "La densidad visible es baja: se detectan 3 vehículos en 08301-left y 0 en 08301-centre. Los incidentes no se evalúan; no hay problemas de calidad indicados, pero se requiere revisión humana.",
+        "operator_check": "¿Puedes revisar el encuadre y confirmar si hay cierres o aforos relevantes?",
+        "ai_text_is_advisory": true,
+        "evidence": {
+          "camera_id": "08301",
+          "mode": "live",
+          "current_visual_evidence": true,
+          "density": "low",
+          "zones": [
+            {
+              "zone_id": "08301-left",
+              "vehicles": 3,
+              "box_coverage_pct": 1.9,
+              "density": "low"
+            },
+            {
+              "zone_id": "08301-centre",
+              "vehicles": 0,
+              "box_coverage_pct": 0.0,
+              "density": "low"
+            }
+          ],
+          "quality_issues": [],
+          "incidents_status": "not_assessed",
+          "speed_kmh": null,
+          "road_blocked": null,
+          "requires_human_review": true
+        },
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "usable_for_automatic_routing": false,
+        "requires_human_review": true,
+        "speed_kmh": null,
+        "road_blocked": null
+      }
+    },
+    {
+      "run_id": "d0f9706d-ef30-4f71-9905-601f77f2e861",
+      "result": {
+        "schema_version": "1.0",
+        "event": "traffic.observation.reviewed",
+        "camera_id": "06303",
+        "density": "low",
+        "current_visual_evidence": true,
+        "review_priority": "verify_evidence",
+        "operator_summary": "La densidad visible es baja: la zona 06303-upper muestra 1 vehículo y la 06303-lower, 0; la cobertura estimada es del 8,03 % y 0 %, respectivamente. Los incidentes no se evalúan con estos datos, y no se puede determinar velocidad, bloqueo ni vía libre.",
+        "operator_check": "¿Puedes revisar el encuadre y confirmar si hay cierres o aforos que deban verificarse?",
+        "ai_text_is_advisory": true,
+        "evidence": {
+          "camera_id": "06303",
+          "mode": "live",
+          "current_visual_evidence": true,
+          "density": "low",
+          "zones": [
+            {
+              "zone_id": "06303-upper",
+              "vehicles": 1,
+              "box_coverage_pct": 8.03,
+              "density": "low"
+            },
+            {
+              "zone_id": "06303-lower",
+              "vehicles": 0,
+              "box_coverage_pct": 0.0,
+              "density": "low"
+            }
+          ],
+          "quality_issues": [],
+          "incidents_status": "not_assessed",
+          "speed_kmh": null,
+          "road_blocked": null,
+          "requires_human_review": true
+        },
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "usable_for_automatic_routing": false,
+        "requires_human_review": true,
+        "speed_kmh": null,
+        "road_blocked": null
+      }
+    },
+    {
+      "run_id": "c4fb24e8-2700-4d8b-acba-825435d91429",
+      "result": {
+        "schema_version": "1.0",
+        "event": "traffic.observation.reviewed",
+        "camera_id": "04301",
+        "density": "unknown",
+        "current_visual_evidence": false,
+        "review_priority": "verify_evidence",
+        "operator_summary": "Muestra no actual: no hay evidencia suficiente para evaluar la densidad por zonas ni vehículos detectados. La evidencia es histórica, antigua o sin fecha verificable y no supera los controles básicos de calidad; los incidentes no se evalúan.",
+        "operator_check": "¿Puede revisar el encuadre actual y confirmar posibles cierres o aforos?",
+        "ai_text_is_advisory": true,
+        "evidence": {
+          "camera_id": "04301",
+          "mode": "live",
+          "current_visual_evidence": false,
+          "density": "unknown",
+          "zones": [],
+          "quality_issues": [
+            "Evidencia histórica, antigua o sin fecha verificable",
+            "La imagen no supera los controles básicos de calidad"
+          ],
+          "incidents_status": "not_assessed",
+          "speed_kmh": null,
+          "road_blocked": null,
+          "requires_human_review": true
+        },
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "usable_for_automatic_routing": false,
+        "requires_human_review": true,
+        "speed_kmh": null,
+        "road_blocked": null
+      }
+    }
+  ]
+}
