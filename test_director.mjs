@@ -2,7 +2,66 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { routePosition, freshEvents, cinematicFrame, nearbyEvidence, patrolTargets, createCameraTour, createEvidenceView } from "./static/director.js";
 
+import { notificationBatch } from './happyrobot-112/static/alerts.js';
+import { preferredSpeaker, createSpeakerOutput } from './happyrobot-112/static/audio.js';
+
+test('manos libres elige altavoz explícito, nunca inventa que el dispositivo default sea altavoz', () => {
+  const device = (id, label) => ({ kind: 'audiooutput', deviceId: id, label });
+  assert.equal(preferredSpeaker([device('default', 'Default - Speaker')]), null);
+  assert.equal(preferredSpeaker([device('a', 'Headphones'), device('b', 'Earpiece Receiver')]), null);
+  const speaker = device('speaker', 'Altavoz integrado');
+  assert.equal(preferredSpeaker([device('default', 'Default - Speaker'), speaker]), speaker);
+  assert.equal(preferredSpeaker([{ ...speaker, kind: 'audioinput' }]), null);
+});
+
+test('la voz usa una sola salida mezclada, selecciona altavoz y libera audio sin tocar el micrófono', async () => {
+  const elements = [], statuses = [];
+  let connections = 0, disconnected = 0, closed = 0, stopped = 0;
+  function element() {
+    return { dataset: {}, muted: false, setAttribute() {}, play: async () => {}, pause() {},
+      setSinkId: async function(id) { this.sinkId = id; }, remove() { this.removed = true; } };
+  }
+  const document = { createElement: element, body: { append: node => elements.push(node) } };
+  const window = {
+    AudioContext: class {
+      state = 'suspended';
+      async resume() { this.state = 'running'; }
+      createMediaStreamDestination() { return { stream: { getTracks: () => [{ stop: () => stopped++ }] } }; }
+      createMediaStreamSource() { return { connect: () => connections++, disconnect: () => disconnected++ }; }
+      async close() { closed++; }
+    },
+    MediaStream: class {},
+    navigator: { mediaDevices: { enumerateDevices: async () => [{ kind: 'audiooutput', deviceId: 'speaker', label: 'Altavoz integrado' }],
+      getUserMedia() { throw new Error('No debe tocar la captura del micrófono'); } } },
+  };
+  const output = createSpeakerOutput({ window, document, onStatus: (...args) => statuses.push(args), onDevices() {} });
+  await output.prepare();
+  const native = element(), track = { mediaStreamTrack: {}, attach: () => native, detach() {} };
+  output.attach(track); await new Promise(resolve => setTimeout(resolve, 0));
+  output.attach(track);
+  assert.equal(connections, 1);
+  assert.equal(native.muted, true, 'sin doble reproducción nativa y mezcla');
+  await output.activate();
+  assert.equal(elements[0].sinkId, 'speaker');
+  assert.equal(statuses.at(-1)[1], true);
+  output.close();
+  assert.equal(closed, 1); assert.equal(stopped, 1); assert.equal(disconnected, 1);
+  assert.ok(elements.every(e => e.removed));
+});
+
 const point = (x, y) => ({ x, y });
+
+test('el receptor no reproduce alertas antiguas, duplicadas, caducadas ni de otra sesión', () => {
+  const payload = { session_id: 'a', sequence: 3, events: [
+    { sequence: 1, kind: 'alert', expires_at: 110 },
+    { sequence: 2, kind: 'alert', expires_at: 90 },
+    { sequence: 3, kind: 'cancel', expires_at: 120 },
+  ] };
+  assert.deepEqual(notificationBatch(payload, null, 0, 100).events, []);
+  assert.deepEqual(notificationBatch(payload, 'a', 1, 100).events, [payload.events[2]]);
+  assert.deepEqual(notificationBatch(payload, 'a', 3, 100).events, []);
+  assert.deepEqual(notificationBatch(payload, 'previous', 0, 100).events, []);
+});
 
 test("el viaje aleja, recorre y acerca de forma continua sin saltar al destino", () => {
   const start = { center: point(0, 0), zoom: 13 }, end = { center: point(100, 50), zoom: 12 };

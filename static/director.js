@@ -63,7 +63,7 @@ export function nearbyEvidence(incident, incidents, cameras) {
 }
 
 export function patrolTargets(incidents, assignments) {
-  return [...incidents.filter(i => i.demo_report).map(i => ({ key: `incident:${i.id}`, incident: i })),
+  return [...incidents.filter(i => i.demo_report && !i.demo_report.cancelled).map(i => ({ key: `incident:${i.id}`, incident: i })),
     ...Object.values(assignments).filter(a => ["enroute", "returning"].includes(a.status))
       .map(a => ({ key: `vehicle:${a.resource.id}`, assignment: a }))];
 }
@@ -193,6 +193,8 @@ export function createEvidenceView({ document, fetch, getData, getCameras, openC
 
 const VEHICLE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h12v12H2zM14 11h4l4 4v3h-8M5 3h7M5 9h6m-6 3h6"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>';
 
+const HELICOPTER = '<svg viewBox="0 0 32 28" aria-hidden="true"><path class="rotor" d="M3 4h26"/><path d="M16 4v5M12 9h8l7 7v4H9l-5-7H1M9 16h17M12 20v4m10-4v4M8 25h19M18 10v6"/></svg>';
+
 export function createDirectorView({ map, L, document, fetch, focus, clearContext, findIncident, getData, getCameras, openCamera, beforeMove }) {
   const $ = id => document.getElementById(id);
   const routes = L.layerGroup().addTo(map), stations = L.layerGroup().addTo(map), alerts = L.layerGroup().addTo(map);
@@ -228,7 +230,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     else {
       const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((Date.now() + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
       const [lon, lat] = routePosition(assignment.route, progress);
-      cameraTour.go([lat, lon], 14, reduced.matches);
+      cameraTour.go([lat, lon], assignment.resource.kind === 'helicopter' ? 12 : 14, reduced.matches);
     }
     lastTarget = `vehicle:${assignment.resource.id}`;
   }
@@ -243,7 +245,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     const incident = findIncident(event.incident_id);
     if (incident || event.resource_id) armed = true;
     if (!following || paused) return;
-    if (incident && ["report", "focus", "context", "watch", "arrived"].includes(event.kind)) visit(incident, ["report", "context", "watch"].includes(event.kind));
+    if (incident && ["report", "focus", "context", "watch", "arrived", "field_report"].includes(event.kind)) visit(incident, ["report", "context", "watch"].includes(event.kind));
     if (event.resource_id && ["dispatch", "reassign", "return", "vehicle"].includes(event.kind)) {
       const assignment = state?.assignments?.[event.resource_id];
       if (assignment) followVehicle(assignment, event.kind !== "vehicle");
@@ -273,19 +275,19 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     for (const [id, vehicle] of vehicles) if (!active.has(id)) { vehicle.marker.remove(); vehicles.delete(id); }
     const bases = new Map();
     for (const assignment of assignments) {
-      const resource = assignment.resource, police = resource.kind === "police";
+      const resource = assignment.resource, police = resource.kind === "police", helicopter = resource.kind === 'helicopter';
       const route = L.polyline(assignment.route.coordinates.map(([lon, lat]) => [lat, lon]), {
-        pane: "response-routes", color: police ? "#789bc5" : "#e88578", weight: 3, opacity: assignment.status === "onscene" ? .25 : .75, interactive: false,
-        dashArray: assignment.status === "returning" ? "5 7" : null,
+        pane: "response-routes", color: helicopter ? "#7b78c9" : police ? "#789bc5" : "#e88578", weight: 3, opacity: assignment.status === "onscene" ? .25 : .75, interactive: false,
+        dashArray: helicopter ? "3 9" : assignment.status === "returning" ? "5 7" : null,
       }).addTo(routes);
       const base = bases.get(resource.station_id) || { resource, count: 0 }; base.count++; bases.set(resource.station_id, base);
       if (!vehicles.has(resource.id)) {
         const marker = L.marker([resource.lat, resource.lon], { pane: "response-vehicles", title: resource.name,
-          icon: L.divIcon({ className: `response-vehicle ${police ? "police" : "fire-engine"}`, html: VEHICLE, iconSize: [30, 28], iconAnchor: [15, 14] }) }).addTo(map);
+          icon: L.divIcon({ className: `response-vehicle ${helicopter ? "helicopter" : police ? "police" : "fire-engine"}`, html: helicopter ? HELICOPTER : VEHICLE, iconSize: [30, 28], iconAnchor: [15, 14] }) }).addTo(map);
         vehicles.set(resource.id, { marker, assignment, route });
       } else Object.assign(vehicles.get(resource.id), { assignment, route });
       const label = document.createElement("span");
-      label.textContent = `${police ? "Patrulla" : "Camión"} · ${resource.name} · ${assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km · tiempo visual acelerado`;
+      label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : "Camión"} · ${resource.name} · ${assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km · tiempo visual acelerado`;
       vehicles.get(resource.id).marker.unbindTooltip().bindTooltip(label);
     }
     for (const { resource, count } of bases.values()) {
@@ -302,7 +304,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       const incident = findIncident(id);
       if (!incident || alert.expires_at * 1000 < Date.now() + offset) continue;
       const circle = L.circle([incident.lat, incident.lon], { pane: "response-routes", radius: 1800, color: "#a99bcf", weight: 1.5, dashArray: "4 8", fillOpacity: .035 }).addTo(alerts);
-      const text = document.createElement("span"); text.textContent = `Vista previa ES-Alert · zona ilustrativa, no perímetro de evacuación. ${alert.message}`;
+      const text = document.createElement("span"); text.textContent = `${alert.mode === 'mobile_simulation' ? 'ES-Alert enviado al simulador móvil' : 'Vista previa ES-Alert'} · zona ilustrativa, no perímetro de evacuación. ${alert.message}`;
       circle.bindTooltip(text);
     }
   }
@@ -314,7 +316,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     if (current && now > shownUntil) { current = null; $("agent-card").hidden = true; }
     if (!paused && !current && queue.length) {
       const event = queue[0];
-      if (!event.incident_id || findIncident(event.incident_id)) show(queue.shift());
+      if (!event.incident_id || findIncident(event.incident_id) || ['cancelled', 'field_report', 'blocked'].includes(event.kind)) show(queue.shift());
       else if (now - (event.queuedAt || event.at * 1000 - offset || now) > 15000) queue.shift();
     }
     if (connected && following && armed && !paused && !current && !queue.length && !cameraTour.moving() && now > nextVisit) patrol();
@@ -369,7 +371,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       queue.unshift({ kind: "report", message: `Nuevo aviso de incendio · ${incident.demo_report.location.label}`, reason: "Ubicación comunicada en la llamada · consultando evidencias sin descartar el aviso", incident_id: incident.id, queuedAt: Date.now() });
     },
     call(call) {
-      if (!call || call.state === "located") return;
+      if (!call || call.state === "located" || call.state === 'field_report') return;
       queue.push({ kind: call.error ? "error" : "call", message: call.error || (call.state === "needs_location" ? "Precisando la ubicación del aviso" : call.state === "not_fire" ? "Aviso revisado · incendio no confirmado" : call.ended ? "Llamada finalizada" : "Llamada entrante · recogiendo datos"), reason: "" });
     },
     setPaused(value) { paused = value; if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },

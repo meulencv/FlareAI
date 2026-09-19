@@ -83,6 +83,13 @@ class Database:
             row = conn.execute("SELECT data FROM flare_settings WHERE id='director-workflow'").fetchone()
             return row['data'] if row else {}
 
+    def responder_setting(self, value: dict | None = None) -> dict:
+        with self.connect() as conn:
+            if value is not None:
+                conn.execute("INSERT INTO flare_settings VALUES ('firefighter-workflow',%s) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data", (Jsonb(value),))
+            row = conn.execute("SELECT data FROM flare_settings WHERE id='firefighter-workflow'").fetchone()
+            return row['data'] if row else {}
+
     def save_director(self, session_id: str, state: dict) -> None:
         with self.connect() as conn:
             conn.execute("INSERT INTO flare_director_state(session_id,data) VALUES (%s,%s) ON CONFLICT(session_id) DO UPDATE SET data=EXCLUDED.data,updated_at=(now() AT TIME ZONE 'UTC')", (session_id, Jsonb(state)))

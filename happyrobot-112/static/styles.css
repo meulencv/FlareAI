@@ -50,6 +50,22 @@ button {
 
 button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 [hidden] { display: none !important; }
+.demo-numbers { flex: none; display: flex; gap: 8px; justify-content: center; padding: 0 12px; }
+.demo-numbers button { background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px; font-size: 12px; }
+.firefighter-selection { flex: none; padding: 8px 16px; display: grid; gap: 7px; }
+.firefighter-selection label { display: grid; gap: 3px; color: var(--muted); font-size: 10px; }
+.firefighter-selection select { width: 100%; min-width: 0; padding: 7px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--text); font: inherit; font-size: 12px; }
+.firefighter-selection small { color: var(--muted); font-size: 9px; }
+body.firefighter-mode { --key-size: clamp(34px, min(13vw, 6dvh), 52px); }
+.firefighter-mode .number-area { padding-top: 4px; padding-bottom: 4px; }
+.firefighter-mode .dial-number { font-size: 28px; }
+#dialer-screen { overflow-y: auto; justify-content: flex-start; }
+#dialer-screen .number-area { min-height: 84px; flex-shrink: 0; }
+#alert-receiver-link { display: block; color: var(--accent); margin-top: 6px; }
+#part-details dd { font-size: 13px; }
+.audio-routing { padding: 8px 18px 0; text-align: center; }
+#audio-note { color: var(--muted); font-size: 11px; line-height: 1.4; margin: 6px 0; }
+#audio-output { max-width: 100%; padding: 6px; border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 8px; font: inherit; font-size: 12px; }
 
 .icon-defs { position: absolute; width: 0; height: 0; }
 svg { fill: currentColor; }

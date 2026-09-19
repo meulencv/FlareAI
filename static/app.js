@@ -93,7 +93,7 @@ function renderList() {
     const button = document.createElement("button");
     button.className = `incident ${i.id === selected?.id ? "selected" : ""} ${confirmedFire(i) ? "confirmed" : "unconfirmed"}`;
     button.setAttribute("aria-pressed", String(i.id === selected?.id));
-    const subtitle = i.demo_report ? "Confirmado por llamada · demo" : i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · ${confirmedFire(i) ? "confirmado" : "sin confirmar"}`;
+    const subtitle = i.demo_report?.cancelled ? 'Aviso retirado por bomberos · demo' : i.demo_report ? (i.responder_report?.fields.incendio === 'confirmado' ? 'Confirmado por bomberos · demo' : 'Confirmado por llamada · demo') : i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · ${confirmedFire(i) ? "confirmado" : "sin confirmar"}`;
     const observations = i.source_kind === "call" ? "Aviso webcall" : `${i.observations} detecciones`;
     button.innerHTML = `<span class="incident-dot ${i.observations > 0 && i.low_confidence === i.observations ? "low" : ""}"></span><span class="incident-body"><span class="incident-title"><strong>${escapeHtml(i.name)}</strong><span>${age(i.last_seen)}</span></span><span class="incident-subtitle">${escapeHtml(subtitle)}</span><span class="incident-meta"><span>${observations}</span><span>${svg("wind")} ${number(i.weather.wind_speed_kmh)} km/h</span></span></span>${selected?.id === i.id ? '<span class="incident-arrow">↗</span>' : ""}`;
     button.addEventListener("click", () => selectIncident(i, true));
@@ -134,7 +134,7 @@ function selectIncident(incident, focus = false, details = false) {
   $("detail-location").textContent = `${incident.province} · ${incident.lat.toFixed(3)}° N, ${Math.abs(incident.lon).toFixed(3)}° ${incident.lon < 0 ? "O" : "E"}`;
   const confirmed = confirmedFire(incident);
   $("detection-tag").classList.toggle("unconfirmed", !confirmed);
-  $("detection-tag").textContent = incident.demo_report ? "Confirmado por llamada · demo" : confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
+  $("detection-tag").textContent = incident.demo_report?.cancelled ? 'Aviso retirado por bomberos · demo' : incident.demo_report ? (incident.responder_report?.fields.incendio === 'confirmado' ? 'Confirmado por bomberos · demo' : 'Confirmado por llamada · demo') : confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
   $("seen-age").textContent = `${incident.source_kind === "call" ? "Aviso recibido" : "Última detección"} ${age(incident.last_seen)}`;
   $("footprint-area").textContent = number(incident.footprint_ha);
   const w = incident.weather, to = destination(w.wind_from_degrees);
@@ -234,7 +234,7 @@ async function refresh() {
     if (data.demo?.session_id !== demoSession) { demoVersion = 0; demoSession = data.demo?.session_id; }
     const reported = data.demo && data.demo.version > demoVersion ? data.incidents.find(i => i.id === data.demo.latest_id) : null;
     demoVersion = data.demo?.version || 0;
-    const focusReport = previousData && reported && (!selected?.demo_report || selected.id !== reported.id || JSON.stringify(reported.demo_report?.location) !== JSON.stringify(selected.demo_report?.location));
+    const focusReport = previousData && reported && data.demo?.last_update_role !== 'firefighter' && (!selected?.demo_report || selected.id !== reported.id || JSON.stringify(reported.demo_report?.location) !== JSON.stringify(selected.demo_report?.location));
     const latestCall = data.demo?.calls.at(-1);
     if (previousData && JSON.stringify(latestCall) !== JSON.stringify(previousData.demo?.calls.at(-1))) directorView.call(latestCall);
     $("demo-notice").hidden = !latestCall;
@@ -412,7 +412,11 @@ $("enlarge-image").onclick = () => {
 };
 fetch('/api/demo/setup').then(response => response.ok ? response.json() : null).then(setup => {
   $("demo-link").hidden = !setup?.ready;
-  if (setup?.public_url) $("demo-link").href = `${setup.public_url}/112/`;
+  $("alert-demo-link").hidden = !setup?.ready;
+  if (setup?.public_url) {
+    $("demo-link").href = `${setup.public_url}/112/`;
+    $("alert-demo-link").href = `${setup.public_url}/112/alerts/`;
+  }
 }).catch(() => { $("demo-link").hidden = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden) stopPlay(); });
 start().catch(error => { $("error-banner").hidden = false; $("error-banner").textContent = error.message; });

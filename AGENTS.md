@@ -75,7 +75,8 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   Máximo 60 km entre extremos, descarga 24 MB, caché siete días. Trayectos visuales acelerados.
 - UI inicial solo mapa, instalaciones desde zoom 13 y exclusión sobre huellas; cámaras desde 10.
   `static/director.js`: decisiones temporales, borde de actividad y camiones por distancia acumulada.
-  ES-Alert es solo vista previa, sin envío. Dos vehículos de la misma sede salen escalonados.
+  ES-Alert puede llegar al receptor web de demo (nunca Cell Broadcast real). Sin parte habilitante
+  sigue siendo solo vista previa. Dos vehículos de la misma sede salen escalonados.
 - Seguimiento visual: viaje en tres fases (alejar, recorrer, acercar), ronda de avisos demo y
   vehículos activos tras un evento reciente. Los refrescos no reencuadran; interacción manual
   suspende hasta pulsar «Reanudar seguimiento IA». Respetar pausa, pestaña oculta y movimiento reducido.
@@ -96,6 +97,46 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 - Run real verificado `87e54d53-bfb5-489e-8def-b3ab2d6f932b`: contexto Tarragona, plan del LLM,
   dos camiones y ruta local 2,08 km. Entrada de llamada fixture, NO nueva prueba de audio real.
   Mypy global conserva un error previo ajeno en `sms_demo.py:271`; los archivos del director pasan.
+
+## Bomberos 123, ES-Alert móvil y manos libres (19/09/2026)
+
+- Mismo marcador `/112/`: 112 ciudadano y **123 ficticio** bomberos. El 123 exige seleccionar aviso
+  activo y permite elegir unidad. Backend vincula el parte al run civil y a sus coordenadas; una
+  corrección de ubicación invalida partes de la posición anterior. No es autenticación de bomberos reales.
+- Workflow de voz independiente `01a0b99b-dad8-7751-8e0a-cc7e5423f152`, versión
+  `01a0b99b-dae5-7ad8-8f08-38a49710aa7a`, publicado/live. Metadatos en
+  `flare_settings['firefighter-workflow']`; `director_workflow.py deploy-responder` solo despliega
+  el borrador propio, nunca despublica otro. 112 y director remoto no se modificaron.
+- Solo `actualizar_parte` del asistente aporta llegada/incendio/solicitudes/evolución/zona urbana.
+  Enums validados, revisión y procedencia por campo: notas de una llamada antigua no resucitan una
+  confirmación que otra unidad ya retiró. SQL existente conserva roles, vinculación y parte en JSON.
+  Confirmación de bomberos sigue siendo DEMO. Descartado/extinguido retira avisos call sin borrar NASA.
+- `director.py` ingiere partes incluso si el planner está desconectado. Una solicitud explícita de
+  ES-Alert es un mandato de demo, no un planner alternativo. El LLM decide refuerzos/reasignación y puede
+  emitir al receptor si hay fuego confirmado + urbano declarado, o población y ≥5 % urbano en el
+  atlas cercano (heurística de demo, no protocolo). Llegada solo actualiza la unidad que informa.
+- Helicópteros ficticios sobre helipuertos reales del atlas. `air_route()` es una línea ilustrativa
+  hasta 180 km, no ruta aeronáutica; nunca usar A* de carretera para vuelo. Despacho exige petición
+  aérea o parte confirmado que empeora/critico. No implica disponibilidad real de medios aéreos.
+- `/112/alerts/`: activar antes de emitir; sonido Web Audio acotado a 8 s y botón de silencio.
+  Polling `/112/api/alerts` con cookie, secuencia y UUID de sesión; no reproduce histórico al abrir,
+  no duplica alertas ni las confunde entre reinicios. Sin push/Cell Broadcast; mantener pantalla
+  abierta, volumen habilitado. No garantiza recepción con móvil bloqueado o web suspendida.
+- Geocodificación: solo municipio exacto se resuelve localmente; calle/POI pasa a IGN, alias
+  carrer/calle, avda/avenida, etc. No degrada una dirección a ciudad ni toma un homónimo ambiguo.
+  Las ubicaciones precisas conservan su punto comunicado, no el centro del grupo NASA cercano.
+- `happyrobot-112/static/audio.js`: botón Altavoz funcional, mezcla remota por Web Audio + relay
+  HTMLMediaElement; intenta salida de altavoz explícita con setSinkId. Si no hay soporte, lo informa
+  y remite al selector del sistema. No forzar audioSession playback mientras se captura micrófono.
+  La ruta física del altavoz en Safari/iOS requiere validación humana en el dispositivo.
+- Verificación: `verify_director_ui.py` cubre 123/partes/receptor/AudioContext/refuerzos/helicópteros;
+  voz y planes fixtures. `verify_director.py --cloud --response` consume cuota real: run
+  `65e67946-7dc6-40c1-ad03-40d930b1c06c` asignó tres camiones de dos parques, helicóptero y ES-Alert.
+- `verify_responder_voice.py --cloud --audio .local/bomberos-pcm.wav` consume cuota. Run real
+  `4400cb07-88d4-4076-a338-117a7e24e151` validó habla sintética por LiveKit → todos los campos
+  del parte → notificación simulada. Chromium usa `%noloop`: sin silencio, la muestra en bucle
+  no cerraba turno. No confundir esa prueba con escucha humana en móvil. Usar expectativas de
+  locators en Playwright para el marcador; `wait_for_function` puede chocar con su CSP sin unsafe-eval.
 
 ## Traffic Lab de Lucía (aislado)
 

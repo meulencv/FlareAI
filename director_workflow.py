@@ -189,12 +189,89 @@ def upgrade(database: Database) -> dict:
     return config
 
 
+RESPONDER_NAME = 'FlareAI · Bomberos 123 demo'
+RESPONDER_PROMPT = '''Eres la central de coordinación de bomberos de una DEMOSTRACIÓN, nunca un servicio real.
+El usuario es quien interpreta al bombero. El incidente ya está seleccionado en el marcador; registra solo su parte.
+Habla en español de España, breve y natural. No inventes llegadas, confirmaciones, solicitudes ni movilizaciones.
+Tras cada intervención con información nueva, llama silenciosamente actualizar_parte ANTES de responder.
+Registra únicamente hechos y peticiones explícitos del bombero; omite campos desconocidos y no repitas valores por defecto.
+Si corrige un dato, actualiza ese campo. No conviertas "hay fuego" en solicitud de ES-Alert ni en petición de helicóptero.
+Llegar no implica confirmar fuego; confirmar fuego no implica que esté extinguido. "No hay incendio" es descartado;
+"ya está apagado" es extinguido; "no está controlado" NO es descartado. Una petición negada es no_solicitado.
+Preguntar "¿hace falta ES-Alert?" no es pedir que se emita. "Activad ES-Alert" sí es solicitado.
+Ubicación: conserva vía, número, municipio y referencias; no la reduzcas a ciudad. No cambies el incidente seleccionado.
+Si piden refuerzos/helicóptero/ES-Alert registra la solicitud y di que la trasladas; nunca afirmes envío real.
+Haz como máximo una pregunta breve sobre el dato esencial que falte. No leas campos ni JSON.
+Campos y valores EXACTOS:
+llegada: confirmada | en_camino
+incendio: confirmado | descartado | extinguido
+es_alert, refuerzos, helicoptero: solicitado | no_solicitado
+evolucion: estable | empeora | critico
+zona_urbana: si | no
+detalle: resumen breve de riesgos/personas/necesidades; ubicacion: ubicación comunicada.
+La herramienta acusa recepción; no confirma despacho, alerta ni ejecución. Espera el siguiente turno tras registrarla.
+'''
+
+
+def deploy_responder(database: Database) -> dict:
+    from demo import PART_CHOICES, PART_FIELDS
+    provider = HappyRobotProvider()
+    client = provider.client
+    config = database.responder_setting()
+    if config.get('published'):
+        return config
+    if not config.get('workflow_id'):
+        workflow = unwrap(client.request('POST', '/workflows/', {'name': RESPONDER_NAME, 'icon': 'phone',
+            'from_template': {'template': 'inbound-voice-agent', 'inputs': {'agent_name': 'Central bomberos demo',
+                'prompt': {'prompt_md': RESPONDER_PROMPT, 'initial_message': 'Central de bomberos. Indique llegada, situación del fuego y necesidades.', 'initial_message_uninterruptible': False}}}}))
+        config = {'workflow_id': str(uuid.UUID(workflow['id'])), 'published': False, 'name': RESPONDER_NAME}
+        database.responder_setting(config)
+    workflow = unwrap(client.request('GET', f'/workflows/{config["workflow_id"]}'))
+    version = workflow['latest_version']['id']
+    if workflow['name'] != RESPONDER_NAME or workflow['latest_version'].get('is_published'):
+        raise RuntimeError('Solo se configura el borrador nuevo de bomberos; no se despublica ningún workflow')
+    nodes = provider.module.list_data(client.request('GET', f'/versions/{version}/nodes'))
+    voice_summary = next(n for n in nodes if n.get('event_id') == '0192e5dc-08df-78bf-a549-f43c6bf9f087')
+    voice = unwrap(client.request('GET', f'/versions/{version}/nodes/{voice_summary["id"]}'))
+    configuration = voice.get('configuration') or {}
+    configuration['agent'] = {**configuration.get('agent', {}), 'name': paragraph('Central bomberos demo'),
+        'voices': [{'type': 'static', 'static': {'id': '31hktsdrgix8', 'name': 'Ana HR'}}],
+        'languages': [{'type': 'static', 'static': {'id': 'es', 'name': 'Spanish'}}],
+        'language_accents': [{'type': 'static', 'static': {'id': 'es-es', 'name': 'Spanish (Spain)'}}]}
+    configuration['transcriber_tier'] = 'advanced'
+    client.request('PUT', f'/versions/{version}/nodes/{voice["id"]}', {'type': voice['type'], 'event_id': voice['event_id'], 'name': voice['name'], 'configuration': configuration})
+    prompt = next(n for n in nodes if n.get('type') == 'prompt')
+    client.request('PUT', f'/versions/{version}/nodes/{prompt["id"]}', {'type': 'prompt', 'name': 'Parte de bomberos', 'configuration': prompt.get('configuration') or {},
+        'prompt_md': RESPONDER_PROMPT, 'initial_message': 'Central de bomberos. Indique llegada, situación del fuego y necesidades.',
+        'initial_message_uninterruptible': False, 'model': {'type': 'static', 'static': {'id': 'gpt-5.6-sol-low', 'name': 'gpt-5.6-sol'}}})
+    tool = next((n for n in nodes if n.get('name') == 'actualizar_parte'), None)
+    if tool is None:
+        tool = provider.module.list_data(client.request('POST', f'/versions/{version}/nodes', {'nodes': [{'type': 'tool', 'name': 'actualizar_parte', 'parent_node_id': prompt['id'],
+            'function': {'description': paragraph('Registra el parte explícito del bombero para el incidente seleccionado. Omite lo desconocido. No ejecuta servicios reales.'),
+                'parameters': [{'name': key, 'required': False, 'description': paragraph('Valores permitidos: ' + ', '.join(PART_CHOICES[key]) if key in PART_CHOICES else 'Texto breve indicado por el bombero; máximo 240 caracteres.'),
+                                'example': PART_CHOICES[key][0] if key in PART_CHOICES else 'Humo cerca de viviendas'} for key in PART_FIELDS], 'message': {'type': 'none'}}}]}))[0]
+    child = next((n for n in nodes if n.get('name') == 'Acuse del parte'), None)
+    if child is None:
+        child = provider.module.list_data(client.request('POST', f'/versions/{version}/nodes', {'nodes': [{'type': 'action', 'event_id': PYTHON, 'name': 'Acuse del parte', 'parent_node_id': tool['id'],
+            'configuration': {'execution_profile': 'standard', 'code': 'output = {"received": True, "execution": "pending_local_validation", "demo": True}'}}]}))[0]
+    client.request('PUT', f'/versions/{version}/nodes/{child["id"]}/custom-output', {'data': {'received': True, 'demo': True}})
+    generated = unwrap(client.request('POST', f'/versions/{version}/tools/{tool["id"]}/tool-call-result/generate', {}))
+    for output in generated.get('nodes', []):
+        client.request('PUT', f'/versions/{version}/tools/{tool["id"]}/tool-call-result/visibility', {'node_id': output['node_id'], 'exposed_fields': [f['path'] for f in output.get('fields', [])]})
+    client.request('POST', f'/workflows/{config["workflow_id"]}/publish', {'environment': 'production'})
+    config.update(published=True, version_id=version, prompt_id=prompt['id'], tool_id=tool['id'])
+    database.responder_setting(config)
+    return config
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['deploy', 'status', 'sync', 'upgrade'])
+    parser.add_argument('command', choices=['deploy', 'status', 'sync', 'upgrade', 'deploy-responder'])
     args = parser.parse_args()
     db = Database()
-    if args.command == 'deploy':
+    if args.command == 'deploy-responder':
+        result = deploy_responder(db)
+    elif args.command == 'deploy':
         result = deploy(db)
     elif args.command == 'sync':
         result = sync(db)

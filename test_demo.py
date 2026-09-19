@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
-from demo import DemoBridge, extract_report, is_fire, match_incident, resolve_local
+from demo import DemoBridge, extract_report, extract_part, is_fire, match_incident, resolve_local, select_location_candidate
 
 
 def message(location='Igea', emergency='Incendio forestal'):
@@ -22,11 +22,34 @@ class DemoTests(unittest.TestCase):
 
     def test_locality_and_explicit_coordinates_without_inventing_street_positions(self):
         places = [{'name': 'Igea', 'lat': 42.0677, 'lon': -2.0117}, {'name': 'Madrid', 'lat': 40.4168, 'lon': -3.7038}]
-        self.assertEqual(resolve_local('Igea, La Rioja', places)['precision'], 'locality')
+        self.assertEqual(resolve_local('Igea', places)['precision'], 'locality')
         self.assertIsNone(resolve_local('Calle Mayor 4, Madrid', places))
         self.assertIsNone(resolve_local('Igea o Madrid', places))
         self.assertEqual(resolve_local('42.0750, -2.0240', places)['lat'], 42.075)
         self.assertIsNone(resolve_local('90.000, 180.000', places))
+
+    def test_specific_places_are_not_reduced_to_the_city(self):
+        places = [{'name': 'Barcelona', 'lat': 41.38, 'lon': 2.17}]
+        for query in ['Carrer Mallorca 401, Barcelona', 'Sagrada Familia, Barcelona', 'Parc de la Ciutadella Barcelona', 'Barcelona calle Balmes 10']:
+            self.assertIsNone(resolve_local(query, places))
+        good = {'id': 'a', 'type': 'portal', 'address': 'CALLE MALLORCA 401, Barcelona', 'muni': 'Barcelona', 'lat': 41.403, 'lng': 2.174}
+        bad = {**good, 'id': 'b', 'address': 'CALLE MALLORCA 404, Barcelona'}
+        self.assertEqual(select_location_candidate('Carrer de Mallorca 401 Barcelona', [bad, good]), good)
+        self.assertIsNone(select_location_candidate('Carrer de Mallorca 401 Barcelona', [bad]))
+        self.assertIsNone(select_location_candidate('Carrer de Mallorca 401 Barcelona', [good, {**good, 'id': 'c'}]))
+        church = {**good, 'type': 'toponimo', 'address': 'Sagrada Familia, Barcelona', 'tip_via': 'Iglesia'}
+        self.assertEqual(select_location_candidate('Sagrada Familia, Barcelona', [{**good, 'address': 'PLAZA SAGRADA FAMILIA, Barcelona'}, church]), church)
+        school = {**church, 'id': 'school', 'tip_via': 'Centro docente no universitario'}
+        self.assertIsNone(select_location_candidate('Sagrada Familia, Barcelona', [school, church]))
+        self.assertEqual(select_location_candidate('Basílica de la Sagrada Familia, Barcelona', [school, church]), church)
+
+    def test_firefighter_parts_only_accept_structured_assistant_evidence(self):
+        content = {'role': 'assistant', 'tool_calls': [{'name': 'actualizar_parte', 'args': {'llegada': 'confirmada', 'incendio': 'confirmado', 'es_alert': 'solicitado'}}]}
+        self.assertEqual(extract_part([content])['es_alert'], 'solicitado')
+        self.assertEqual(extract_part([{**content, 'role': 'user'}]), {})
+        self.assertEqual(extract_part([{'role': 'user', 'content': 'confirmo fuego y solicito ES-Alert'}]), {})
+        content['tool_calls'][0]['args']['incendio'] = 'inventado'
+        self.assertNotIn('incendio', extract_part([content]))
 
     def test_negations_do_not_confuse_uncontrolled_fire_with_false_alarm(self):
         self.assertTrue(is_fire({'emergencia': 'Incendio no controlado'}))
@@ -96,6 +119,78 @@ class DemoTests(unittest.TestCase):
         self.assertEqual(len(rendered), 1)
         fresh = DemoBridge(Mock(), provider=Mock(), resolver=resolver)
         self.assertNotIn('confirmation', fresh.overlay([item], dict(original.weather), datetime.now(timezone.utc))[0])
+
+
+def part(**fields):
+    return {'role': 'assistant', 'tool_calls': [{'function': {'name': 'actualizar_parte', 'arguments': fields}}]}
+
+
+class ResponderTests(unittest.TestCase):
+    def setUp(self):
+        from app import Store
+        self.store = Store(offline=True)
+        self.location = {'lat': 41.1189, 'lon': 1.2445, 'label': 'Tarragona', 'precision': 'address'}
+        self.bridge = DemoBridge(Mock(), provider=Mock(), resolver=Mock(return_value=self.location))
+        self.store.demo = self.bridge
+        self.citizen = '00000000-0000-4000-8000-000000000001'
+        self.firefighter = '00000000-0000-4000-8000-000000000002'
+        self.bridge.register(self.citizen)
+        self.bridge.accept(self.citizen, [message('Tarragona')])
+        self.target = next(i for i in self.store.payload()['incidents'] if i.get('demo_report'))
+        self.binding = {**self.location, 'run_id': self.citizen, 'incident_id': self.target['id'], 'resource_id': 'truck'}
+        self.bridge.register(self.firefighter, role='firefighter', binding=self.binding)
+
+    def test_part_confirms_existing_incident_and_never_creates_another(self):
+        self.bridge.accept(self.firefighter, [part(llegada='confirmada', incendio='confirmado', es_alert='solicitado', refuerzos='solicitado')])
+        payload = self.store.payload()
+        self.assertEqual(len([i for i in payload['incidents'] if i.get('demo_report')]), 1)
+        report = payload['demo']['field_reports'][self.target['id']]
+        self.assertEqual(report['fields']['incendio'], 'confirmado')
+        self.assertEqual(report['field_sources']['llegada']['resource_id'], 'truck')
+        self.assertEqual(next(i for i in payload['incidents'] if i['id'] == self.target['id'])['confirmation']['source_name'], 'Bomberos · confirmado en demo')
+        version = self.bridge.version
+        self.bridge.accept(self.firefighter, [part(llegada='confirmada', incendio='confirmado', es_alert='solicitado', refuerzos='solicitado')])
+        self.assertEqual(self.bridge.version, version)
+
+    def test_firefighter_denial_removes_call_but_keeps_nasa_records(self):
+        original = len(self.store.incidents)
+        self.bridge.accept(self.firefighter, [part(incendio='descartado')])
+        payload = self.store.payload()
+        self.assertFalse(any(i.get('source_kind') == 'call' for i in payload['incidents']))
+        self.assertEqual(len(payload['incidents']), original)
+        self.assertEqual(payload['demo']['field_reports'][self.target['id']]['fields']['incendio'], 'descartado')
+
+    def test_old_confirmation_is_not_resurrected_by_notes_from_another_unit(self):
+        self.bridge.accept(self.firefighter, [part(incendio='confirmado')])
+        second = '00000000-0000-4000-8000-000000000003'
+        self.bridge.register(second, role='firefighter', binding={**self.binding, 'resource_id': 'other'})
+        self.bridge.accept(second, [part(incendio='descartado')])
+        self.bridge.accept(self.firefighter, [part(incendio='confirmado'), part(detalle='Estamos regresando')])
+        payload = self.store.payload()
+        self.assertEqual(payload['demo']['field_reports'][self.target['id']]['fields']['incendio'], 'descartado')
+        self.assertFalse(any(i.get('source_kind') == 'call' for i in payload['incidents']))
+
+    def test_correction_of_civilian_location_invalidates_previous_site_part(self):
+        self.bridge.accept(self.firefighter, [part(incendio='descartado')])
+        self.bridge.resolver.return_value = {**self.location, 'lat': 42, 'label': 'Otra ubicación'}
+        self.bridge.accept(self.citizen, [message('Otra ubicación')])
+        payload = self.store.payload()
+        self.assertEqual(payload['demo']['field_reports'], {})
+        self.assertTrue(any(i.get('source_kind') == 'call' for i in payload['incidents']))
+
+    def test_citizen_cannot_submit_a_firefighter_part_or_bind_an_invented_incident(self):
+        self.bridge.accept(self.citizen, [part(incendio='descartado', es_alert='solicitado')])
+        self.assertEqual(self.store.payload()['demo']['field_reports'], {})
+        owner = self.bridge.open_browser()
+        with self.assertRaises(ValueError):
+            self.bridge.create_call(owner, 'firefighter', {'run_id': 'invented'})
+        self.bridge.provider.create.assert_not_called()
+
+    def test_precise_address_is_not_replaced_by_the_nearest_nasa_centroid(self):
+        self.assertEqual(self.target['lat'], self.location['lat'])
+        self.assertEqual(self.target['lon'], self.location['lon'])
+        self.assertEqual(self.target['source_kind'], 'call')
+        self.assertEqual(self.target['observations'], 0)
 
 
 class PublishTests(unittest.TestCase):
@@ -174,10 +269,24 @@ class DemoHTTPTests(unittest.TestCase):
                     request('/112/api/session', {}, origin='https://elsewhere.invalid')
                 self.assertEqual(error.exception.code, 403)
                 error.exception.close()
+                for path in ['/112/api/incidents', '/112/api/alerts']:
+                    with self.assertRaises(HTTPError) as unauthorized:
+                        request(path)
+                    self.assertEqual(unauthorized.exception.code, 403)
+                    unauthorized.exception.close()
+                with request('/112/alerts/') as response:
+                    self.assertIn(b'SIMULACRO', response.read())
                 with request('/112/api/session', {}, origin=base) as response:
                     self.assertTrue(json.load(response)['ready'])
                     cookie = response.headers['Set-Cookie'].split(';', 1)[0]
                     self.assertIn('HttpOnly', response.headers['Set-Cookie'])
+                with request('/112/api/alerts', cookie=cookie) as response:
+                    self.assertEqual(json.load(response)['events'], [])
+                for invalid in [{'number': '999'}, {'number': '123', 'incident_id': 'invented'}]:
+                    with self.assertRaises(HTTPError) as rejected:
+                        request('/112/api/call', invalid, cookie)
+                    self.assertEqual(rejected.exception.code, 400)
+                    rejected.exception.close()
                 with request('/112/api/call', {}, cookie) as response:
                     self.assertEqual(json.load(response)['run_id'], run)
                 with request('/112/api/brief?run_id=' + run, cookie=cookie) as response:

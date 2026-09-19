@@ -186,7 +186,25 @@ class Handler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
             elif path == '/112/api/call':
-                self.send_json(demo.create_call(self.browser_token()))
+                owner = self.browser_token()
+                if not demo.authorized(owner):
+                    raise PermissionError('Abre primero el marcador de la demo')
+                number = body.get('number', '112')
+                if number not in {'112', '123'}:
+                    raise ValueError('Número no disponible')
+                binding = None
+                if number == '123':
+                    incident = cast(dict, dict(self.store.find(str(body.get('incident_id', '')))))
+                    report = incident.get('demo_report')
+                    if not report or report.get('cancelled'):
+                        raise ValueError('Aviso no disponible')
+                    resource_id = body.get('resource_id')
+                    if resource_id:
+                        assignment = self.store.director.public_state()['assignments'].get(resource_id) if self.store.director else None
+                        if not assignment or assignment['incident_id'] != incident['id'] or assignment['status'] == 'returning':
+                            raise ValueError('Recurso no asignado al aviso')
+                    binding = {**report['location'], 'run_id': report['run_id'], 'incident_id': incident['id'], 'resource_id': resource_id}
+                self.send_json(demo.create_call(owner, 'firefighter' if number == '123' else 'citizen', binding))
             else:
                 demo.stop(str(body.get('run_id', '')), self.browser_token())
                 self.send_json({'ok': True})
@@ -235,13 +253,31 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            if route.path in {'/112/', '/112/index.html', '/112/app.js', '/112/styles.css'}:
+            if route.path in {'/112/alerts/', '/112/alerts.html', '/112/alerts.js', '/112/alerts.css'}:
+                name = 'alerts.html' if route.path.endswith('/') else route.path.rsplit('/', 1)[1]
+                mime = 'text/html; charset=utf-8' if name.endswith('.html') else 'text/css' if name.endswith('.css') else 'text/javascript'
+                self.send_bytes((PHONE_ROOT / name).read_bytes(), mime)
+            elif route.path in {'/112/', '/112/index.html', '/112/app.js', '/112/audio.js', '/112/styles.css'}:
                 name = route.path.rsplit('/', 1)[1] or 'index.html'
                 mime = 'text/html; charset=utf-8' if name.endswith('.html') else 'text/css' if name.endswith('.css') else 'text/javascript'
                 self.send_bytes((PHONE_ROOT / name).read_bytes(), mime)
             elif route.path == '/112/api/status':
                 self.send_json({'integrated': True, 'browser_ready': bool(self.store.demo and self.store.demo.authorized(self.browser_token())),
-                                'configured': bool(self.store.demo and self.store.demo.provider.ready)})
+                                'configured': bool(self.store.demo and self.store.demo.provider.ready),
+                                'firefighter_configured': bool(self.store.demo and self.store.demo.provider.responder_ready)})
+            elif route.path in {'/112/api/incidents', '/112/api/alerts'} and self.store.demo:
+                if not self.store.demo.authorized(self.browser_token()):
+                    raise PermissionError('Abre primero la demo')
+                if route.path.endswith('/alerts'):
+                    after = int(query['after'][0]) if 'after' in query else None
+                    if after is not None and not 0 <= after <= 1000000:
+                        raise ValueError('Secuencia no válida')
+                    self.send_json(self.store.director.alert_feed(after) if self.store.director else {'session_id': self.store.demo.session_id, 'sequence': 0, 'events': [], 'mode': 'simulation_only'})
+                else:
+                    assignments = self.store.director.public_state()['assignments'] if self.store.director else {}
+                    self.send_json({'incidents': [{'id': i['id'], 'label': i['demo_report']['location']['label'],
+                        'precision': i['demo_report']['location']['precision'], 'resources': [a['resource'] | {'status': a['status']} for a in assignments.values() if a['incident_id'] == i['id'] and a['status'] != 'returning']}
+                        for i in cast(list[dict], self.store.payload()['incidents']) if i.get('demo_report') and not i['demo_report'].get('cancelled')]})
             elif route.path == '/112/api/brief' and self.store.demo:
                 self.send_json(self.store.demo.brief(query.get('run_id', [''])[0], self.browser_token()))
             elif route.path == '/api/demo/setup' and self.store.demo:
@@ -255,7 +291,8 @@ class Handler(SimpleHTTPRequestHandler):
                 run_id = route.path.rsplit('/', 1)[1]
                 with self.store.demo.lock:
                     call = self.store.demo.calls[run_id]
-                    self.send_json({'source': 'Llamada web de demostración, no confirmación oficial', 'summary': call['summary'], 'location': call['location']})
+                    self.send_json({'source': 'Parte de bomberos de demostración' if call.get('role') == 'firefighter' else 'Llamada web de demostración, no confirmación oficial',
+                                    'summary': call['summary'], 'location': call['location'], 'part': call.get('part', {})})
             elif route.path == '/api/director':
                 self.send_json(self.store.director.public_state() if self.store.director else {'status': 'disabled', 'events': [], 'assignments': {}, 'alerts': {}})
             elif route.path == "/api/data":

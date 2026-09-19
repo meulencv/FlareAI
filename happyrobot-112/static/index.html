@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0b0c10">
   <meta name="mobile-web-app-capable" content="yes">
   <title>Teléfono · Simulación 112</title>
-  <link rel="stylesheet" href="./styles.css?v=demo-open-1">
+  <link rel="stylesheet" href="./styles.css?v=responders-2">
 </head>
 <body>
   <svg class="icon-defs" aria-hidden="true" focusable="false">
@@ -67,6 +67,12 @@
     <section id="dialer-screen" class="screen dialer-screen" aria-labelledby="dialer-title">
       <h1 id="dialer-title" class="sr-only">Marcador telefónico</h1>
 
+      <nav id="demo-numbers" class="demo-numbers" hidden aria-label="Números de simulación"><button data-number="112">112 · Ciudadano</button><button data-number="123">123 · Bomberos</button></nav>
+      <div id="firefighter-selection" class="firefighter-selection" hidden>
+        <label>Incidente del parte<select id="incident-choice"><option value="">Selecciona un aviso activo</option></select></label>
+        <label>Unidad que informa<select id="resource-choice"><option value="">Parte general, sin unidad</option></select></label>
+        <small>123 es un número ficticio de esta demo, no un teléfono real.</small>
+      </div>
       <div class="number-area">
         <p id="dial-number" class="dial-number" aria-live="polite" aria-label="Número marcado">
           <span class="placeholder">Introduce un número</span>
@@ -112,6 +118,7 @@
         </p>
       </div>
 
+      <div class="audio-routing"><p id="audio-note" role="status">Se intentará usar manos libres. El volumen se ajusta con los botones del móvil.</p><select id="audio-output" aria-label="Salida de audio de la voz" hidden></select></div>
       <div class="voice-visual" aria-hidden="true">
         <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
       </div>
@@ -123,7 +130,7 @@
           </span>
           <small id="mute-label">Silenciar</small>
         </button>
-        <button class="call-option" type="button" disabled>
+        <button id="speaker-button" class="call-option" type="button" aria-pressed="false">
           <span class="call-option-icon"><svg aria-hidden="true"><use href="#i-speaker"/></svg></span>
           <small>Altavoz</small>
         </button>
@@ -146,7 +153,7 @@
       <svg id="details-arrow" class="details-arrow" aria-hidden="true"><use href="#i-chevron"/></svg>
     </button>
 
-    <footer class="simulation-notice">Demostración de hackathon · No conecta con el 112 real</footer>
+    <footer class="simulation-notice">Demostración de hackathon · No conecta con servicios reales <a id="alert-receiver-link" href="/112/alerts/" target="_blank" rel="noopener" hidden>Abrir receptor ES-Alert demo</a></footer>
 
     <div id="sheet-scrim" class="sheet-scrim" hidden></div>
 
@@ -170,12 +177,13 @@
         <div><dt>Contacto</dt><dd id="summary-contacto">Pendiente</dd></div>
       </dl>
 
+      <dl id="part-details" class="brief-list" aria-live="polite" hidden></dl>
       <p class="privacy-note">Demo: la ficha básica puede actualizar el mapa local. No se guarda audio ni transcripción local.</p>
     </section>
   </main>
 
   <noscript>Activa JavaScript para iniciar la simulación de voz.</noscript>
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
-  <script src="./app.js?v=demo-open-1"></script>
+  <script type="module" src="./app.js?v=responders-3"></script>
 </body>
 </html>

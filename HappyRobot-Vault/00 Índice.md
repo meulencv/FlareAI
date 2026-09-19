@@ -55,6 +55,11 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-19)
+- **Bomberos 123 y alertas móviles:** mismo marcador con dos números, workflow de voz separado,
+  partes por incidente/unidad, confirmación o retirada, refuerzos y helicópteros ficticios.
+  `/112/alerts/` recibe ES-Alert simulado con sonido tras activación. Probados LLM real y habla
+  sintética sobre LiveKit; añadido control de altavoz, con límites de selección física en Safari.
+  [[2026-09-19#Bomberos 123, alertas móviles y manos libres|Implementación y pruebas]].
 - **Director autónomo FlareAI:** Reasoning Agent separado del marcador; contexto local, plan por tool,
   validación SQL y vehículos sobre rutas A* locales. Run real de Tarragona verificado: dos camiones,
   ruta de 2,08 km. Entrada de llamada fixture, no nueva prueba de audio. Mapa minimalista y borde de

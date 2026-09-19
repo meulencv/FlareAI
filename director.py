@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from build_emergency_db import proximity
 from demo import HappyRobotProvider
-from local_routes import LocalRouter
+from local_routes import LocalRouter, km, valid_point
 
 ROOT = Path(__file__).resolve().parent
 ACTION_TYPES = {'focus', 'context', 'dispatch', 'reassign', 'return', 'alert', 'watch'}
@@ -28,12 +28,12 @@ def digest(value: Any) -> str:
 
 
 def reported(payload: dict) -> list[dict]:
-    return sorted((i for i in payload.get('incidents', []) if i.get('demo_report')), key=lambda i: i['id'])
+    return sorted((i for i in payload.get('incidents', []) if i.get('demo_report') and not i['demo_report'].get('cancelled')), key=lambda i: i['id'])
 
 
 def fingerprint(payload: dict) -> str:
-    return digest({'status': payload.get('status'), 'incidents': [
-        {k: i.get(k) for k in ('id', 'lat', 'lon', 'demo_report', 'weather', 'footprint')} for i in reported(payload)]})
+    return digest({'status': payload.get('status'), 'field_reports': payload.get('demo', {}).get('field_reports', {}), 'incidents': [
+        {k: i.get(k) for k in ('id', 'lat', 'lon', 'demo_report', 'responder_report', 'weather', 'footprint')} for i in reported(payload)]})
 
 
 def extract_plan(messages: list[dict]) -> dict | None:
@@ -100,11 +100,11 @@ class EmergencyAtlas:
     def nearby(self, lat: float, lon: float) -> list[dict]:
         with closing(sqlite3.connect(f'file:{ROOT / "emergencias_espana.db"}?mode=ro', uri=True)) as db:
             stations = []
-            for category, kind, count in [('fire_station', 'fire_engine', 2), ('police', 'police', 1)]:
+            for category, kind, count in [('fire_station', 'fire_engine', 2), ('police', 'police', 1), ('helipad', 'helicopter', 1)]:
                 for row in proximity(db, lat, lon, 60, category, 3):
                     for index in range(count):
                         stations.append({'id': f'{row["id"]}:{kind}:{index + 1}', 'station_id': row['id'],
-                                         'name': row['name'] or ('Parque de bomberos' if kind == 'fire_engine' else 'Policía'),
+                                         'name': row['name'] or {'fire_engine': 'Parque de bomberos', 'police': 'Policía', 'helicopter': 'Helipuerto · sede para recurso simulado'}[kind],
                                          'lat': row['lat'], 'lon': row['lon'], 'kind': kind,
                                          'distance_km': round(row['distance_km'], 2), 'simulated_capacity': True,
                                          'coordinate_method': row['coordinate_method']})
@@ -118,6 +118,15 @@ def route_position(route: dict, progress: float) -> list[float]:
     span = distances[index] - distances[index - 1]
     fraction = (target - distances[index - 1]) / span if span else 1
     return [points[index - 1][axis] + (points[index][axis] - points[index - 1][axis]) * fraction for axis in (0, 1)]
+
+
+def air_route(start: list[float], end: list[float]) -> dict:
+    if not valid_point(start) or not valid_point(end) or km(start, end) > 180:
+        raise ValueError('Vuelo fuera del alcance ilustrativo de 180 km')
+    distance = km(start, end)
+    return {'coordinates': [start, end], 'cumulative_km': [0, distance], 'distance_km': round(distance, 3),
+            'duration_seconds': max(1, distance / 180 * 3600), 'mode': 'air_demo',
+            'limitations': 'Trayectoria aérea recta ilustrativa. No valida espacio aéreo, meteorología, capacidad ni disponibilidad real.'}
 
 
 class Planner:
@@ -161,13 +170,58 @@ class Director:
         self.lock = threading.RLock()
         self.state: dict[str, Any] = {'session_id': self.session_id, 'mode': 'demo', 'status': 'idle' if self.planner.ready else 'unconfigured',
                                       'sequence': 0, 'events': [], 'resources': {}, 'assignments': {}, 'alerts': {},
-                                      'last_fingerprint': '', 'last_review': 0, 'pending': None, 'history': [], 'runs': []}
+                                      'last_fingerprint': '', 'last_review': 0, 'pending': None, 'history': [], 'runs': [],
+                                      'field_revisions': {}, 'field_actions': {}, 'alert_requests': {}, 'notifications': [], 'delivery_sequence': 0}
         self.retry_at = 0.0
         self.failure_count = 0
 
     def public_state(self) -> dict:
         with self.lock:
             return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time()}
+
+    def alert_feed(self, after: int | None = None) -> dict:
+        with self.lock:
+            return {'session_id': self.session_id, 'sequence': self.state['delivery_sequence'], 'mode': 'simulation_only',
+                    'events': deepcopy([e for e in self.state['notifications'] if after is not None and e['sequence'] > after and e['expires_at'] > time.time()])}
+
+    def notify(self, incident_id: str, message: str, source: str, kind: str = 'alert') -> None:
+        self.state['delivery_sequence'] += 1
+        at = time.time()
+        notification = {'id': f'{self.session_id}:{self.state["delivery_sequence"]}', 'sequence': self.state['delivery_sequence'],
+                        'incident_id': incident_id, 'kind': kind, 'message': message[:240], 'at': at, 'expires_at': at + 300,
+                        'source': source, 'mode': 'simulation_only'}
+        self.state['notifications'] = (self.state['notifications'] + [notification])[-50:]
+        if kind == 'alert':
+            self.state['alerts'][incident_id] = {**notification, 'mode': 'mobile_simulation'}
+        else:
+            self.state['alerts'].pop(incident_id, None)
+        self.event('alert' if kind == 'alert' else 'cancelled', 'ES-Alert enviado al simulador móvil' if kind == 'alert' else 'Aviso retirado por bomberos · demo', message, incident_id=incident_id)
+
+    def ingest_field_reports(self, payload: dict) -> bool:
+        changed = False
+        for identifier, report in payload.get('demo', {}).get('field_reports', {}).items():
+            if report['revision'] <= self.state['field_revisions'].get(identifier, 0):
+                continue
+            changed = True
+            self.state['field_revisions'][identifier] = report['revision']
+            fields = report['fields']
+            previous_versions = self.state['field_actions'].get(identifier, {})
+            self.state['field_actions'][identifier] = dict(report['field_versions'])
+            self.event('field_report', 'Parte de bomberos recibido', fields.get('detalle', fields.get('incendio', 'Actualización de situación')), incident_id=identifier)
+            arrival_resource = report.get('field_sources', {}).get('llegada', {}).get('resource_id', report.get('resource_id'))
+            assignment = self.state['assignments'].get(arrival_resource)
+            if report['field_versions'].get('llegada', 0) > previous_versions.get('llegada', 0) and fields.get('llegada') == 'confirmada' and assignment and assignment['incident_id'] == identifier and assignment['status'] != 'returning':
+                assignment.update(status='onscene', arrival_confirmed=True, started_at=time.time() - assignment['travel_seconds'])
+                self.event('arrived', 'Llegada confirmada por bomberos · demo', incident_id=identifier)
+            if fields.get('incendio') in {'descartado', 'extinguido'}:
+                if report['field_versions'].get('incendio', 0) > previous_versions.get('incendio', 0):
+                    self.notify(identifier, 'Bomberos informa: ' + fields['incendio'] + '. Se retira el aviso de demostración.', 'firefighter_demo', 'cancel')
+                continue
+            request_id = report['field_versions'].get('es_alert', 0)
+            if fields.get('es_alert') == 'solicitado' and self.state['alert_requests'].get(identifier) != request_id:
+                self.state['alert_requests'][identifier] = request_id
+                self.notify(identifier, fields.get('detalle') or 'Solicitud expresa de bomberos. Aviso de emergencia simulado; no es una alerta real.', 'firefighter_request')
+        return changed
 
     def event(self, kind: str, message: str, reason: str = '', **data) -> None:
         self.state['sequence'] += 1
@@ -187,7 +241,7 @@ class Director:
                 relevant.add(resource['id'])
             environment = self.store.context(incident['id'])
             samples = sorted(environment['potential']['samples'], key=lambda s: s.get('score') or 0, reverse=True)
-            incidents.append({k: incident.get(k) for k in ('id', 'name', 'lat', 'lon', 'weather', 'demo_report', 'source_kind')} | {
+            incidents.append({k: incident.get(k) for k in ('id', 'name', 'lat', 'lon', 'weather', 'demo_report', 'source_kind', 'responder_report')} | {
                 'environment': {k: environment.get(k) for k in ('population', 'landcover', 'wind', 'coverage', 'method')},
                 'attention_samples': samples[:6], 'attention_model': environment['potential'].get('model'),
                 'facilities': environment['potential'].get('facilities', [])[:12]})
@@ -199,6 +253,10 @@ class Director:
         context = {'mode': 'simulation_only', 'incidents': incidents, 'resources': resources,
                    'alerts': self.state['alerts'], 'history': self.state['history'][-8:],
                    'source_status': payload.get('status'), 'at': time.time(), 'incident_limit': 8,
+                   'field_reports': payload.get('demo', {}).get('field_reports', {}),
+                   'capabilities': {'alert': 'Vista ES-Alert en móviles de la demo: solo confirmación de bomberos en entorno urbano o petición expresa. Nunca Cell Broadcast real.',
+                                    'helicopter': 'Recurso ficticio en helipuerto real; disponible para solicitud aérea explícita o incendio confirmado que empeora. Vuelo ilustrativo, no protocolo español.',
+                                    'reinforcements': 'Solicitudes de bomberos en responder_report.fields.refuerzos; valorar recursos libres y reassign entre incidentes con motivo y cobertura restante.'},
                    'omitted_incidents': max(0, len(reported(payload)) - 8),
                    'limits': 'Capacidades ficticias. Atlas no exhaustivo. Sin tráfico ni rutas de emergencia. Potencial no es probabilidad. No confirmar extinción por llegada de vehículos.'}
         context['revision'] = digest(context)
@@ -226,10 +284,23 @@ class Director:
                 item['target'] = [destination['lon'], destination['lat']]
                 if kind == 'reassign' and current['incident_id'] == item['incident_id'] and current.get('target') == item['target']:
                     raise ValueError('El recurso ya está asignado a ese destino')
+                fields = (incidents.get(item.get('incident_id'), {}).get('responder_report') or {}).get('fields', {})
+                if resource['kind'] == 'helicopter' and kind != 'return' and not (fields.get('helicoptero') == 'solicitado' or fields.get('incendio') == 'confirmado' and fields.get('evolucion') in {'empeora', 'critico'}):
+                    item['route_error'] = True
+                    item['blocked_reason'] = 'Apoyo aéreo pendiente de solicitud explícita o empeoramiento confirmado en un parte de bomberos.'
+                    prepared.append(item)
+                    continue
                 try:
-                    item['route'] = self.router.route(self.vehicle_origin(resource), item['target'])
+                    item['route'] = air_route(self.vehicle_origin(resource), item['target']) if resource['kind'] == 'helicopter' else self.router.route(self.vehicle_origin(resource), item['target'])
                 except (OSError, ValueError, RuntimeError):
                     item['route_error'] = True
+            if kind == 'alert':
+                incident = incidents[item['incident_id']]
+                fields = (incident.get('responder_report') or {}).get('fields', {})
+                population = incident.get('environment', {}).get('population', {}).get('residents') or 0
+                urban_pct = incident.get('environment', {}).get('landcover', {}).get('percentages', {}).get('urbano') or 0
+                urban = fields.get('zona_urbana') == 'si' or fields.get('zona_urbana') != 'no' and population > 0 and urban_pct >= 5
+                item['mobile_alert'] = fields.get('incendio') not in {'descartado', 'extinguido'} and (fields.get('es_alert') == 'solicitado' or fields.get('incendio') == 'confirmado' and urban)
             prepared.append(item)
         return prepared
 
@@ -240,7 +311,7 @@ class Director:
             kind, incident_id = action['type'], action.get('incident_id')
             data = {'incident_id': incident_id, 'run_id': run_id}
             if action.get('route_error'):
-                self.event('blocked', 'No se ha movilizado el recurso: ruta no disponible', action['reason'], **data)
+                self.event('blocked', 'No se ha movilizado el recurso', action.get('blocked_reason', 'Ruta no disponible. ' + action['reason']), **data)
                 continue
             if kind in {'dispatch', 'reassign', 'return'}:
                 rid = action['resource_id']
@@ -251,12 +322,18 @@ class Director:
                 self.state['assignments'][rid] = {'id': f'{run_id}:{rid}', 'resource': resource, 'incident_id': incident_id,
                     'route': route, 'target': action['target'], 'started_at': time.time() + delay, 'travel_seconds': max(45, min(150, route['duration_seconds'] / 30)),
                     'status': 'returning' if kind == 'return' else 'enroute', 'time_scale': 'accelerated_demo', 'reason': action['reason']}
-                noun = 'camión de bomberos' if resource['kind'] == 'fire_engine' else 'patrulla'
+                noun = {'fire_engine': 'camión de bomberos', 'police': 'patrulla', 'helicopter': 'helicóptero de demo'}[resource['kind']]
                 message = f'{"Regresa" if kind == "return" else "Reasignando" if kind == "reassign" else "Movilizando"} 1 {noun} · {resource["name"]}'
                 self.event(kind, message, action['reason'], resource_id=rid, **data)
             elif kind == 'alert':
-                self.state['alerts'][incident_id] = {'message': action['reason'], 'at': time.time(), 'expires_at': time.time() + 120, 'mode': 'preview_only'}
-                self.event('alert', 'Preparando ES-Alert · vista previa', action['reason'], **data)
+                current_alert = self.state['alerts'].get(incident_id, {})
+                if current_alert.get('mode') == 'mobile_simulation' and current_alert.get('expires_at', 0) > time.time():
+                    continue
+                if action.get('mobile_alert'):
+                    self.notify(str(incident_id), action['reason'], 'director_decision')
+                else:
+                    self.state['alerts'][incident_id] = {'message': action['reason'], 'at': time.time(), 'expires_at': time.time() + 120, 'mode': 'preview_only'}
+                    self.event('alert', 'Preparando ES-Alert · vista previa, sin parte habilitante', action['reason'], **data)
             else:
                 self.event(kind, {'focus': 'Revisando el aviso', 'context': 'Evaluando el entorno', 'watch': 'Manteniendo vigilancia'}[kind], action['reason'], **data)
         self.state['history'].append({'run_id': run_id, 'at': time.time(), 'plan': plan,
@@ -282,7 +359,15 @@ class Director:
         return changed
 
     def step(self) -> None:
+        payload = self.store.payload()
         with self.lock:
+            previous = deepcopy(self.state)
+            try:
+                if self.ingest_field_reports(payload):
+                    self.save()
+            except Exception:
+                self.state = previous
+                raise
             moved = self.advance()
             if moved:
                 self.save()

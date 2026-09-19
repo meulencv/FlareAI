@@ -189,6 +189,69 @@ class ExecutionTests(unittest.TestCase):
         self.director.step()
         self.assertEqual(self.director.state['assignments']['truck']['status'], 'onscene')
 
+    def test_helicopter_requires_part_and_uses_air_path_not_road_router(self):
+        helicopter = {**self.resource, 'id': 'heli', 'kind': 'helicopter'}
+        self.director.state['resources']['heli'] = helicopter
+        self.context['resources'].append(helicopter)
+        plan = deepcopy(self.plan)
+        plan['actions'][0]['resource_id'] = 'heli'
+        self.assertTrue(self.director.prepare(plan, self.context)[0]['route_error'])
+        self.context['incidents'][0]['responder_report'] = {'fields': {'helicoptero': 'solicitado'}}
+        self.context['incidents'][0]['lon'] = 1.1
+        action = self.director.prepare(plan, self.context)[0]
+        self.assertEqual(action['route']['mode'], 'air_demo')
+        self.router.route.assert_not_called()
+        self.director.apply(plan, [action], 'air-run')
+        self.assertEqual(self.director.state['assignments']['heli']['resource']['kind'], 'helicopter')
+
+    def test_explicit_alert_request_is_idempotent_even_without_planner(self):
+        self.planner.ready = False
+        report = {'revision': 2, 'fields': {'es_alert': 'solicitado'}, 'field_versions': {'es_alert': 2}}
+        self.payload['demo'] = {'field_reports': {'fire': report}}
+        self.director.step()
+        self.assertEqual(self.director.alert_feed(0)['events'][0]['source'], 'firefighter_request')
+        self.assertEqual(self.director.alert_feed()['events'], [])
+        self.assertEqual(self.director.alert_feed(1)['events'], [])
+        self.director.step()
+        report.update(revision=3)
+        report['fields']['detalle'] = 'Humo'
+        report['field_versions']['detalle'] = 3
+        self.director.step()
+        self.assertEqual(self.director.alert_feed(0)['sequence'], 1)
+        report.update(revision=4)
+        report['fields']['incendio'] = 'descartado'
+        report['field_versions']['incendio'] = 4
+        self.director.step()
+        self.assertEqual(self.director.alert_feed(1)['events'][0]['kind'], 'cancel')
+        self.assertFalse(self.director.state['alerts'])
+
+    def test_director_alert_needs_confirmed_fire_and_urban_context(self):
+        plan = {**self.plan, 'actions': [{'type': 'alert', 'incident_id': 'fire', 'reason': 'Humo cerca de viviendas'}]}
+        action = self.director.prepare(plan, self.context)[0]
+        self.assertFalse(action['mobile_alert'])
+        self.director.apply(plan, [action], 'preview')
+        self.assertEqual(self.director.alert_feed(0)['events'], [])
+        self.context['incidents'][0]['responder_report'] = {'fields': {'incendio': 'confirmado'}}
+        self.context['incidents'][0]['environment'] = {'population': {'residents': 20}, 'landcover': {'percentages': {'urbano': 0}}}
+        self.assertFalse(self.director.prepare(plan, self.context)[0]['mobile_alert'])
+        self.context['incidents'][0]['responder_report'] = {'fields': {'incendio': 'confirmado', 'zona_urbana': 'si'}}
+        action = self.director.prepare(plan, self.context)[0]
+        self.assertTrue(action['mobile_alert'])
+        self.director.apply(plan, [action], 'notify')
+        self.assertEqual(len(self.director.alert_feed(0)['events']), 1)
+        self.director.apply(plan, [action], 'duplicate')
+        self.assertEqual(len(self.director.alert_feed(0)['events']), 1)
+
+    def test_report_marks_only_the_reporting_resource_arrived(self):
+        self.director.step()
+        self.planner.ready = False
+        report = {'revision': 2, 'fields': {'llegada': 'confirmada'}, 'field_versions': {'llegada': 2}, 'field_sources': {'llegada': {'resource_id': 'truck'}}}
+        self.payload['demo'] = {'field_reports': {'fire': report}}
+        self.director.step()
+        self.assertTrue(self.director.state['assignments']['truck']['arrival_confirmed'])
+        self.assertEqual(self.director.state['assignments']['truck']['status'], 'onscene')
+        self.assertNotIn('incendio', report['fields'])
+
     def test_sql_failure_does_not_publish_uncommitted_actions(self):
         self.store.db.save_director.side_effect = RuntimeError('SQL no disponible')
         with self.assertRaises(RuntimeError):

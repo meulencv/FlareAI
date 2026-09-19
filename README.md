@@ -121,7 +121,8 @@ de mostrar movimientos. No se sustituye el LLM por reglas locales. El workflow d
 
 Mensajes breves, un borde multicolor de actividad, estaciones y vehículos muestran lo que ocurre.
 La flota es ficticia sobre sedes del atlas real; el discreto `modo demo` permanece visible. No se
-movilizan servicios reales, no hay SMS y ES-Alert es solo una vista previa. Las cámaras no intervienen
+movilizan servicios reales ni hay SMS. ES-Alert puede activar un receptor web de simulación, nunca
+el sistema público real. Sin parte habilitante queda en vista previa. Las cámaras no intervienen
 todavía en las rutas. La memoria se conserva durante la sesión; reiniciar crea una nueva, sin borrar
 el historial SQL anterior.
 
@@ -162,6 +163,49 @@ aplicaron rutas locales de 2,08 km. El aviso de entrada era una fixture, no una 
 voz. El workflow nuevo está separado del marcador; credenciales solo en backend. `sync` conserva
 la clave literal del hook, pues el valor devuelto por la API puede estar transformado. Nunca
 copiar claves al frontend ni al repositorio. La exportación SQL omite la clave del hook.
+
+## Bomberos y receptor ES-Alert de demo
+
+En la **misma web de teléfono** (`/112/`):
+
+- **112**: llamada de ciudadano, crea o actualiza el aviso.
+- **123**: número ficticio para interpretar al bombero. Selecciona el incidente y, si corresponde,
+  la unidad que informa. Puedes confirmar llegada y fuego, indicar que no hay incendio o que se ha
+  extinguido, pedir refuerzos, helicóptero o ES-Alert. El parte se muestra en la ficha en directo.
+
+En otro móvil, abre **`/112/alerts/`** bajo la misma URL HTTPS del túnel y pulsa **Activar recepción y
+sonido antes de hacer la llamada**. La petición explícita de ES-Alert del bombero activa el simulador;
+el director también puede decidirlo tras confirmación de fuego y evidencia urbana. La pantalla
+muestra siempre SIMULACRO. El sonido dura como máximo ocho segundos y se puede silenciar. No es
+Cell Broadcast ni una notificación oficial, y no garantiza sonido con pantalla bloqueada, modo
+silencio o navegador en segundo plano. Recargar no vuelve a reproducir alertas anteriores.
+
+Los refuerzos y la redistribución los decide el agente sobre la flota ficticia. Los helicópteros
+se sitúan en helipuertos del atlas y siguen una trayectoria aérea recta ilustrativa, no un plan
+operativo de vuelo ni protocolos oficiales españoles. Se requiere petición explícita de apoyo
+aéreo o un parte de incendio confirmado que empeora. Los camiones siguen usando rutas locales A*.
+
+Las direcciones precisas no se sustituyen por el centro de una ciudad ni de un grupo NASA. IGN
+resuelve, por ejemplo, «Carrer de Mallorca 401 Barcelona». Si hay homónimos, precisa el lugar:
+«Basílica de la Sagrada Familia, Barcelona» distingue el monumento de otros centros con ese nombre.
+Un resultado ambiguo queda pendiente; no se inventan coordenadas.
+
+**Altavoz:** el marcador prepara manos libres y permite seleccionar salida si el navegador la
+expone. El botón Altavoz ya funciona; usa una mezcla Web Audio para reproducir la voz por una salida
+seleccionable. Algunos Safari/iOS siguen delegando la elección física al sistema: en ese caso hay
+que elegir Altavoz en el móvil. La web no puede subir el volumen del sistema ni garantizar esa ruta.
+
+El workflow de bomberos es independiente y ya está publicado. No se modificó el 112 existente.
+Pruebas adicionales con cuota (no ejecutarlas automáticamente en CI):
+
+```bash
+.venv/bin/python verify_director.py --cloud --response
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_responder_voice.py --cloud --audio .local/bomberos-pcm.wav
+```
+
+La segunda requiere un WAV PCM de habla de prueba; envía audio sintético por una webcall real,
+no por el micrófono humano. Verificada la extracción de llegada/confirmación/refuerzos/helicóptero/
+ES-Alert. Queda la valoración humana de escucha, volumen y altavoz físico en el móvil utilizado.
 
 ## Qué puedes hacer
 

@@ -9,7 +9,7 @@ import uuid
 from copy import deepcopy
 from http.server import ThreadingHTTPServer
 
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 from app import ROOT, Handler, Store
 from database import Database
@@ -121,6 +121,118 @@ def verify_evidence(browser, url, store):
     print('Evidencias: GIBS offline real, FIRMS/GFS fechados, cámara fixture, dos zonas, zoom out/in, control manual y reanudación: OK')
 
 
+def verify_responder_ui(browser, url, store):
+    from test_demo import message, part
+
+    class VoiceFixture:
+        ready = responder_ready = True
+
+        def __init__(self):
+            self.created = []
+            self.transcripts = {}
+
+        def create(self, session_id, role='citizen', context=None):
+            run_id = str(uuid.uuid4())
+            self.created.append((run_id, role, context))
+            return {'run_id': run_id, 'url': 'wss://example.invalid', 'token': 'fixture', 'room_name': 'fixture'}
+
+        def messages(self, run_id):
+            return self.transcripts.get(run_id, [])
+
+    provider = VoiceFixture()
+    store.demo.provider = provider
+    store.director.planner.ready = False
+    incident = next(i for i in store.payload()['incidents'] if i.get('source_kind') == 'call')
+    resource = next(a['resource'] for a in store.director.state['assignments'].values() if a['incident_id'] == incident['id'])
+    phone = browser.new_page(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
+    receiver = browser.new_page(viewport={'width': 390, 'height': 844}, is_mobile=True, has_touch=True)
+    errors = []
+    for page in (phone, receiver):
+        page.on('pageerror', lambda error: errors.append(error.stack))
+    phone.route('https://cdn.jsdelivr.net/**', lambda route: route.fulfill(content_type='text/javascript', body='''
+window.LivekitClient = {RoomEvent: {TrackSubscribed: 'track', Disconnected: 'disconnected'}, Track: {Kind: {Audio: 'audio'}},
+Room: class { constructor(){ this.localParticipant = {setMicrophoneEnabled: async () => {}}; } on(){ } async connect(){ } disconnect(){ }} };
+'''))
+    receiver.add_init_script('''
+window.__alarmStarts = 0;
+const original = AudioContext.prototype.createOscillator;
+AudioContext.prototype.createOscillator = function() {
+ const oscillator = original.call(this), start = oscillator.start.bind(oscillator);
+ oscillator.start = (...args) => { window.__alarmStarts++; return start(...args); };
+ return oscillator;
+};
+''')
+    receiver.goto(url + '/112/alerts/')
+    receiver.locator('#activate-alerts').click()
+    expect(receiver.locator('body')).to_have_attribute('data-armed', 'true')
+    expect(receiver.locator('#receiver-status')).to_contain_text('conectado')
+    phone.goto(url + '/112/')
+    phone.locator('[data-number="123"]').click()
+    phone.locator('#incident-choice').select_option(incident['id'])
+    phone.locator('#resource-choice').select_option(resource['id'])
+    phone.locator('#call-button').click()
+    expect(phone.locator('#status')).to_have_text('En llamada', timeout=30000)
+    expect(phone.locator('#speaker-button')).to_be_enabled()
+    phone.locator('#speaker-button').click()
+    expect(phone.locator('#audio-note')).not_to_be_empty()
+    expect(phone.locator('#status')).to_have_text('En llamada')
+    run_id, role, binding = provider.created[-1]
+    assert role == 'firefighter' and binding['incident_id'] == incident['id']
+    provider.transcripts[run_id] = [part(llegada='confirmada', incendio='confirmado', es_alert='solicitado', refuerzos='solicitado', helicoptero='solicitado', evolucion='empeora', zona_urbana='si', detalle='Prueba de refuerzos y alerta móvil')]
+    store.demo.poll_once()
+    store.director.step()
+    expect(receiver.locator('body')).to_have_attribute('data-sounding', 'true')
+    assert receiver.evaluate('window.__alarmStarts') == 1
+    assert store.director.state['assignments'][resource['id']]['arrival_confirmed']
+    phone.locator('#details-toggle').click()
+    expect(phone.locator('#part-details')).to_contain_text('solicitado')
+    receiver.locator('#ack-alert').click()
+    assert receiver.locator('#received-alert').is_hidden()
+    store.director.step()
+    receiver.wait_for_timeout(1800)
+    assert receiver.evaluate('window.__alarmStarts') == 1, 'No duplicar una petición ya emitida'
+    context = store.director.context(store.payload())
+    helicopter = next(r for r in context['resources'] if r['kind'] == 'helicopter' and not r['assignment'])
+    reinforcement = next(r for r in context['resources'] if r['kind'] == 'fire_engine' and not r['assignment'])
+    plan = {'revision': context['revision'], 'summary': 'Plan fixture: refuerzo terrestre y aéreo', 'actions': [
+        {'type': 'dispatch', 'incident_id': incident['id'], 'resource_id': r['id'], 'reason': 'Solicitud de apoyo en parte de bomberos'} for r in (helicopter, reinforcement)]}
+    actions = store.director.prepare(plan, context)
+    assert all(not action.get('route_error') for action in actions)
+    store.director.apply(plan, actions, 'response-ui-fixture')
+    map_page = browser.new_page(viewport={'width': 1440, 'height': 900})
+    map_page.on('pageerror', lambda error: errors.append(error.stack))
+    map_page.goto(url)
+    map_page.locator('.response-vehicle.helicopter').wait_for(state='attached')
+    assert map_page.locator('.response-vehicle.fire-engine').count() >= 2
+    second_run = str(uuid.uuid4())
+    store.demo.register(second_run)
+    previous_resolver = store.demo.resolver
+    store.demo.resolver = lambda query: {'lat': 41.13, 'lon': 1.26, 'label': 'Segundo aviso de prueba', 'precision': 'coordinates', 'source': 'test_fixture'}
+    store.demo.accept(second_run, [message('Segundo aviso de prueba')])
+    store.demo.resolver = previous_resolver
+    second_incident = next(i for i in store.payload()['incidents'] if i.get('demo_report', {}).get('run_id') == second_run)
+    context = store.director.context(store.payload())
+    context['incidents'] = [dict(i, responder_report={'fields': {'helicoptero': 'solicitado'}}) if i['id'] == second_incident['id'] else i for i in context['incidents']]
+    reassignment = {'revision': context['revision'], 'summary': 'Plan fixture: redistribución', 'actions': [{'type': 'reassign', 'incident_id': second_incident['id'], 'resource_id': helicopter['id'], 'reason': 'Apoyo aéreo a segundo aviso en la prueba'}]}
+    store.director.apply(reassignment, store.director.prepare(reassignment, context), 'reassign-ui-fixture')
+    assert store.director.state['assignments'][helicopter['id']]['incident_id'] == second_incident['id']
+    provider.transcripts[run_id].append(part(incendio='descartado', es_alert='no_solicitado'))
+    store.demo.poll_once()
+    store.director.step()
+    assert incident['id'] not in [i['id'] for i in store.payload()['incidents']]
+    assert incident['id'] not in store.director.state['alerts']
+    phone.locator('#details-close').click()
+    phone.locator('#hangup-button').click()
+    receiver.reload()
+    receiver.locator('#activate-alerts').click()
+    receiver.wait_for_timeout(1800)
+    assert receiver.evaluate('window.__alarmStarts') == 0, 'Recargar no reproduce alertas anteriores'
+    assert not errors, errors
+    for page in (phone, receiver, map_page):
+        page.close()
+    print('123 + receptor: selección de incidente/unidad, parte, llegada, ES-Alert con AudioContext, idempotencia, refuerzo/camión/helicóptero, reasignación y cancelación: OK (voz y plan fixtures).')
+
+
 def main(cloud: bool = False) -> None:
     database = Database()
     store = Store(offline=True, database=database)
@@ -203,6 +315,7 @@ def main(cloud: bool = False) -> None:
             mobile.close()
             page.close()
             verify_evidence(browser, f'http://127.0.0.1:{server.server_port}', store)
+            verify_responder_ui(browser, f'http://127.0.0.1:{server.server_port}', store)
             browser.close()
     finally:
         server.shutdown()
