@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlareAI · Prueba SMS</title>
+  <link rel="stylesheet" href="/sms.css">
+  <script type="module" src="/sms.js"></script>
+</head>
+<body>
+  <main>
+    <header><a class="brand" href="/">FlareAI<span> / LAB</span></a><span class="pill">HappyRobot · SMS</span></header>
+    <section class="intro"><p class="eyebrow">PRUEBA DE COMUNICACIONES</p><h1>Un mensaje.<br>Un clic.</h1><p>Envía un SMS desde tu número de HappyRobot.<br>Sin llamadas, sin agente conversacional.</p></section>
+    <div class="layout">
+      <section class="card">
+        <div class="card-title"><h2>Nuevo SMS</h2><span class="tag">ENVÍO REAL</span></div>
+        <div id="connection" class="notice" role="status">Comprobando configuración…</div>
+        <form id="sms-form">
+          <label for="sender">Desde</label>
+          <input id="sender" value="+15304471317" readonly>
+          <label for="to">Destinatario</label>
+          <input id="to" name="to" type="tel" autocomplete="tel" placeholder="+34 600 000 000" required maxlength="30" aria-describedby="phone-help">
+          <small id="phone-help">Incluye el prefijo internacional. Usa tu móvil para la prueba.</small>
+          <div class="label-row"><label for="message">Mensaje</label><small id="count">0 / 480</small></div>
+          <textarea id="message" name="message" rows="4" maxlength="480" required>Hola, este es un SMS de prueba de FlareAI enviado con HappyRobot.</textarea>
+          <small>Según el texto y su longitud, el operador puede dividirlo en varios SMS y aplicar cargos.</small>
+          <label class="confirmation"><input id="confirmed" type="checkbox" required><span>Confirmo el destinatario y autorizo este envío real.</span></label>
+          <button id="send" type="submit" disabled>Enviar SMS <span aria-hidden="true">→</span></button>
+        </form>
+      </section>
+      <aside>
+        <section class="card status-card"><p class="eyebrow">ESTADO DE LA PRUEBA</p><h2 id="status-title">Todo empieza aquí.</h2><p id="status-message" role="status" aria-live="polite">No se envía nada al abrir esta página. Rellena el formulario y pulsa el botón.</p><code id="run-id" hidden></code><button id="refresh" class="secondary" hidden>Consultar estado</button></section>
+        <section class="explanation"><h3>Qué ocurre al pulsar</h3><ol><li>El servidor local recibe tu petición.</li><li>HappyRobot ejecuta el workflow SMS.</li><li>El proveedor tramita el mensaje.</li></ol><p>Una ejecución completada no confirma la entrega al móvil. Comprueba la recepción en el dispositivo.</p></section>
+      </aside>
+    </div>
+    <footer>Prueba local independiente del observatorio de incendios. La API key nunca llega al navegador.</footer>
+  </main>
+</body>
+</html>

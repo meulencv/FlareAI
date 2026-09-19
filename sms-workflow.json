@@ -1,0 +1,11 @@
+{
+  "workflow_id": "01a0b8d2-28d1-7e38-b7cf-7dded8edb333",
+  "version_id": "01a0b8e9-d59e-7de5-8a01-e8b692f285e2",
+  "sender": "+15304471317",
+  "published": true,
+  "hook_slug": "lzegysqwhrfe",
+  "verification": "authorized_send_rejected_telnyx_40305_messaging_profile_association_required",
+  "verification_run_id": "8b3443b5-9471-4c6c-b487-5956ebddf810",
+  "trigger_id": "01a0b8e9-d5a5-7bb7-8e3e-fc90eb8a27da",
+  "sms_node_id": "01a0b8e9-d5a6-7eab-b094-a61bf738f118"
+}

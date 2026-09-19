@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FlareAI · Simulacro Telegram</title>
+  <link rel="stylesheet" href="/sms.css">
+  <script type="module" src="/telegram.js"></script>
+</head>
+<body>
+  <main>
+    <header><a class="brand" href="/">FlareAI<span> / LAB</span></a><span class="pill">HappyRobot · Telegram</span></header>
+    <section class="intro"><p class="eyebrow">PRUEBA DE AVISOS</p><h1>El aviso.<br>En tu Telegram.</h1><p>Un simulacro enviado a tu chat privado, con aprobación manual.<br>No es ES-Alert ni una orden real de evacuación.</p></section>
+    <div id="connection" class="notice" role="status">Comprobando configuración…</div>
+    <div class="layout">
+      <section class="card">
+        <div class="card-title"><h2>1. Conecta tu bot</h2><span class="tag">SOLO TU CHAT</span></div>
+        <form id="connect-form">
+          <label for="bot-token">Token de BotFather</label>
+          <input id="bot-token" type="password" autocomplete="off" spellcheck="false" required maxlength="150" placeholder="Pega aquí el token, no en el chat del asistente">
+          <small>Usa un bot nuevo dedicado a la prueba. El token se guardará como variable oculta del workflow de HappyRobot; no en archivos locales ni en el almacenamiento del navegador. HappyRobot lo necesita para enviar a Telegram.</small>
+          <label class="confirmation"><input id="store-consent" type="checkbox" required><span>Autorizo configurar este token en el workflow de HappyRobot.</span></label>
+          <button id="connect" type="submit" disabled>Conectar bot</button>
+        </form>
+        <div id="pairing" hidden>
+          <p id="bot-name"></p>
+          <p><a id="pair-link" href="#" target="_blank" rel="noopener noreferrer">Abrir bot en Telegram</a></p>
+          <p id="pair-help">Abre el enlace, pulsa <strong>Iniciar</strong> y vuelve aquí. El enlace de vinculación caduca en 10 minutos.</p>
+          <button id="pair-check" class="secondary" type="button">Comprobar vinculación</button>
+        </div>
+        <div id="setup-status" class="notice" role="status" aria-live="polite">No se envía ningún mensaje al conectar el bot.</div>
+        <h3>Conexión con HappyRobot</h3>
+        <p><a id="workflow-link" href="#" target="_blank" rel="noopener noreferrer">Abrir FlareAI Telegram Demo</a></p>
+        <small>Si rechaza la clave: Fork → primer nodo → Advanced configuration → regenerar API Key → publicar en Production. No cambies el token del bot ni desactives Enhanced Security.</small>
+        <button id="verify-workflow" class="secondary" type="button" disabled>Comprobar HappyRobot sin enviar</button>
+        <div id="workflow-status" class="notice" role="status" aria-live="polite">Autenticación pendiente de comprobar.</div>
+        <section class="explanation"><h3>Sin números de teléfono</h3><p>El bot solo enviará al chat privado que vincules con este enlace. No se conectan grupos ni se realiza difusión masiva. Un mensaje aceptado no confirma lectura.</p></section>
+      </section>
+      <aside>
+        <section class="card">
+          <div class="card-title"><h2>2. Envía un simulacro</h2><span class="tag">MENSAJE REAL</span></div>
+          <form id="telegram-form">
+            <label for="recipient">Chat vinculado</label>
+            <input id="recipient" readonly value="Pendiente de vinculación">
+            <div class="label-row"><label for="message">Contenido de prueba</label><small id="count">0 / 1500</small></div>
+            <textarea id="message" rows="4" maxlength="1500" required>Prueba de recepción de avisos de FlareAI. No tienes que evacuar ni realizar ninguna acción.</textarea>
+            <div id="simulation-prefix" class="notice">SIMULACRO — No es una orden real de evacuación.</div>
+            <small>El servidor añade siempre este encabezado. No puede quitarse desde el formulario.</small>
+            <label class="confirmation"><input id="confirmed" type="checkbox" required><span>Autorizo enviar este mensaje de simulacro al chat vinculado.</span></label>
+            <button id="send" type="submit" disabled>Enviar simulacro →</button>
+          </form>
+        </section>
+        <section class="card status-card"><p class="eyebrow">RESULTADO</p><h2 id="status-title">Aún no enviado.</h2><p id="status-message" role="status" aria-live="polite">Conecta el bot y vincula tu chat para comenzar.</p><code id="run-id" hidden></code><button id="refresh" class="secondary" hidden>Consultar estado</button></section>
+      </aside>
+    </div>
+    <footer>Prueba local independiente de los SMS y del observatorio. Las credenciales de HappyRobot no se envían al navegador. La vinculación se pierde al reiniciar el servidor.</footer>
+  </main>
+</body>
+</html>

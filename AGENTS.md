@@ -23,6 +23,12 @@ primero `README.md` y `docs/IMPLEMENTACION.md`.
   viento/temperatura.
 - `detectar.py` — descarga y filtro geográfico/temporal de CSV globales NASA FIRMS (VIIRS).
 - `incidents.py` — agrupación de focos, asignación de provincia, huellas y métricas derivadas.
+- `build_emergency_db.py` — atlas independiente de infraestructura de emergencias. Python >=3.10,
+  Shapely 2.x y SQLite JSON1/RTree, sin ecCodes. Compila `emergencias_espana.db`, GeoJSON y
+  manifiesto; fuentes originales en `data/emergency_sources/`. Verificar con
+  `python -m unittest test_emergency_db -v` y `python build_emergency_db.py --verify`;
+  reconstruir sin red con `python build_emergency_db.py --offline`. No confundir cobertura
+  nacional con exhaustividad ni disponibilidad operativa. Un único escritor por caché/salida.
 - `satellite.py` — imágenes NASA GIBS (natural/SWIR) con caché en disco y control de cobertura.
 - `static/` — frontend: `index.html`, `app.js`, `flow.js` (geometría/partículas/índice
   geográfico), `flames.js` (renderizador Canvas 2D de llamas/corrientes), `simulation.js`,
@@ -42,6 +48,59 @@ primero `README.md` y `docs/IMPLEMENTACION.md`.
 Sin claves ni secretos: FlareAI no requiere API key para NASA/NOAA. Si en el futuro hiciera
 falta alguna, solo en `.env` (nunca en el repo/vault). Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
+
+## Prueba SMS independiente (2026-09-19)
+
+- `sms_demo.py` + `static/sms.{html,css,js}`: interfaz local de SMS, independiente de `app.py`.
+  Arranque: `python sms_demo.py serve` → `http://127.0.0.1:8091` (solo loopback).
+- `sms-workflow.json` contiene únicamente IDs/estado, nunca claves. Workflow remoto
+  `FlareAI SMS Test`, remitente Telnyx `+15304471317`, trigger con `to`/`message` → Send SMS.
+- Autenticación resuelta con una clave regenerada desde la UI y Version 3 publicada. Usar el
+  valor literal del trigger en `HAPPYROBOT_SMS_HOOK_KEY`, enviado como `X-API-Key` al hook.
+  No sustituirlo por la clave de cuenta ni su hash. Republicar Version 2 sin regenerar no resolvió
+  los 401 anteriores. La causa interna no se confirmó; mantener Enhanced Security activado.
+  `HAPPYROBOT_API_KEY` sirve para consultas de estado y admite lectura de `versión-anterior/.env`,
+  autorizada por el usuario. La ruta API para iniciar runs devolvió 502; se usa el webhook directo.
+- Las claves proporcionadas en chat se pasaron por entorno de proceso, no se guardaron en archivos.
+  Reiniciar el servidor requiere volver a proporcionar las variables. Nunca imprimir config completa
+  de nodos: el trigger puede contener campos secretos incluso si la API lo devuelve con `type: action`.
+  En Windows, terminar la shell puede dejar vivo el hijo `python sms_demo.py serve`: comprobar
+  los PID antes de reiniciar y confirmar `/api/config` después para no servir la sesión anterior.
+- Verificación aislada: `python -m unittest test_sms_demo -v`,
+  `python -m py_compile sms_demo.py test_sms_demo.py`, `node --check static/sms.js`,
+  `npx --yes --package eslint@9.33.0 eslint static/sms.js`.
+  Pruebas con mocks; no enviar SMS reales sin autorización del destinatario/texto concreto.
+- La publicación de versiones puede ejecutar nodos de prueba automáticamente. No dejar un
+  destinatario real en los ejemplos. El run autenticado `2bf83087-a39b-4865-b1bb-1c4373eb6e41`
+  con destinatario vacío inició Version 3 y falló en Send SMS con `to is required` (esperado).
+  No se ha probado la entrega real. No confundir `completed` con SMS entregado.
+
+## Prueba Telegram independiente (2026-09-19)
+
+- SMS queda pendiente del mentor: Telnyx rechazó un envío autorizado con 40305 (asociación al
+  Messaging Profile); el número Twilio comprado en HappyRobot no aparece en la opción gestionada
+  de toll-free. No comprar más números ni reintentar mensajes idénticos sin resolver la configuración.
+- `telegram_demo.py` reutiliza el servidor protegido y la deduplicación de `sms_demo.py`.
+  `static/telegram.{html,js}` reutiliza `static/sms.css`; no cambia el observatorio ni el atlas.
+- Arranque con `HAPPYROBOT_API_KEY` en el entorno: `python telegram_demo.py serve` →
+  `http://127.0.0.1:8092`. `prepare` crea/reanuda únicamente su workflow, sin destinatario real.
+- Workflow `FlareAI Telegram Demo`: `01a0b90b-bc5e-7b7c-b080-71f35f139200`, slug `qinusphyej9n`.
+  `telegram-workflow.json` guarda solo IDs/estado. El token del bot se introduce en la web local,
+  se verifica con getMe/getWebhookInfo y, con consentimiento, se guarda como variable oculta
+  `TELEGRAM_BOT_TOKEN` en producción de HappyRobot. No archivos locales ni almacenamiento del navegador.
+- Un enlace `/start` de un solo uso vincula un chat privado, con nonce y caducidad de 10 minutos.
+  No usar bots que ya tengan webhook: la aplicación los rechaza sin modificarlo. No hay difusión
+  masiva, geolocalización ni órdenes operativas; el servidor fuerza el prefijo SIMULACRO.
+- El webhook creado por API devolvió 401 aun usando una clave UUID. Pendiente regenerar esa clave
+  desde la UI en una versión editable y publicar Production. El botón de comprobar HappyRobot
+  descubre la versión Live, lee su clave en memoria y prueba con chat_id=0, nunca un chat real.
+  Envío bloqueado hasta tener bot, chat vinculado y autenticación comprobada. No desactivar seguridad.
+- Verificación: `python -m unittest test_sms_demo test_telegram_demo -v` (27 pruebas sin red),
+  `python -m py_compile sms_demo.py telegram_demo.py test_sms_demo.py test_telegram_demo.py`,
+  `npx --yes --package eslint@9.33.0 eslint static/sms.js static/telegram.js`.
+  Pendiente la recepción real en Telegram. Una ejecución completada no confirma lectura.
+- Reiniciar pierde vinculación, bot en memoria y deduplicación. Hay que conectar/vincular de nuevo.
+  El token permanece en la variable oculta de HappyRobot hasta que su propietario lo cambie/revoque.
 
 ## Documentar en el vault de Obsidian (`HappyRobot-Vault/`)
 

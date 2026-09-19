@@ -102,6 +102,129 @@ curl http://127.0.0.1:8090/api/incidents.csv -o zonas.csv
 
 Las pruebas HTTP consultan ambos productos de imagen de la primera zona. Con conexión pueden descargar dos imágenes a GIBS. En modo offline usan la caché.
 
+## Base nacional de infraestructura de emergencias
+
+`build_emergency_db.py` es independiente del servidor y no necesita claves, ecCodes ni servicios
+agénticos. Requiere Python >= 3.10 con SQLite JSON1/RTree y Shapely 2.x (ya es dependencia del
+proyecto). Instalación mínima en un entorno virtual: `python -m pip install shapely==2.1.1`.
+
+```bash
+python build_emergency_db.py
+python build_emergency_db.py --verify
+python -m unittest test_emergency_db -v
+```
+
+Entrega en la raíz:
+
+- **`emergencias_espana.db`**: entidades georreferenciadas y registros oficiales pendientes de
+  localizar, índice RTree, categorías múltiples, contactos y procedencia auditable.
+- **`emergencias_espana.geojson`**: únicamente entidades con coordenadas, puntos WGS84
+  `[longitud, latitud]`. Los centros sin posición **no se inventan ni se colocan en el centro del municipio**.
+- **`emergencias_espana.manifest.json`**: recuentos por provincia/comunidad/categoría, campos
+  ausentes, estado y fechas de fuentes, limitaciones y SHA-256 de ambos artefactos.
+- **`data/emergency_sources/`**: respuestas originales comprimidas y evidencias de descarga.
+
+**Fuentes incorporadas:** OpenStreetMap/Overpass para toda España (incluidas islas y ciudades
+autónomas); Ministerio de Sanidad (Catálogo Nacional de Hospitales y dispositivos de urgencias
+extrahospitalarias); Ayuntamiento de Madrid (bomberos); IECA/Junta de Andalucía, DERA
+(salud, hospitales/centros de especialidades, bomberos, policía, Guardia Civil, coordinación,
+organizaciones humanitarias y socorro). El CNH se nutre de REGCESS/SIAE: esto **no es una
+extracción completa de todo REGCESS**. `datos.gob.es` se usa como catálogo de descubrimiento,
+no como otra fuente de registros duplicados.
+
+Las categorías incluyen hospitales, centros sanitarios, urgencias, bomberos, bases forestales,
+policía, Protección Civil, coordinación, ambulancias, salvamento, helipuertos y organizaciones
+humanitarias. Una entidad puede tener varias categorías. Un centro sanitario no implica servicio
+de urgencias; un helipuerto no implica uso sanitario autorizado. La clasificación por nombre y
+los enlaces entre fuentes son inferencias auditables, no certificaciones oficiales.
+
+**Entrega del 19/09/2026:** 25.730 registros de origen, 25.136 entidades tras deduplicación,
+22.575 puntos georreferenciados y 2.561 registros oficiales pendientes de localizar (499
+hospitales y 2.062 dispositivos de urgencias). Hay puntos en las 52 provincias/ciudades autónomas.
+Las instantáneas OSM utilizadas abarcan del **06/05/2026 al 19/09/2026**: no representan todas
+el estado actual. De los puntos, 14.628 no tienen municipio publicado y 15.334 carecen de
+teléfono normalizable; el manifiesto detalla el resto de carencias. SQLite ocupa 95,2 MB y
+GeoJSON 26,6 MB. Pasan 25 pruebas del módulo, lint, tipos y la verificación de ambos artefactos.
+La suite general necesita además ecCodes, ausente en el entorno utilizado para esta tarea.
+
+### Reanudar, actualizar y consultar
+
+```bash
+python build_emergency_db.py --offline
+python build_emergency_db.py --refresh
+python build_emergency_db.py --output-dir data/emergency_release
+python build_emergency_db.py --near 40.4168 -3.7038 15 --category hospital --limit 10
+```
+
+Sin `--refresh`, reutiliza respuestas válidas de la caché; **no es una actualización automática**.
+`--offline` prohíbe red. Si falla una fuente, no publica archivos, devuelve código 2 y guarda el
+informe en `data/emergency_sources/last_acquisition.json`; reejecutar reanuda desde la caché.
+`--allow-partial` permite explícitamente una entrega incompleta, señalada en el manifiesto.
+`--overpass-endpoint URL` permite indicar servidores HTTPS (repetible). `--download-only` solo
+adquiere las fuentes. No ejecutar escritores concurrentes sobre la misma caché.
+
+**Cobertura nacional no significa exhaustividad ni vigencia operativa.** Consultar siempre
+`source_status`, las fechas OSM, los campos ausentes y `unlocated_facilities`. La fecha de
+descarga no es la de actualización del centro. No se ha comprobado por teléfono la existencia,
+disponibilidad, capacidad o autorización de movilización de cada recurso. No conectar estas
+fichas directamente a llamadas/despachos autónomos sin verificación y aprobación.
+
+### Tablas y consultas para agentes
+
+| Tabla / vista | Contenido |
+|---|---|
+| `facilities` | UUID, nombre, dirección, municipio, provincia, comunidad, lat/lon, contacto principal, método de coordenadas, metadatos JSON |
+| `categories`, `facility_categories` | Catálogo y relación muchos-a-muchos |
+| `contacts` | Todos los teléfonos publicados normalizables; los códigos 112/061 siguen siendo códigos generales |
+| `sources`, `downloads` | Publicador, licencia, ámbito, URLs, fechas, hashes y evidencias |
+| `source_records` | Identificador original, registro crudo/normalizado, enlace a entidad y método/puntuación/distancia del enlace |
+| `facility_rtree` | Índice espacial sincronizado mediante triggers de inserción, cambio y borrado |
+| `coverage`, `unlocated_facilities`, `build_metadata` | Cobertura, pendientes de geolocalización y metadatos de compilación |
+
+```sql
+SELECT * FROM coverage WHERE province = 'Madrid';
+SELECT id, name, municipality FROM unlocated_facilities;
+SELECT s.name, r.source_url, r.match_method, r.raw_json
+FROM source_records r JOIN sources s ON s.id = r.source_id
+WHERE r.facility_id = :facility_id;
+```
+
+Para distancia esférica en kilómetros (no tiempo de conducción), la función Python registra
+`distance_km` en SQLite, prefiltra con RTree y aplica haversine. No requiere SpatiaLite:
+
+```python
+import sqlite3
+from contextlib import closing
+from build_emergency_db import proximity
+
+with closing(sqlite3.connect("file:emergencias_espana.db?mode=ro", uri=True)) as db:
+    hospitals = proximity(db, lat=40.4168, lon=-3.7038, radius_km=15,
+                          category="hospital", limit=10)
+    print([(r["name"], round(r["distance_km"], 2)) for r in hospitals])
+```
+
+SQL equivalente, tras registrar `db.create_function("distance_km", 4, distance_km)`:
+
+```sql
+SELECT f.id, f.name, distance_km(:lat, :lon, f.lat, f.lon) AS km
+FROM facility_rtree r JOIN facilities f ON f.pk = r.pk
+WHERE r.max_lon >= :west AND r.min_lon <= :east
+  AND r.max_lat >= :south AND r.min_lat <= :north
+  AND distance_km(:lat, :lon, f.lat, f.lon) <= :radius_km
+ORDER BY km LIMIT :limit;
+```
+
+Los parámetros del rectángulo deben envolver el círculo; usar `proximity()` para calcularlos
+sin perder candidatos. Para PostgreSQL/PostGIS, conservar los UUID y claves originales,
+transformar los JSON a JSONB y reemplazar RTree por un índice GiST sobre `geography(Point,4326)`
+y `ST_DWithin(..., radio_metros)`. No se han desplegado integraciones en HappyRobot.
+
+Atribución: © OpenStreetMap contributors, ODbL 1.0; Ministerio de Sanidad
+([condiciones](https://www.sanidad.gob.es/avisoLegal/home.htm)); Ayuntamiento de Madrid e
+IECA/Junta de Andalucía, CC BY 4.0; límites provinciales geoBoundaries/INE. Mantener licencias,
+procedencia y fechas al redistribuir; el acceso público no implica SLA. Más detalle en
+`docs/IMPLEMENTACION.md`, sección 10.
+
 ## Implantación
 
 Este servidor es un prototipo reproducible con la biblioteca estándar de Python. Para servicio público persistente, ejecutar un único proceso de adquisición, almacenar cachés y evidencias en un volumen persistente y servir los recursos mediante un proxy HTTPS. Configurar límites de concurrencia y peticiones en el proxy; para tráfico alto, trasladar el servidor a un framework de producción. Evitar iniciar varios escritores sobre el mismo directorio `data/`.

@@ -5,6 +5,8 @@
 
 # Python
 __pycache__/
+.venv-emergency/
+.emergency-build.lock
 *.pyc
 .venv/
 venv/
