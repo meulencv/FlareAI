@@ -40,7 +40,7 @@ y dashboard con aprobación humana.
 - [[Escenario demo - giro de viento]]
 - [[Cómo desplegar - sos deploy]]
 - [[Cómo arrancar todo]]
-- [[Simulador 112 con ficha en directo]] (web call aislada + resumen visual)
+- [[Simulador 112 con ficha en directo]] (webcall integrada con mapa, sesión sin código y túnel móvil aislado)
 - Legacy 2026-09-18: [[FlareAI Web Voice - workflow]] · [[Web app - server y frontend]]
 
 ### Referencia
@@ -57,8 +57,11 @@ y dashboard con aprobación humana.
 
 - **Activo: FlareAI**, observatorio Python + Leaflet en la raíz, servidor online en :8090.
   La implementación S.O.S. descrita en las notas anteriores vive en `versión-anterior/`.
-- **Simulador 112 aislado:** `happyrobot-112/`, workflow propio publicado, voz Ana HR en español
-  y ficha en directo desde el transcript. Servidor local en :8112; no conecta con el 112 real.
+- **Webcall 112 → mapa:** marcador `happyrobot-112/` servido por `app.py` en :8112, aislado del
+  mapa en :8090. `demo.py publish` publica solo el marcador por HTTPS temporal. Sin código de
+  vinculación; sesión limpia por arranque, avisos rojos etiquetados demo, sin Twin ni llamada al
+  112 real. Véase [[Simulador 112 con ficha en directo]]. Workflow publicado/live y HTTPS con
+  sesión segura verificados; **pendiente la conversación humana móvil → mapa**.
 - **Datos activos en PostgreSQL local:** 511.226 celdas, 44.787 instalaciones OSM y 2.926 cámaras;
   fuentes, instantáneas FIRMS/GFS, focos, observaciones y metadatos de cartografía/medios en SQL.
   Esquema compatible en tipos con Twin, sin PostGIS; ninguna escritura remota. Véase [[2026-09-19]].

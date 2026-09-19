@@ -43,6 +43,69 @@ python app.py --offline --host 127.0.0.1 --port 8090
 
 Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan transcurrido días. Las imágenes de Igea en ambas capas están guardadas. Otras zonas solo tendrán imagen offline si se consultaron antes con conexión. No se contacta con NASA ni NOAA en este modo.
 
+## Demo webcall 112 → mapa
+
+La webcall reutiliza `happyrobot-112/`; **no llama al 112 real**. Solo esta integración requiere
+`HAPPYROBOT_API_KEY` en `happyrobot-112/.env` (ignorado por Git), junto con
+`HAPPYROBOT_WORKFLOW_ID` o el identificador de `happyrobot-112/workflow.json`. El workflow debe
+estar publicado en `production` y disponer de la tool silenciosa `actualizar_ficha`. La clave
+permanece en el backend; no hace falta Twin. No ejecutes el servidor independiente del marcador
+al mismo tiempo: ocuparía el puerto 8112 sin conectar con el mapa.
+
+Desde la raíz, en dos terminales:
+
+```bash
+.venv/bin/python app.py --host 127.0.0.1 --port 8090
+```
+
+```bash
+.venv/bin/python demo.py publish
+```
+
+El segundo comando requiere el binario local `.local/cloudflared/cloudflared`, comprueba el
+puerto móvil y publica solo `127.0.0.1:8112` mediante Cloudflare Quick Tunnel, sin cuenta.
+Imprime una URL HTTPS temporal terminada en `/112/`; ábrela en el móvil y mantén ambos procesos
+activos. Abre el mapa en `http://127.0.0.1:8090` después de lanzar el túnel para que su enlace
+**Webcall demo** recoja esa URL. `--mobile-port` en `app.py` y `--port` en `demo.py publish`
+permiten cambiar el puerto móvil, usando el mismo valor en ambos.
+
+1. Marca **112 en el teclado de la web**, pulsa llamar y permite el micrófono.
+2. Di, por ejemplo: «Hay un incendio forestal en Igea, La Rioja».
+3. Cuando el agente registre `actualizar_ficha` con incendio y ubicación suficiente, el mapa
+   confirma el foco más cercano a ≤3 km de su huella o crea un aviso ilustrativo nuevo.
+   La actualización es automática, sin código de vinculación ni botón de confirmación.
+4. El rojo lleva la etiqueta **Llamada web · demo**, nunca confirmación oficial. Un aviso nuevo
+   no inventa observaciones NASA, FRP, hectáreas ni perímetro quemado. Una ubicación ambigua
+   queda pendiente hasta que el agente la precise.
+
+Cada arranque online crea una sesión vacía: no recupera avisos ni cookies de sesiones anteriores.
+Recarga el marcador después de reiniciar. El respaldo SQL conserva los registros anteriores sin
+reaplicarlos al mapa; no se borran tablas. `--offline` no habilita la integración de voz.
+
+El puerto 8112 solo sirve el marcador y su API `/112/`, no el mapa, SQL ni archivos del proyecto.
+La sesión del navegador se prepara automáticamente con cookie HttpOnly/SameSite; no es una
+contraseña: cualquiera con la URL puede iniciar llamadas de demo y consumir cuota de HappyRobot.
+Comparte el enlace solo durante la prueba y detén el túnel con Ctrl+C al terminar. El subproceso
+excluye variables `HAPPYROBOT_*`, `TUNNEL_*` y `CLOUDFLARE_*` y no usa la configuración global.
+
+Comprobaciones sin iniciar una llamada:
+
+```bash
+curl http://127.0.0.1:8112/112/api/status
+curl http://127.0.0.1:8090/api/demo/setup
+FLAREAI_TEST_DATABASE=1 .venv/bin/python -m unittest -v test_demo test_database
+```
+
+`configured: true` indica configuración local, no prueba de audio ni de permisos remotos.
+Validado: HTTPS público, cookie segura automática, carga del SDK LiveKit, aislamiento, workflow
+publicado/live, reinicio limpio con SQL y flujo HTTP con proveedor simulado. **Pendiente: una
+conversación humana real desde móvil que confirme el cambio automático del mapa.**
+
+Para desplegar el frontend en Vercel u otro hosting, conserva un backend para la clave, los tokens,
+el polling de HappyRobot y PostgreSQL. La demo actual usa rutas relativas y cookies del mismo
+origen: requiere un proxy `/112/api/*` hacia ese backend, o adaptar explícitamente esa separación.
+Publicar solo los estáticos no ejecuta `app.py` ni su adquisición en segundo plano.
+
 ## Qué puedes hacer
 
 - Seleccionar una superficie de calor o una zona de la lista.
@@ -69,7 +132,7 @@ Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan t
 
 **No conocemos el perímetro quemado.** La cifra de huella térmica aproxima el área cubierta por los píxeles. No equivale a hectáreas quemadas. Por eso la superficie quemada confirmada aparece como «—».
 
-**Gris no confirmado, color fuego confirmado.** La confianza de NASA FIRMS se refiere a la detección térmica, no a la confirmación de un incendio forestal. El color fuego requiere un registro en `flare_confirmations` con fuente, fecha y vigencia; una noticia histórica no basta. No hay una fuente automática de confirmaciones conectada, por lo que las detecciones actuales se muestran grises.
+**Gris no confirmado, color fuego confirmado.** La confianza de NASA FIRMS se refiere a la detección térmica, no a la confirmación de un incendio forestal. El color fuego requiere un registro en `flare_confirmations` con fuente, fecha y vigencia, o un aviso de la sesión webcall identificado explícitamente como **demo**; una noticia histórica no basta. No hay una fuente automática de confirmaciones oficiales conectada. Las llamadas no modifican las detecciones NASA ni equivalen a una verificación oficial.
 
 **Las llamas son un tratamiento visual.** El contorno parte de la huella de los píxeles y añade resplandor, ondulación y chispas. La silueta queda anclada al terreno: al hacer zoom escala como el mapa, sin deformarse. Al alejarse se conserva la misma animación con tamaño visual mínimo de unos 32 px, sin icono estático. Se escala el conjunto desde su centro, sin alterar la geometría medida; al acercarse más allá del mínimo recupera su tamaño geográfico. El color, la velocidad de animación y las chispas no miden temperatura, transporte de pavesas ni avance del fuego. Para ver el detalle, selecciona **Igea → Acercar a la huella detectada**.
 
@@ -125,7 +188,8 @@ No se estima población afectada, tiempo de llegada ni evacuaciones. Se conserva
 | NASA FIRMS VIIRS | Cada 30 min | Detecciones según pasadas; pueden llegar horas después |
 | NOAA GFS | Cada 10 min | Pasos horarios; ciclos cada 6 h; malla de 0,25° |
 | NASA GIBS | Al seleccionar zona y capa | Mosaico diario; caché por zona/capa/hora |
-| Navegador | Cada 60 s | Consulta únicamente a este servidor |
+| Navegador (mapa) | Cada 2,5 s | Consulta únicamente a este servidor; no descarga NASA/NOAA por visitante |
+| Demo HappyRobot | Cada 2 s | Solo llamadas activas; la ficha del móvil consulta el backend cada 0,9 s |
 
 Los visitantes comparten una descarga meteorológica y una caché de focos. No se solicita GFS por visitante. El acceso público probado no requiere clave; no constituye una garantía de capacidad infinita ni de disponibilidad.
 

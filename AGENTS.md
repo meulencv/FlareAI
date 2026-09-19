@@ -39,9 +39,37 @@ primero `README.md` y `docs/IMPLEMENTACION.md`.
   resueltos, IDs, bitácora). Se mantiene aunque HappyRobot ya no sea el proyecto activo.
 - `.claude/skills/obsidian-docs/` — skill de Claude Code equivalente a la sección siguiente.
 
-Sin claves ni secretos: FlareAI no requiere API key para NASA/NOAA. Si en el futuro hiciera
-falta alguna, solo en `.env` (nunca en el repo/vault). Los secretos de la implementación
+FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_KEY` de
+`happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
+
+## Demo webcall 112 integrada
+
+- `demo.py` reutiliza el proveedor de `happyrobot-112/server.py`; no necesita Twin. Requiere
+  workflow publicado en `production` con `actualizar_ficha`, ID en `happyrobot-112/workflow.json`
+  o `HAPPYROBOT_WORKFLOW_ID`. No ejecutar `setup_happyrobot.py` sin pedirlo: modifica el workflow remoto.
+- Arranque online: `.venv/bin/python app.py --host 127.0.0.1 --port 8090`; en otra terminal,
+  `.venv/bin/python demo.py publish`. Cloudflared local en `.local/cloudflared/cloudflared`.
+  `--offline` no activa la demo. No arrancar además el servidor independiente de `happyrobot-112/`.
+- Puerto 8090: mapa. Puerto 8112: solo `/112/` y su API; el túnel publica exclusivamente este
+  último. Puertos alternativos: `app.py --mobile-port N` y `demo.py publish --port N`.
+  El enlace del mapa consulta `/api/demo/setup` al cargar: abrir/recargar después de lanzar el túnel.
+- Sin código de vinculación: cookie de navegador automática, HttpOnly, SameSite=Strict y Secure
+  vía HTTPS. Cualquiera con la URL temporal puede consumir cuota; no es autenticación de producción.
+  Mantener el túnel solo durante la demo. Nunca publicar el puerto del mapa por este túnel.
+- Cada `Store` online crea una `DemoBridge` vacía con UUID nuevo. Cookies previas inválidas hasta
+  recargar el marcador. SQL conserva las sesiones/avisos de la migración 3 pero no los restaura.
+- Solo `actualizar_ficha` del asistente confirma avisos demo; no inferir confirmaciones desde texto
+  libre del llamante ni confianza FIRMS. Geocodificación local + CartoCiudad/IGN conservadora.
+  Emparejar a ≤3 km de la huella, no del centroide; ambiguo = pendiente de ubicación.
+- Avisos nuevos: `source_kind=call`, geometría ilustrativa, sin observaciones/FRP/hectáreas NASA.
+  Overlay sin mutar originales; confirmación demo trazable en `/api/demo/report/<run_id>`.
+  El mapa consulta cada 2,5 s; HappyRobot cada 2 s, ficha móvil cada 0,9 s.
+- `publish()` verifica aislamiento y excluye `HAPPYROBOT_*`, `TUNNEL_*`, `CLOUDFLARE_*` del entorno
+  del subproceso. Pruebas: `test_demo.py` y regresión SQL de reinicio en `test_database.py`.
+- Verificación 19/09/2026: workflow publicado/live, HTTPS real, SDK LiveKit y cookie segura sin
+  código, aislamiento público y flujo HTTP simulado. Pendiente conversación humana móvil → mapa;
+  no confundir `configured=true`, SDK cargado o mocks con audio real verificado.
 
 ## Contexto territorial del atlas
 
