@@ -226,7 +226,8 @@ async function refresh() {
       if (next) selectIncident(next);
       else { selected = null; contextView.clear(); $("scenario-shortcut").disabled = true; $("detail-content").hidden = true; $("detail-name").textContent = "Sin detecciones"; closeSimulation(); imageRequest++; renderList(); }
     } else {
-      const changed = data.wind.valid_at_utc !== selected.weather.valid_at_utc || next.observations !== selected.observations;
+      const changed = data.wind.valid_at_utc !== selected.weather.valid_at_utc || next.observations !== selected.observations
+        || JSON.stringify(next.confirmation) !== JSON.stringify(selected.confirmation);
       if (changed) selectIncident(next); else { selected = next; $("seen-age").textContent = `Última detección ${age(next.last_seen)}`; renderList(); contextView.load(next); }
     }
   } catch (error) {

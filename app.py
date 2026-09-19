@@ -35,7 +35,9 @@ class Store:
         self.fires = cast(Collection, database.snapshot('fires') if database else json.loads((DATA / "firms/focos_espana.geojson").read_text()))
         self.weather = cast(Snapshot, database.snapshot('weather') if database else json.loads((DATA / "latest.json").read_text()))
         self.errors: dict[str, str] = {}
-        self.incidents = assemble(self.fires, self.weather, datetime.fromisoformat(self.fires["analysis_at_utc"]) if offline else None)
+        provinces = database.get_asset('map:provinces.geojson') if database else None
+        self.provinces = provinces['data']['features'] if provinces else None
+        self.incidents = assemble(self.fires, self.weather, datetime.fromisoformat(self.fires["analysis_at_utc"]) if offline else None, self.provinces)
         if self.db:
             self.db.save_incidents([dict(i) for i in self.incidents])
 
@@ -66,7 +68,7 @@ class Store:
                         self.errors["fires"] = str(error)
             try:
                 with self.lock:
-                    incidents = assemble(self.fires, self.weather)
+                    incidents = assemble(self.fires, self.weather, province_features=self.provinces)
                 if self.db:
                     self.db.save_incidents([dict(i) for i in incidents])
                 with self.lock:
@@ -164,7 +166,7 @@ class Handler(SimpleHTTPRequestHandler):
             elif route.path == "/atlas/sources":
                 self.send_bytes((ATLAS_ROOT / "FUENTES.md").read_bytes(), "text/plain; charset=utf-8")
             elif route.path == '/api/webcams' and self.store.db:
-                self.send_json(self.store.db.catalog())
+                self.send_json(self.store.db.catalog(verified=True))
             elif route.path == '/api/webcam' and self.store.territorial:
                 self.send_json(self.store.territorial.webcam(query['id'][0]))
             elif route.path == '/webcams/sources':
@@ -177,7 +179,7 @@ class Handler(SimpleHTTPRequestHandler):
                 body, mime = self.store.territorial.media(route.path.rsplit('/', 1)[1].split('.')[0])
                 self.send_bytes(body, mime)
             elif route.path == "/api/satellite":
-                result = picture(self.store.find(query["id"][0]), query.get("mode", ["natural"])[0], self.store.offline)
+                result = picture(self.store.find(query["id"][0]), query.get("mode", ["natural"])[0], self.store.offline, self.store.db)
                 if self.store.db:
                     key = result['url'].rsplit('/', 1)[1].split('.')[0]
                     self.store.db.asset('satellite:' + key, 'satellite', dict(result), DATA / 'satellite' / (key + '.png'))
@@ -217,5 +219,7 @@ if __name__ == "__main__":
     Handler.store = Store(options.offline, database)
     if not options.offline:
         threading.Thread(target=Handler.store.refresh_loop, daemon=True).start()
+        if Handler.store.territorial:
+            threading.Thread(target=Handler.store.territorial.verification_loop, daemon=True).start()
     print(f"FlareAI · puerto {options.port}", flush=True)
     ThreadingHTTPServer((options.host, options.port), Handler).serve_forever()

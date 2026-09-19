@@ -1,6 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupPlaces, facilityDetails, safeLink } from "./static/infrastructure.js";
+import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents } from "./static/infrastructure.js";
+
+test("las cámaras son invisibles en panorama y aparecen solo a escala local", () => {
+  assert.equal(camerasVisible(6), false);
+  assert.equal(camerasVisible(9.99), false);
+  assert.equal(camerasVisible(10), true);
+  assert.equal(camerasVisible(14), true);
+});
+
+test("las carreteras conservan teselas durante resets de zoom sin perder reproyección", () => {
+  const handlers = { viewprereset() {}, viewreset() {}, zoom() {}, moveend() {} };
+  const events = roadEvents(handlers);
+  assert.equal(events.viewprereset, undefined);
+  assert.equal(events.viewreset, handlers.viewreset);
+  assert.equal(events.zoom, handlers.zoom);
+  assert.equal(events.moveend, handlers.moveend);
+  assert.ok(handlers.viewprereset, "no altera otras capas");
+});
 
 const project = ([lat, lon]) => ({ x: lon * 100, y: lat * 100 });
 test("agrupa sin perder instalaciones y separa al acercar; coincidentes siguen accesibles", () => {

@@ -698,6 +698,7 @@ h1 {
   font-weight: 600;
   text-align: center;
 }
+#map.place-open ~ .map-label { visibility: hidden; }
 .place-popup .leaflet-popup-content-wrapper { border-radius: 14px; box-shadow: 0 8px 32px #25364724; }
 .place-popup .leaflet-popup-content { margin: 18px; max-width: calc(100vw - 76px); }
 .place-card { width: 300px; max-width: 100%; font-size: 11px; color: #586270; }

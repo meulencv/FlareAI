@@ -51,7 +51,7 @@ y dashboard con aprobación humana.
 
 ### Bitácora
 - [[2026-09-18]] — agente de voz web + vault
-- [[2026-09-19]] — S.O.S. Crisis Engine; después FlareAI actual y contexto territorial del atlas sin base de datos
+- [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-19)
 
@@ -59,12 +59,17 @@ y dashboard con aprobación humana.
   La implementación S.O.S. descrita en las notas anteriores vive en `versión-anterior/`.
 - **Simulador 112 aislado:** `happyrobot-112/`, workflow propio publicado, voz Ana HR en español
   y ficha en directo desde el transcript. Servidor local en :8112; no conecta con el 112 real.
-- **Atlas integrado sin base de datos:** población 2021, suelo 2019 y 44.787 elementos OSM de
-  18/09/2026. Contexto a 5 km de la huella y avisos orientativos según viento, sin sustituir
-  riesgo oficial. **Mapa de calor automático al seleccionar un foco**, con rótulo al pasar el ratón,
-  sin panel ni puntos; API v2 con factores y evidencia para agentes. La huella del incendio queda
-  anclada al terreno y no se deforma al hacer zoom. Véase [[2026-09-19]].
-- **Verificación del proyecto activo:** 29 tests Python, 34 JavaScript y prueba en navegador de
+- **Datos activos en PostgreSQL local:** 511.226 celdas, 44.787 instalaciones OSM y 2.926 cámaras;
+  fuentes, instantáneas FIRMS/GFS, focos, observaciones y metadatos de cartografía/medios en SQL.
+  Esquema compatible en tipos con Twin, sin PostGIS; ninguna escritura remota. Véase [[2026-09-19]].
+- **Mapa:** heatmap e instalaciones; cámaras ocultas hasta zoom 10. De los 2.926 registros
+  auditados, 2.240 capturas integrables estaban disponibles al comprobar; se ocultan errores,
+  plantillas y enlaces externos. La disponibilidad se revalida en SQL. El catálogo sigue siendo
+  parcial y no se sincroniza automáticamente. Carreteras IGN con teselas retenidas durante zoom.
+- **Fuego:** la misma animación en todas las escalas, con radio visual mínimo de 16 px, sin icono
+  estático. Confirmado = rojo; sin confirmar = gris. No modifica la geometría medida y la confianza
+  FIRMS no es confirmación. Véase [[2026-09-19]].
+- **Verificación del proyecto activo:** 45 tests Python (incluyendo SQL), 42 JavaScript y prueba en navegador de
   escritorio/móvil. Arquitectura y comandos actuales en `README.md`, `docs/IMPLEMENTACION.md`
   y `AGENTS.md` de la raíz.
 

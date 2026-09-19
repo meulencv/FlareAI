@@ -17,8 +17,8 @@ export function fireTint(incident, r, g, b, alpha = 1) {
   return `rgba(${gray},${gray},${gray},${alpha})`;
 }
 
-export function locatorSize(area) {
-  return Math.max(0, Math.min(1, (900 - area) / 600)) * 32;
+export function fireDisplayScale(extent) {
+  return Math.max(1, 16 / Math.max(.0001, extent));
 }
 
 function smooth(ctx, points) {
@@ -212,10 +212,10 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
     smooth(ctx, tongues); ctx.stroke();
   }
 
-  function sparks(incident, area, seconds, time, available) {
+  function sparks(incident, area, seconds, time, available, project, displayScale) {
     const selected = incident.id === selectedId;
     const target = Math.min(available, emberBudget(incident.observations, selected, map.getZoom()));
-    const bounds = geography(), mpp = metersPerPixel();
+    const bounds = geography(), mpp = metersPerPixel() / displayScale;
     const { shapes, cradle } = footprints.get(incident.id);
     const live = (embers.get(incident.id) || []).filter(e => !expired(e, bounds));
     while (live.length < target) {
@@ -228,7 +228,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
     for (let i = 0; i < live.length; i++) {
       const wind = sampleWind(live[i].lat, live[i].lon);
       live[i] = stepParticle(live[i], wind, seconds, mpp, { base: 5.5, gain: .5, drift: 3.4 });
-      const spot = point(live[i].lat, live[i].lon);
+      const spot = project(live[i].lat, live[i].lon);
       if (!inside(live[i], bounds)) continue;
       const life = live[i].age / live[i].life;
       const lift = (flicker(live[i].seed, time, 1.4) + 1) / 2;
@@ -240,7 +240,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
       if (wind?.from != null) {
         const tail = windStroke(live[i], wind, mpp, (1 - life) * 5 * scale)[0];
         if (tail) {
-          const end = point(tail.lat, tail.lon);
+          const end = project(tail.lat, tail.lon);
           ctx.strokeStyle = fireTint(incident, 239, 133, 67); ctx.lineWidth = Math.max(.5, size * .65);
           ctx.beginPath(); ctx.moveTo(end.x, end.y); ctx.lineTo(spot.x, spot.y); ctx.stroke();
         }
@@ -263,9 +263,14 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
         embers.delete(incident.id);
         continue;
       }
+      const anchor = point(incident.lat, incident.lon);
+      const projectedPolygons = polygons.map(polygon => polygon.map(ring => ring.slice(0, -1).map(([lon, lat]) => point(lat, lon))));
+      const extent = projectedPolygons.flat(2).reduce((max, p) => Math.max(max, Math.hypot(p.x - anchor.x, p.y - anchor.y)), 0);
+      const displayScale = fireDisplayScale(extent);
+      const enlarge = p => ({ x: anchor.x + (p.x - anchor.x) * displayScale, y: anchor.y + (p.y - anchor.y) * displayScale });
       let area = 0;
-      for (const polygon of polygons) {
-        const projected = polygon.map(ring => ring.slice(0, -1).map(([lon, lat]) => point(lat, lon)));
+      for (const polygon of projectedPolygons) {
+        const projected = polygon.map(ring => ring.map(enlarge));
         const ring = projected[0];
         if (ring.length < 3) continue;
         const centre = {
@@ -277,22 +282,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
         area += ringArea;
         heat(incident, outline, projected.slice(1), centre, ringArea, time);
       }
-      available -= sparks(incident, area, seconds, time, available);
-      const size = locatorSize(area);
-      if (size > 0) {
-        const centre = point(incident.lat, incident.lon), unit = size / 24;
-        const p = (x, y) => [centre.x + (x - 12) * unit, centre.y + (y - 13) * unit];
-        ctx.fillStyle = fireTint(incident, 224, 87, 47, .92);
-        ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(...p(13, 0));
-        ctx.quadraticCurveTo(...p(16, 7), ...p(10, 12));
-        ctx.quadraticCurveTo(...p(14, 13), ...p(16, 7));
-        ctx.quadraticCurveTo(...p(29, 21), ...p(13, 26));
-        ctx.quadraticCurveTo(...p(-3, 26), ...p(4, 10));
-        ctx.quadraticCurveTo(...p(4, 17), ...p(8, 16));
-        ctx.quadraticCurveTo(...p(3, 10), ...p(13, 0));
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-      }
+      available -= sparks(incident, area, seconds, time, available, (lat, lon) => enlarge(point(lat, lon)), displayScale);
     }
   }
 

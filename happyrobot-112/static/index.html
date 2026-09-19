@@ -2,81 +2,175 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#f4f2ed">
-  <title>Simulador de llamada · 112</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0c10">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>Teléfono · Simulación 112</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="/" aria-label="Inicio">
-      <span class="brand-mark" aria-hidden="true">112</span>
-      <span>Simulador de llamada</span>
-    </a>
-    <span class="demo-label">DEMOSTRACIÓN</span>
-  </header>
+  <svg class="icon-defs" aria-hidden="true" focusable="false">
+    <symbol id="i-call" viewBox="0 0 24 24">
+      <path d="M6.62 10.79c1.44 2.83 3.76 5.15 6.59 6.59l2.2-2.2c.27-.28.67-.36 1.02-.25 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.24.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+    </symbol>
+    <symbol id="i-call-end" viewBox="0 0 24 24">
+      <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08A.956.956 0 0 1 0 12.38c0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28a11.27 11.27 0 0 0-2.67-1.85.996.996 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/>
+    </symbol>
+    <symbol id="i-backspace" viewBox="0 0 24 24">
+      <path d="M22 3H7c-.69 0-1.23.35-1.59.88L0 12l5.41 8.11c.36.53.9.89 1.59.89h15c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-3 12.59L17.59 17 14 13.41 10.41 17 9 15.59 12.59 12 9 8.41 10.41 7 14 10.59 17.59 7 19 8.41 15.41 12 19 15.59z"/>
+    </symbol>
+    <symbol id="i-dialpad" viewBox="0 0 24 24">
+      <path d="M12 19c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM6 7c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0-6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zM6 1c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/>
+    </symbol>
+    <symbol id="i-speaker" viewBox="0 0 24 24">
+      <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+    </symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24">
+      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+    </symbol>
+    <symbol id="i-mic-off" viewBox="0 0 24 24">
+      <path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23c.56-.98.9-2.09.9-3.28zm-4.02.17c0-.06.02-.11.02-.17V5c0-1.66-1.34-3-3-3S9 3.34 9 5v.18l5.98 5.99zM4.27 3L3 4.27l6.01 6.01V11c0 1.66 1.33 3 2.99 3 .22 0 .44-.03.65-.08l1.66 1.66c-.71.33-1.5.52-2.31.52-2.76 0-5.3-2.1-5.3-5.1H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c.91-.13 1.77-.45 2.54-.9L19.73 21 21 19.73 4.27 3z"/>
+    </symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24">
+      <path d="M12 8l-6 6 1.41 1.41L12 10.83l4.59 4.58L18 14z"/>
+    </symbol>
+    <symbol id="i-close" viewBox="0 0 24 24">
+      <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+    </symbol>
+    <symbol id="i-signal" viewBox="0 0 24 24"><path d="M2 22h20V2z"/></symbol>
+    <symbol id="i-wifi" viewBox="0 0 24 24">
+      <path d="M12 21l3.6-4.5c-1-.8-2.24-1.25-3.6-1.25s-2.6.45-3.6 1.25L12 21zm0-13c-2.9 0-5.55 1.03-7.62 2.75l1.88 2.35A9.46 9.46 0 0 1 12 11c2.2 0 4.22.76 5.74 2.1l1.88-2.35A11.94 11.94 0 0 0 12 8zm0-5C8.02 3 4.38 4.37 1.5 6.66l1.88 2.35A14.44 14.44 0 0 1 12 6c3.31 0 6.35 1.12 8.62 3.01l1.88-2.35A15.94 15.94 0 0 0 12 3z"/>
+    </symbol>
+    <symbol id="i-battery" viewBox="0 0 24 24">
+      <path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z"/>
+    </symbol>
+  </svg>
 
-  <main>
-    <section class="call-panel" aria-labelledby="call-title">
-      <p class="eyebrow">ASISTENTE DE VOZ · HAPPYROBOT</p>
-      <h1 id="call-title">Cuéntame qué ha ocurrido.</h1>
-      <p class="intro">
-        El operador virtual preguntará por los datos esenciales y los irá ordenando a la derecha.
-      </p>
+  <main class="phone" aria-label="Aplicación de teléfono">
+    <header class="system-bar" aria-hidden="true">
+      <span id="clock">10:41</span>
+      <span class="system-icons">
+        <svg class="sys-icon"><use href="#i-signal"/></svg>
+        <svg class="sys-icon"><use href="#i-wifi"/></svg>
+        <svg class="sys-icon"><use href="#i-battery"/></svg>
+      </span>
+    </header>
 
-      <div class="call-control">
-        <button id="call-button" class="call-button" type="button">
-          <span class="button-icon" aria-hidden="true">●</span>
-          <span id="button-label">Iniciar simulación</span>
-        </button>
-        <div class="call-meta" aria-live="polite">
-          <span id="status-dot" class="status-dot"></span>
-          <span id="status">Preparado</span>
-          <span id="timer" class="timer">00:00</span>
-        </div>
+    <div class="app-bar">
+      <div class="app-title">
+        <p>Teléfono</p>
+        <span>Simulación HappyRobot</span>
+      </div>
+      <span class="demo-chip">DEMO</span>
+    </div>
+
+    <section id="dialer-screen" class="screen dialer-screen" aria-labelledby="dialer-title">
+      <h1 id="dialer-title" class="sr-only">Marcador telefónico</h1>
+
+      <div class="number-area">
+        <p id="dial-number" class="dial-number" aria-live="polite" aria-label="Número marcado">
+          <span class="placeholder">Introduce un número</span>
+        </p>
+        <p id="dial-status" class="dial-status" aria-live="polite">Marca 112 para iniciar la simulación</p>
       </div>
 
-      <aside class="warning">
-        <strong>No es el 112 real.</strong>
-        Si existe una emergencia, termina la simulación y llama al 112.
-      </aside>
+      <div class="keypad" role="group" aria-label="Teclado numérico">
+        <button type="button" class="key" data-digit="1"><b>1</b><i></i></button>
+        <button type="button" class="key" data-digit="2"><b>2</b><i>ABC</i></button>
+        <button type="button" class="key" data-digit="3"><b>3</b><i>DEF</i></button>
+        <button type="button" class="key" data-digit="4"><b>4</b><i>GHI</i></button>
+        <button type="button" class="key" data-digit="5"><b>5</b><i>JKL</i></button>
+        <button type="button" class="key" data-digit="6"><b>6</b><i>MNO</i></button>
+        <button type="button" class="key" data-digit="7"><b>7</b><i>PQRS</i></button>
+        <button type="button" class="key" data-digit="8"><b>8</b><i>TUV</i></button>
+        <button type="button" class="key" data-digit="9"><b>9</b><i>WXYZ</i></button>
+        <button type="button" class="key" data-digit="*"><b class="glyph asterisk">*</b><i></i></button>
+        <button type="button" class="key" data-digit="0"><b>0</b><i>+</i></button>
+        <button type="button" class="key" data-digit="#"><b class="glyph">#</b><i></i></button>
+      </div>
+
+      <div class="dial-actions">
+        <span></span>
+        <button id="call-button" class="fab fab-call" type="button" aria-label="Llamar">
+          <svg class="fab-icon" aria-hidden="true"><use href="#i-call"/></svg>
+        </button>
+        <button id="delete-button" class="icon-button" type="button" aria-label="Borrar último dígito" hidden>
+          <svg aria-hidden="true"><use href="#i-backspace"/></svg>
+        </button>
+      </div>
     </section>
 
-    <section class="brief-panel" aria-labelledby="brief-title">
+    <section id="call-screen" class="screen call-screen" aria-labelledby="contact-name" hidden>
+      <div class="caller">
+        <div class="caller-avatar" aria-hidden="true">112</div>
+        <p id="contact-name" class="caller-name">Emergencias</p>
+        <span class="caller-number">112 · Simulación</span>
+        <p class="call-state" aria-live="polite">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status">Llamando…</span>
+          <span id="timer" class="timer">00:00</span>
+        </p>
+      </div>
+
+      <div class="voice-visual" aria-hidden="true">
+        <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+      </div>
+
+      <div class="in-call-actions">
+        <button id="mute-button" class="call-option" type="button" aria-pressed="false">
+          <span class="call-option-icon">
+            <svg aria-hidden="true"><use id="mute-icon" href="#i-mic"/></svg>
+          </span>
+          <small id="mute-label">Silenciar</small>
+        </button>
+        <button class="call-option" type="button" disabled>
+          <span class="call-option-icon"><svg aria-hidden="true"><use href="#i-speaker"/></svg></span>
+          <small>Altavoz</small>
+        </button>
+        <button class="call-option" type="button" disabled>
+          <span class="call-option-icon"><svg aria-hidden="true"><use href="#i-dialpad"/></svg></span>
+          <small>Teclado</small>
+        </button>
+      </div>
+
+      <button id="hangup-button" class="fab fab-hangup" type="button" aria-label="Colgar">
+        <svg class="fab-icon" aria-hidden="true"><use href="#i-call-end"/></svg>
+      </button>
+    </section>
+
+    <button id="details-toggle" class="details-toggle" type="button" aria-expanded="false" aria-controls="brief-panel">
+      <span class="details-text">
+        <strong>Datos recopilados</strong>
+        <small id="sync-state">Sin llamada</small>
+      </span>
+      <svg id="details-arrow" class="details-arrow" aria-hidden="true"><use href="#i-chevron"/></svg>
+    </button>
+
+    <footer class="simulation-notice">Demostración de hackathon · No conecta con el 112 real</footer>
+
+    <div id="sheet-scrim" class="sheet-scrim" hidden></div>
+
+    <section id="brief-panel" class="brief-sheet" aria-labelledby="brief-title" hidden>
+      <div class="sheet-handle" aria-hidden="true"></div>
       <div class="brief-heading">
         <div>
-          <p class="eyebrow">FICHA EN DIRECTO</p>
+          <p class="brief-eyebrow">Ficha en directo</p>
           <h2 id="brief-title">Información recogida</h2>
         </div>
-        <span id="sync-state" class="sync-state">Sin llamada</span>
+        <button id="details-close" class="icon-button" type="button" aria-label="Cerrar datos recopilados">
+          <svg aria-hidden="true"><use href="#i-close"/></svg>
+        </button>
       </div>
 
       <dl class="brief-list" aria-live="polite">
-        <div class="brief-item">
-          <dt><span aria-hidden="true">01</span> Ubicación</dt>
-          <dd id="summary-ubicacion">Pendiente</dd>
-        </div>
-        <div class="brief-item">
-          <dt><span aria-hidden="true">02</span> Emergencia</dt>
-          <dd id="summary-emergencia">Pendiente</dd>
-        </div>
-        <div class="brief-item">
-          <dt><span aria-hidden="true">03</span> Personas</dt>
-          <dd id="summary-personas">Pendiente</dd>
-        </div>
-        <div class="brief-item">
-          <dt><span aria-hidden="true">04</span> Riesgos inmediatos</dt>
-          <dd id="summary-riesgos">Pendiente</dd>
-        </div>
-        <div class="brief-item">
-          <dt><span aria-hidden="true">05</span> Contacto</dt>
-          <dd id="summary-contacto">Pendiente</dd>
-        </div>
+        <div><dt>Ubicación</dt><dd id="summary-ubicacion">Pendiente</dd></div>
+        <div><dt>Emergencia</dt><dd id="summary-emergencia">Pendiente</dd></div>
+        <div><dt>Personas</dt><dd id="summary-personas">Pendiente</dd></div>
+        <div><dt>Riesgos inmediatos</dt><dd id="summary-riesgos">Pendiente</dd></div>
+        <div><dt>Contacto</dt><dd id="summary-contacto">Pendiente</dd></div>
       </dl>
 
-      <p class="privacy-note">
-        La ficha procede del transcript de HappyRobot. Esta página no guarda audio ni una copia local.
-      </p>
+      <p class="privacy-note">Datos estructurados por HappyRobot. No se guarda una copia local.</p>
     </section>
   </main>
 
