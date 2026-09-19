@@ -17,6 +17,7 @@ from database import Database
 from demo import DemoBridge
 from director import Director
 from local_routes import LocalRouter
+from verify_director_ui import instrument_map
 
 
 class PresentationFixtureDB(Database):
@@ -155,14 +156,24 @@ def main():
                 browser = playwright.chromium.launch()
                 page = browser.new_page(viewport={'width': 1440, 'height': 1000})
                 page.on('pageerror', lambda error: errors.append(str(error)))
+                page.route('**/app.js', instrument_map)
                 page.goto(url)
-                expect(page.locator('#calls-panel')).to_be_visible()
-                expect(page.locator('.testimony')).to_have_count(25)
-                expect(page.locator('.credibility')).to_have_count(24)
+                assert page.locator('#calls-panel').count() == 0, 'El panel izquierdo de voces se retiró'
+                expect(page.locator('.witness-marker')).to_have_count(25)
+                expect(page.locator('.witness-marker.real-call')).to_have_count(1)
+                expect(page.locator('.witness-marker.credibility-uncertain')).to_have_count(24)
+                expect(page.locator('.threat-surface')).to_have_count(1)
+                page.locator('#follow-toggle').click()
+                page.evaluate('window.__directorMap.setView([41.4035,2.1744],15,{animate:false})')
+                page.wait_for_timeout(600)
+                page.locator('.witness-marker.simulated').first.hover()
+                expect(page.locator('.witness-tooltip')).to_be_visible()
+                expect(page.locator('.witness-tooltip')).to_contain_text('Testigo')
+                page.mouse.move(5, 5)
                 expect(page.locator('#brain-toggle')).to_be_visible()
                 page.screenshot(path=str(ROOT / '.local/presentation-calls.png'))
                 complete_fixture(store, identifier, run)
-                expect(page.locator('.operation-conclusions')).to_contain_text('Descargar PDF', timeout=15000)
+                expect(page.locator('.witness-marker.has-report')).to_have_count(1, timeout=15000)
                 page.locator('#brain-toggle').click()
                 expect(page.locator('#brain-view')).to_be_visible()
                 expect(page.locator('.brain-notes button')).to_have_count(1)
@@ -209,7 +220,7 @@ def cloud_check():
         validate_plan(plan, context)
         assessment = next(a for a in plan.get('assessments', []) if a.get('incident_id') == identifier)
         expected = {t['id'] for t in director.operations.waves[identifier]}
-        assert {t['id'] for t in assessment['testimonies']} == expected, 'El agente debe evaluar los 24 testimonios'
+        assert {t['id'] for t in assessment['testimonies']} == expected, 'El agente debe evaluar los cinco testimonios'
         actions = director.prepare(plan, context)
         assert not any(a.get('route_error') for a in actions), actions
         trucks = [a for a in actions if a['type'] == 'dispatch' and director.state['resources'][a['resource_id']]['kind'] == 'fire_engine']

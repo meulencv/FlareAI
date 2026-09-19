@@ -293,6 +293,14 @@ class TwinDatabase(Database):
     def stop_room(self, session_id: str) -> None:
         self.execute("UPDATE flare_live_documents SET data=jsonb_set(data,'{heartbeat_at}','0'::jsonb) WHERE id='active-room' AND data->>'session_id'=%s", (session_id,))
 
+    def reset_demo(self) -> None:
+        """Además del vaciado local heredado, vacía las llamadas/estado/documentos dinámicos de Twin.
+        Nunca toca `flare_contacts` (teléfonos de bomberos) ni `flare_live_settings`/`flare_live_leases`."""
+        super().reset_demo()
+        for table in ('flare_live_calls', 'flare_live_web_requests', 'flare_live_events',
+                      'flare_live_state', 'flare_live_documents', 'flare_live_sessions'):
+            self.execute(f'DELETE FROM {table}')
+
     def fingerprint(self) -> dict:
         rows = self.rows("SELECT tablename FROM pg_tables WHERE schemaname='public' AND (tablename LIKE 'flare_live_%%' OR tablename='flare_contacts') ORDER BY tablename")
         return {'backend': 'happyrobot_twin', 'tables': [r['tablename'] for r in rows], 'static_backend': 'local',

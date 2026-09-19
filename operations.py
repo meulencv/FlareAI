@@ -28,11 +28,16 @@ JOKES = (
 )
 
 
+# Cinco testigos por aviso (petición expresa 19/09/2026): tres coherentes, uno dudoso y una broma,
+# mezclados en orden aleatorio estable por incidente. Antes eran 24 y saturaban el mapa.
+WAVE_SIZE = 5
+
+
 def build_wave(incident: dict, started_at: float) -> list[dict]:
     randomizer = random.Random(incident['id'])
     place = str(incident.get('demo_report', {}).get('location', {}).get('label') or incident['name'])[:160]
-    texts = [COHERENT[i % len(COHERENT)].format(place=place) for i in range(18)]
-    texts += [t.format(place=place) for t in DOUBTFUL + JOKES]
+    texts = [t.format(place=place) for t in randomizer.sample(COHERENT, 3)]
+    texts += [randomizer.choice(DOUBTFUL).format(place=place), randomizer.choice(JOKES).format(place=place)]
     randomizer.shuffle(texts)
     clock, rows = started_at, []
     for index, text in enumerate(texts):
@@ -44,6 +49,9 @@ def build_wave(incident: dict, started_at: float) -> list[dict]:
 
 
 FIRST_PLAN_DELAY = 3.0
+# La contención del escenario espera al parte telefónico y a los refuerzos pedidos, pero no indefinidamente:
+# pasado este plazo desde el aviso, el fuego se extingue en la simulación aunque el teléfono no se haya atendido.
+HOLD_LIMIT = 300.0
 
 
 def visible_testimonies(wave: list[dict], now: float) -> list[dict]:
@@ -104,7 +112,7 @@ class Operations:
                 'source_call': incident['demo_report']['run_id'],
                 'citizen': {'id': 'citizen:' + incident['demo_report']['run_id'], 'speaker': 'Llamada 112', 'at': now,
                     'source': 'webcall', 'text': ' · '.join(str(v) for v in incident['demo_report'].get('summary', {}).values())}}
-            self.director.event('testimonies', 'Entran avisos relacionados con el 112', '24 testimonios sintéticos de demo; se contrastan sin confundir repetición con credibilidad.', incident_id=identifier)
+            self.director.event('testimonies', 'Entran avisos relacionados con el 112', f'{WAVE_SIZE} testimonios sintéticos de demo, algunos falsos; se contrastan sin confundir repetición con credibilidad.', incident_id=identifier)
         self.outbound.tick(payload)
         self.reinforce(payload)
         for identifier, record in self.records.items():
@@ -145,7 +153,7 @@ class Operations:
             identifier = assessment['incident_id']
             known = {item['id'] for item in self.waves.get(identifier, [])}
             items = []
-            for item in assessment.get('testimonies', [])[:24]:
+            for item in assessment.get('testimonies', [])[:WAVE_SIZE]:
                 if isinstance(item, dict) and item.get('id') in known and item.get('status') in {'supported', 'uncertain', 'unlikely', 'prank'}:
                     items.append({'id': item['id'], 'status': item['status'], 'reason': str(item.get('reason', ''))[:240]})
             accepted = {'summary': str(assessment.get('summary', ''))[:1200], 'testimonies': items, 'at': time.time()}
@@ -156,11 +164,15 @@ class Operations:
         record = self.records.get(identifier)
         if not record:
             return False
+        if time.time() - record['started_at'] >= HOLD_LIMIT:
+            return False
         call = self.outbound.jobs.get(identifier, {})
         requests = [r for r in record['requests'].values() if r.get('status') != 'cancelled']
         traveling = any(self.director.state['assignments'].get(rid, {}).get('status') in {'enroute', 'blocked'}
                         for r in requests for rid in r['resource_ids'])
-        return call.get('status') != 'completed' or traveling or any(r['fulfilled'] < r['quantity'] for r in requests)
+        # Telefonía desactivada, contacto inalcanzable o conversación sin parte no retienen la extinción simulada.
+        waiting_call = call.get('status') not in {'completed', 'needs_report', 'disabled', 'unreachable'}
+        return waiting_call or traveling or any(r['fulfilled'] < r['quantity'] for r in requests)
 
     def reinforce(self, payload: dict) -> None:
         for identifier, report in payload.get('demo', {}).get('field_reports', {}).items():

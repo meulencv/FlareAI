@@ -163,6 +163,7 @@ class ExecutionTests(unittest.TestCase):
         self.route = {'coordinates': [[1, 41], [1.01, 41]], 'cumulative_km': [0, 1], 'duration_seconds': 90, 'distance_km': 1}
         self.router.route.return_value = self.route
         self.director = Director(self.store, self.planner, self.router, Mock())
+        self.director.auto.enabled = False  # estas pruebas cubren el camino del planner LLM; el dispositivo automático tiene las suyas
         self.resource = {'id': 'truck', 'station_id': 'base', 'kind': 'fire_engine', 'name': 'Parque', 'lat': 41, 'lon': 1}
         self.director.state['resources']['truck'] = self.resource
         self.context = {'revision': 'r', 'incidents': self.payload['incidents'], 'resources': [self.resource]}
@@ -178,8 +179,10 @@ class ExecutionTests(unittest.TestCase):
         self.director.step()
         self.assertEqual(self.director.state['sequence'], sequence)
         self.assertEqual(self.planner.poll.call_count, 1)
-        with self.assertRaises(ValueError):
-            self.director.prepare(self.plan, self.context)
+        # Una unidad ya movilizada no se roba ni se duplica: sin alternativa libre queda bloqueada, no lanza.
+        repeated = self.director.prepare(self.plan, self.context)
+        self.assertTrue(repeated[0]['route_error'])
+        self.assertIn('ya está movilizada', repeated[0]['blocked_reason'])
 
     def test_stale_plan_does_not_execute(self):
         self.payload['incidents'][0]['lat'] = 42
@@ -235,11 +238,13 @@ class ExecutionTests(unittest.TestCase):
         self.director.state['resources']['second'] = second
         plan = deepcopy(self.plan)
         plan['actions'].append({**plan['actions'][0], 'resource_id': 'second'})
-        self.router.route.side_effect = [ValueError('Sin conexión'), self.route]
+        self.router.route.side_effect = [ValueError('Sin conexión'), ValueError('Sin conexión relajada'), self.route]
         actions = self.director.prepare(plan, self.context)
-        self.assertTrue(actions[0]['route_error'])
+        self.assertEqual(actions[0]['resource_id'], 'truck')
+        self.assertEqual(actions[0]['route']['mode'], 'ground_fallback')
+        self.assertTrue(actions[0]['route_fallback'])
         self.assertEqual(actions[1]['resource_id'], 'second')
-        self.assertIn('route', actions[1])
+        self.assertFalse(actions[1]['route'].get('approximate'))
 
     def test_station_inventory_counts_busy_and_available_resources(self):
         second = {**self.resource, 'id': 'second'}
@@ -249,18 +254,27 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual((station['total'], station['available'], station['busy']), (2, 1, 1))
         self.assertTrue(station['simulated_capacity'])
 
-    def test_no_route_no_dispatch(self):
+    def test_no_road_route_still_dispatches_with_labelled_fallback(self):
         self.router.route.side_effect = ValueError('Sin carretera')
         self.director.step()
-        self.assertEqual(self.director.state['assignments'], {})
-        self.assertEqual(self.director.state['events'][-1]['kind'], 'blocked')
-        self.assertGreater(self.director.state['route_retry_at'], time.time())
-        self.assertLess(self.director.state['route_retry_at'], time.time() + 16)
-        self.director.state['route_retry_at'] = time.time() - 1
-        with patch.object(self.director, 'context', return_value=self.context):
-            self.planner.start.return_value = 'retry-run'
-            self.director.step()
-        self.planner.start.assert_called_once()
+        assignment = self.director.state['assignments']['truck']
+        self.assertEqual(assignment['status'], 'enroute')
+        self.assertEqual(assignment['route']['mode'], 'ground_fallback')
+        self.assertTrue(assignment['route']['approximate'])
+        self.assertEqual(assignment['route']['coordinates'], [[1, 41], [1, 41]])
+        kinds = [e['kind'] for e in self.director.state['events']]
+        self.assertIn('approximate', kinds)
+        self.assertIn('dispatch', kinds)
+        self.assertNotIn('blocked', kinds)
+        self.assertFalse(self.director.state.get('route_retry_at'))
+
+    def test_relaxed_road_route_is_preferred_over_straight_fallback(self):
+        relaxed = {**self.route, 'approximate': True, 'source': 'OpenStreetMap · A* local (sin sentidos)'}
+        self.router.route.side_effect = lambda *args, **kwargs: relaxed if kwargs.get('relaxed') else (_ for _ in ()).throw(ValueError('Sentido único'))
+        actions = self.director.prepare(self.plan, self.context)
+        self.assertIs(actions[0]['route'], relaxed)
+        self.assertNotEqual(actions[0]['route'].get('mode'), 'ground_fallback')
+        self.assertTrue(actions[0]['route_fallback'])
 
     def test_new_call_dispatches_after_thirty_or_more_runs_without_reset(self):
         for count in (30, 100):

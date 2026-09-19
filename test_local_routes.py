@@ -31,14 +31,36 @@ class LocalRouteTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph.route([1.002, 41], [1, 41])
 
-    def test_disconnected_and_private_are_not_fake_routes(self):
-        elements = [way(1, [1, 2], [(1, 41), (1.001, 41)]), way(2, [3, 4], [(1.002, 41), (1.003, 41)])]
+    def test_disconnected_fragment_anchors_to_connected_network_without_fake_geometry(self):
+        elements = [way(1, [1, 2, 5], [(1, 41), (1.001, 41), (1.0015, 41)]), way(2, [3, 4], [(1.002, 41), (1.003, 41)])]
         graph = RoadGraph({'elements': elements})
+        self.assertEqual(graph.connected, {1, 2, 5})
+        route = graph.route([1, 41], [1.003, 41])
+        self.assertEqual(route['coordinates'][-1], [1.0015, 41])
+        self.assertGreater(route['end_gap_m'], 100)
+        self.assertFalse(route.get('approximate'))
+        elements.append(way(3, [5, 3], [(1.0015, 41), (1.002, 41)], access='private'))
+        private = RoadGraph({'elements': elements}).route([1, 41], [1.003, 41])
+        self.assertNotIn([1.002, 41], private['coordinates'])
+
+    def test_isolated_stub_next_to_target_does_not_exhaust_search(self):
+        # Caso Tibidabo: el nodo más próximo al destino pertenece a un tramo suelto de pocos metros.
+        elements = [way(1, [1, 2, 3], [(2.1, 41.4), (2.101, 41.4), (2.102, 41.4)]),
+                    way(2, [8, 9], [(2.1021, 41.4003), (2.1022, 41.4003)])]
+        graph = RoadGraph({'elements': elements})
+        route = graph.route([2.1, 41.4], [2.1021, 41.4003])
+        self.assertEqual(route['coordinates'][-1], [2.102, 41.4])
+        self.assertLess(route['end_gap_m'], 60)
+
+    def test_relaxed_route_ignores_oneway_but_never_closures(self):
+        graph = RoadGraph({'elements': [way(1, [1, 2, 3], [(1, 41), (1.001, 41), (1.002, 41)], oneway='yes')]})
         with self.assertRaises(ValueError):
-            graph.route([1, 41], [1.003, 41])
-        elements.append(way(3, [2, 3], [(1.001, 41), (1.002, 41)], access='private'))
+            graph.route([1.002, 41], [1, 41])
+        relaxed = graph.route([1.002, 41], [1, 41], relaxed=True)
+        self.assertTrue(relaxed['approximate'])
+        self.assertEqual(relaxed['coordinates'], [[1.002, 41], [1.001, 41], [1, 41]])
         with self.assertRaises(ValueError):
-            RoadGraph({'elements': elements}).route([1, 41], [1.003, 41])
+            graph.route([1.002, 41], [1, 41], blocked={'1:2'}, relaxed=True)
 
     def test_reverse_oneway_and_roundabout(self):
         graph = RoadGraph({'elements': [way(1, [1, 2], [(1, 41), (1.001, 41)], oneway='-1')]})

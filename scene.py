@@ -6,12 +6,18 @@ import time
 from copy import deepcopy
 from datetime import datetime
 
+from fireshape import fire_polygon
 from local_routes import in_demo, km
 
 PHASES = {'active': 'En intervención', 'contained': 'Fuego contenido', 'watching': 'En vigilancia',
           'releasing': 'Retirada escalonada', 'closed': 'Cerrado · seguro en el escenario'}
 SHORE = [2.1964, 41.388]
 SAFE_HOSPITAL_KM = 1.5
+# Extinción progresiva (petición expresa 19/09/2026): el fuego crece a ritmo fijo y cada medio trabajando en el
+# lugar (camión 1, helicóptero 2) lo reduce; más recursos, extinción antes. Con un solo camión apenas se frena.
+GROWTH_KM_PER_S = .0025
+SUPPRESSION_KM_PER_S = .0022
+CONTAINED_RADIUS_KM = .06
 
 
 def hospital_options(hospitals: list[dict], record: dict) -> tuple[list[dict], list[dict], float]:
@@ -48,16 +54,7 @@ def satellite_contrast(item: dict, incidents: list[dict]) -> dict:
 
 
 def visual_geometry(record: dict) -> dict:
-    radius = record['radius_km']
-    direction = math.radians(record['wind_to'])
-    coordinates = []
-    for n in range(49):
-        angle = math.pi * 2 * n / 48
-        along, across = math.cos(angle) * radius, math.sin(angle) * radius * .65
-        x = along * math.sin(direction) + across * math.cos(direction)
-        y = along * math.cos(direction) - across * math.sin(direction)
-        coordinates.append([record['lon'] + x / (111.32 * math.cos(math.radians(record['lat']))), record['lat'] + y / 111.32])
-    return {'type': 'Polygon', 'coordinates': [coordinates]}
+    return fire_polygon(record['lon'], record['lat'], record['radius_km'], record['wind_to'], str(record['id']))
 
 
 class Scene:
@@ -218,28 +215,37 @@ class Scene:
             held = bool(operations and operations.held(identifier))
             record['waiting_field_report'] = held
             record['peak_radius_km'] = max(record.get('peak_radius_km', 0), record['radius_km'])
+            record['extinguished_pct'] = round(100 * max(0, 1 - record['radius_km'] / record['peak_radius_km'])) if record['peak_radius_km'] else 0
             record['peak_exposed_population'] = max(record.get('peak_exposed_population', 0), record.get('exposed_population', 0))
             assignments = [a for a in self.director.state['assignments'].values() if a.get('incident_id') == identifier]
             suppression = sum(1 if a['resource']['kind'] == 'fire_engine' else 2 if a['resource']['kind'] == 'helicopter' else 0
                               for a in assignments if a['status'] == 'onscene')
             old_band = int(record['radius_km'] * 4)
             if phase == 'active':
-                record['radius_km'] = min(.15 if record['maritime'] else 1.2, record['radius_km'] + min(elapsed, 10) * .0025)
-                if suppression >= 2 and not held:
+                step = min(elapsed, 10)
+                floor = .04 if record['maritime'] else CONTAINED_RADIUS_KM
+                cap = .15 if record['maritime'] else 1.2
+                record['radius_km'] = max(floor, min(cap, record['radius_km'] + step * (GROWTH_KM_PER_S - suppression * SUPPRESSION_KM_PER_S)))
+                record['suppression_power'] = suppression
+                if suppression >= 1:
                     record['suppression_since'] = record['suppression_since'] if record['suppression_since'] is not None else now
-                    if now - record['suppression_since'] >= 45:
-                        record.update(phase='contained', phase_at=now)
-                        self.change('contained', 'Fuego contenido · escenario', 'Trabajo sostenido de los medios durante 45 s. Llegar no bastaba; no es extinción medida.', identifier)
                 else:
                     record['suppression_since'] = None
+                if suppression >= 1 and record['radius_km'] <= floor and not held:
+                    record.update(phase='contained', phase_at=now)
+                    self.change('contained', 'Fuego contenido · escenario', f'{suppression} medios trabajando redujeron el frente hasta el mínimo; no es extinción medida.', identifier)
                 if not record['wind_changed'] and now - record['started_at'] > 35 and self.data['automatic']:
                     record.update(wind_to=(record['wind_to'] + 70) % 360, wind_changed=True)
                     self.invalidate(identifier, 'El viento del escenario gira 70°; deja de cumplirse el supuesto de dirección estable')
-                if int(record['radius_km'] * 4) != old_band:
+                band = int(record['radius_km'] * 4)
+                if band > old_band:
                     self.risk(record)
                     self.change('growth', 'El fuego amplía su entorno de amenaza', f"Prioridad {record['priority']}/10 · {record['priority_reason']}. Población censal próxima: {record['exposed_population']}; no afectados medidos.", identifier)
+                elif band < old_band:
+                    self.risk(record)
+                    self.change('suppression', f'El fuego retrocede · {suppression} medios trabajando', f"Radio ilustrativo {record['radius_km']:.2f} km; más medios en el lugar aceleran la extinción simulada.", identifier)
             elif phase == 'contained':
-                record['radius_km'] = max(.04, record['radius_km'] - min(elapsed, 10) * .008)
+                record['radius_km'] = max(.02, record['radius_km'] - min(elapsed, 10) * (.004 + suppression * .002))
                 if now - record['phase_at'] >= 25:
                     record.update(phase='watching', phase_at=now)
                     self.change('watch', 'En vigilancia · sin reactivación simulada', 'Se mantiene el dispositivo 45 s antes de retirar. No equivale a alta médica.', identifier)
@@ -317,8 +323,8 @@ class Scene:
         else:
             raise ValueError('Acción del escenario no disponible')
 
-    def route(self, start: list, end: list) -> dict:
-        return self.director.router.route(start, end, scenario=True, blocked=set(self.data['closures']), congestion=self.data['congestion'])
+    def route(self, start: list, end: list, relaxed: bool = False) -> dict:
+        return self.director.router.route(start, end, scenario=True, blocked=set(self.data['closures']), congestion=self.data['congestion'], relaxed=relaxed)
 
     def disrupt(self, closure: bool = True) -> None:
         from director import route_position

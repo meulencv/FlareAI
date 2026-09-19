@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, facilitiesVisible, fireExclusionBoxes, obscuresFire, relevantFacilities, WASTE_LIMIT } from "./static/infrastructure.js";
+import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, facilitiesVisible, fireExclusionBoxes, obscuresFire, relevantFacilities, FACILITY_LIMIT, FACILITY_TOTAL } from "./static/infrastructure.js";
 
 test("las instalaciones solo aparecen de cerca y nunca encima de una huella ampliada", () => {
   assert.equal(facilitiesVisible(12.99), false);
@@ -61,10 +61,30 @@ test("los puntos de residuos salen del mapa salvo los pocos con prioridad alta",
     { id: "n:4", category: "gestion_residuos", priority: "alta_orientativa", distance_km: 2 },
     { id: "n:5", category: "gasolinera", priority: "revisar", distance_km: 4 },
   ];
-  assert.equal(WASTE_LIMIT, 2);
+  assert.equal(FACILITY_LIMIT, 2);
   assert.deepEqual(relevantFacilities(facilities).map(poi => poi.id), ["n:3", "n:4", "n:5"]);
   assert.deepEqual(relevantFacilities([facilities[0]]), []);
   assert.deepEqual(relevantFacilities([facilities[4]]), [facilities[4]]);
+});
+
+test("las instalaciones se reducen a una muestra: dos por familia de icono y un total acotado", () => {
+  const fuel = Array.from({ length: 6 }, (_, i) => ({ id: `f:${i}`, category: "gasolinera", priority: i === 5 ? "alta_orientativa" : "revisar", distance_km: i }));
+  const factory = Array.from({ length: 5 }, (_, i) => ({ id: `i:${i}`, category: i % 2 ? "fabrica" : "area_industrial", priority: "revisar", distance_km: 4 - i }));
+  const rest = [
+    { id: "p", category: "puerto", priority: "revisar", distance_km: 3 },
+    { id: "h", category: "helipuerto", priority: "revisar", distance_km: 4.5 },
+    { id: "a", category: "aeropuerto_aerodromo", priority: "revisar", distance_km: 1 },
+    { id: "c", category: "central_combustion", priority: "revisar", distance_km: 2 },
+    { id: "t", category: "combustibles_quimica", priority: "revisar", distance_km: 2 },
+  ];
+  const ids = relevantFacilities([...fuel, ...factory, ...rest]).map(poi => poi.id);
+  assert.equal(FACILITY_TOTAL, 8);
+  assert.equal(ids.length, FACILITY_TOTAL);
+  assert.ok(ids.includes("f:5") && ids.includes("f:0"), "prioridad alta y la más cercana de cada familia");
+  assert.ok(!ids.includes("f:1"), "no más de dos por familia");
+  assert.ok(["p", "a", "c", "t", "i:4"].every(id => ids.includes(id)), "cada familia conserva su primer representante antes de repetir");
+  assert.ok(!ids.includes("h"), "el segundo de una familia lejana cede ante los primeros de otras");
+  assert.deepEqual(relevantFacilities([]), []);
 });
 
 test("enlaces rechazan scripts, credenciales y protocolos no web", () => {

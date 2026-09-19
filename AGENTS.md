@@ -49,6 +49,24 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Dispositivo automático garantizado (petición expresa 19/09/2026, posterior)
+
+- Sustituye la regla «no hay planner determinista de respaldo» para la movilización: el usuario exige que
+  **siempre** salgan bomberos de distintos parques, ambulancia y patrulla, que apaguen el fuego y vuelvan,
+  y que un parte con refuerzos envíe más. `autodispatch.py` lo garantiza en todos los modos sin esperar al
+  LLM (que sigue pudiendo añadir/reasignar/retirar). Base 3 camiones de sedes distintas + 1–2 ambulancias +
+  1 patrulla; escala por radio, parte `empeora`/`critico` y 120 s sin contener, máximo 6 camiones; oleadas
+  cada 20 s por aviso. Rutas fuera del cerrojo; `prepare` ya no lanza ante `dispatch` de unidad ocupada.
+- Extinción progresiva (petición expresa): en `scene.py` el radio crece 0,0025 km/s y cada medio en el lugar
+  resta 0,0022 km/s (camión 1, helicóptero 2); contención al bajar a 0,06 km. Más medios, antes; un solo camión
+  no basta. Fuera del escenario `AutoDispatch.lifecycle` acumula trabajo (`CONTAIN_WORK` 90 medios·s) y sigue
+  el mismo ciclo (vigilancia 25 s, retirada 45 s, regreso a sede, cierre). La tarjeta muestra `% extinción`. `Operations.held` deja de retener
+  la extinción con telefonía desactivada/inalcanzable/sin parte y tiene tope `HOLD_LIMIT` 300 s.
+- `auto.enabled=False` (o `store.auto_dispatch=False`) solo para pruebas del camino LLM. Verificar con
+  `python -m unittest test_autodispatch test_director test_scene test_operations test_presentation test_demo`.
+  `verify_scene.py` pasa todo el recorrido con la capa activa pero su paso final del marcador 123 está
+  obsoleto (el botón 123 se retiró del frontend antes de este cambio).
+
 ## Presentación: centro local y datos dinámicos Twin (19/09/2026, revisión final)
 
 - Decisión expresa: centro Python, atlas, grafos, cartografía y cachés siguen locales. **Twin solo para
@@ -68,7 +86,8 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   `01a0baae-e74e-7b09-8e65-a096fb403660`. Conserva hook literal. El director nuevo `01a0ba98-422f-7d5e-8bac-e27b846dafdc`
   dio 401/502 al disparar y queda candidato a limpieza, no se usa. No re-publicar ante respuesta tardía:
   verificar `is_live` por GET. Voz saliente: workflow `01a0ba93-b11b-7ed2-8e1d-2bc94b7eba1e`, live.
-- `operations.py`: 24 testimonios sintéticos cada 0,5–2 s, separados de la llamada real. El LLM recibe todos,
+- `operations.py`: cinco testimonios sintéticos por aviso (`WAVE_SIZE`: tres coherentes, un dudoso, una broma;
+  antes 24, reducidos el 19/09/2026 a petición expresa) cada 0,5–2 s, separados de la llamada real. El LLM recibe todos,
   debe evaluarlos antes del primer despacho y no recibe las etiquetas de referencia. No hay planner ficticio
   de respaldo. Solicitudes explícitas de bomberos se tramitan determinísticamente por mandato, con rutas,
   disponibilidad y cumplimiento; no se confunden con decisiones LLM. Cierre espera parte y refuerzos en destino.
@@ -161,6 +180,15 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   `static/director.js`: decisiones temporales, borde de actividad y camiones por distancia acumulada.
   ES-Alert puede llegar al receptor web de demo (nunca Cell Broadcast real). Sin parte habilitante
   sigue siendo solo vista previa. Dos vehículos de la misma sede salen escalonados.
+- Marco IA (`#agent-aura` con un canvas por capa, `static/aura.js`): preferencia expresa final (19/09/2026): **forma** del
+  marco Apple Intelligence (rectángulo redondeado continuo pegado al borde, inset 7–11 px, radio 18–30 px) con el
+  **aspecto** de `BottomWave.jsx` de LogiOptiAI (trazos azul `rgba(56,189,248,.4)` 26 px/blur 30 y violeta
+  `rgba(168,85,247,.5)` 20 px/blur 24, resplandor 90 px/blur 45; anchos y blur ampliados respecto al SVG original para igualar su suavidad en canvas, deslizándose en sentidos opuestos). Ondulación mínima
+  (2,5–3 px), casi recta: no volver a ondas grandes ni a un marco nítido. Fundido por clase `ai-active` (opacity +
+  visibility diferida para Playwright) mientras el director está `thinking` o muestra una decisión; pausa y
+  movimiento reducido dejan un fotograma fijo. **El blur es CSS `filter` por canvas, nunca `ctx.filter`: Safari no lo
+  implementa y pintaba el marco nítido y ondulado.** Nuevos estáticos deben añadirse al allowlist de `app.py`.
+  Pruebas en `test_aura.mjs`.
 - Seguimiento visual: viaje en tres fases (alejar, recorrer, acercar), ronda de avisos demo y
   vehículos activos tras un evento reciente. Los refrescos no reencuadran; interacción manual
   suspende hasta pulsar «Reanudar seguimiento IA». Respetar pausa, pestaña oculta y movimiento reducido.
@@ -288,8 +316,19 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   en ese caso. No garantizar apoyo aéreo ni confundir estas fichas fixture con audio real.
 - Para demo fiable usar «Sagrada Familia, Barcelona» o «Plaça de Catalunya, Barcelona»: resolución
   y ruta local verificadas. Ejercicio Collserola `[2.115,41.425]` también tiene ruta. «Tibidabo,
-  Barcelona» devolvió un punto IGN cuyo nodo próximo está aislado: no recomendar ese caso sin
-  precisar el acceso. No inventar conexión viaria para hacer pasar la demo.
+  Barcelona» fallaba (12 acciones `blocked` en tres runs el 19/09/2026) porque `nearest()` anclaba al
+  nodo OSM más próximo aunque fuera un fragmento aislado (grafo con 487 componentes <50 nodos), y el
+  A* agotaba 300k expansiones. Corregido: `RoadGraph.connected` (componente principal) es el único
+  anclaje, con radio ampliado y hueco declarado en `start/end_gap_m`. No se inventa geometría viaria.
+
+## Garantía de ruta (petición expresa 19/09/2026)
+
+- El usuario exige que **siempre** salga una movilización. Cadena en `director.prepare`: ruta estricta
+  por sede y hasta tres alternativas → `relaxed=True` (ignora sentidos de circulación, nunca cortes del
+  escenario; `approximate: true`) desde la unidad pedida → `ground_fallback()` recta ilustrativa
+  (`mode: ground_fallback`). Evento `approximate` con la limitación; el mapa añade «trayectoria aproximada».
+  Las rutas aproximadas no se cachean. `blocked` por ruta ya no ocurre para despacho; sigue existiendo por
+  fase de retirada, política de helicópteros y cortes en marcha del escenario.
 
 ## Traffic Lab de Lucía (aislado)
 
@@ -358,7 +397,9 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 - Viento hacia `(procedencia + 180) % 360`, sector ±30°, mínimo 3 km/h; sin aviso direccional
   con viento ausente/desactualizado. Offline muestra contexto histórico, nunca alerta actual.
 - Preferencia actual: heatmap automático al pulsar un foco, sin botón de activación, con iconos
-  de instalaciones y ficha al pulsar (`static/infrastructure.js`). Las cámaras solo aparecen desde
+  de instalaciones y ficha al pulsar (`static/infrastructure.js`). Petición expresa (19/09/2026):
+  los iconos de instalaciones son solo una muestra, máximo dos por familia de icono y ocho en
+  total (`relevantFacilities`); no volver a dibujar todas. Las cámaras se mantienen sin recorte. Las cámaras solo aparecen desde
   zoom 10: no hay iconos ni grupos de cámaras en el panorama. Se conservan en SQL aunque estén ocultas.
   Las actualizaciones no deben mover la cámara. El canvas del calor no captura clics.
 - El calor acumula degradados radiales y traduce densidad a una paleta de 256 pasos; se dibuja

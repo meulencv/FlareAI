@@ -20,8 +20,9 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from shapely.affinity import scale, translate
-from shapely.geometry import Point, mapping, shape
+from shapely.geometry import Point, shape
 
+from fireshape import fire_polygon
 from gfs import Snapshot, point
 
 ROOT = Path(__file__).resolve().parent
@@ -324,15 +325,18 @@ def match_incident(location: dict, incidents: list[dict], radius_km: float = 3) 
 def call_incident(run_id: str, call: dict, weather: dict) -> dict:
     location = call['location']
     lat, lon = location['lat'], location['lon']
-    support = translate(scale(Point(0, 0).buffer(.08, quad_segs=12), xfact=1 / (111.32 * math.cos(math.radians(lat))), yfact=1 / 111.32, origin=(0, 0)), lon, lat)
+    weather_point = point(cast(Snapshot, weather), lat, lon)
+    wind_from = weather_point.get('wind_from_degrees')
+    wind_to = ((wind_from if isinstance(wind_from, (int, float)) else 0) + 180) % 360
+    support = fire_polygon(lon, lat, .08, wind_to, run_id)
     return {'id': 'demo:' + run_id, 'source_kind': 'call', 'name': 'Aviso · ' + location['label'],
             'province': 'Demo · ubicación ' + ('aproximada' if location.get('approximate') or location['precision'] == 'locality' else 'comunicada'),
             'lat': lat, 'lon': lon, 'first_seen': call['reported_at'], 'last_seen': call['reported_at'],
             'observations': 0, 'passes': 0, 'satellites': [], 'frp_peak_mw': None,
             'brightness_i4_k': None, 'brightness_i4_c': None, 'brightness_at_utc': None,
             'low_confidence': 0, 'documented': False, 'documentation_url': None, 'burned_area_ha': None,
-            'footprint_ha': None, 'footprint': mapping(support), 'geometry_role': 'illustrative_report_location',
-            'detections': [], 'weather': point(cast(Snapshot, weather), lat, lon)}
+            'footprint_ha': None, 'footprint': support, 'geometry_role': 'illustrative_report_location',
+            'detections': [], 'weather': weather_point}
 
 
 class HappyRobotProvider:
@@ -521,14 +525,31 @@ class DemoBridge:
         try:
             self.accept(run_id, self.provider.messages(run_id))
             with self.lock:
-                self.calls[run_id].pop('error', None)
+                if run_id in self.calls:
+                    self.calls[run_id].pop('error', None)
         except Exception:
             with self.lock:
-                self.calls[run_id]['error'] = 'No se pudo actualizar desde HappyRobot; reintentando'
+                if run_id in self.calls:
+                    self.calls[run_id]['error'] = 'No se pudo actualizar desde HappyRobot; reintentando'
         finally:
             with self.lock:
-                self.calls[run_id]['last_poll'] = time.monotonic()
+                if run_id in self.calls:
+                    self.calls[run_id]['last_poll'] = time.monotonic()
                 self.polling.discard(run_id)
+
+    def reset(self) -> None:
+        """Vacía las llamadas de demo en memoria (112/123 de simulaciones anteriores) para empezar de cero.
+        No toca contactos, credenciales ni la sesión del navegador ya autorizada."""
+        with self.lock:
+            self.calls.clear()
+            self.owners.clear()
+            self.call_locks.clear()
+            self.polling.clear()
+            self.field_reports.clear()
+            self.sensor_incidents.clear()
+            self.version = 0
+            self.latest_id = None
+            self.cloud_error = None
 
     def discover_cloud_calls(self) -> None:
         now = time.monotonic()

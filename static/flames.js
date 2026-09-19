@@ -130,7 +130,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
 
     const bearing = incident.weather.wind_from_degrees === null ? null : (incident.weather.wind_from_degrees + 180) % 360;
     const extent = Math.max(...shape.map(p => Math.hypot(p.x - centre.x, p.y - centre.y)), .01);
-    const amplitude = Math.max(.15, Math.min(18, extent * .15));
+    const amplitude = Math.max(.15, Math.min(26, extent * .24));
     const tongues = flameOutline(shape, time, bearing, amplitude);
     const body = ctx.createLinearGradient(centre.x - radius, centre.y + radius, centre.x + radius, centre.y - radius);
     body.addColorStop(0, tint(198, 45, 32, .62));

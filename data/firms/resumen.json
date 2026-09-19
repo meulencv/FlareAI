@@ -1,35 +1,35 @@
 {
-  "analysis_at_utc": "2026-09-19T20:11:35.130040+00:00",
+  "analysis_at_utc": "2026-09-19T21:43:24.508092+00:00",
   "window_hours": 24,
   "selected_observations": 248,
   "boundary_sha256": "27ccbe16a21a63f9e7c380fd5570aed790bd501e431be156c0ca9e062413bc25",
   "sources": [
     {
       "source": "noaa20",
-      "rows_global": 116876,
+      "rows_global": 128753,
       "rows_spain_before_time_filter": 126,
       "rows_spain_selected": 95,
-      "latest_global_observation_utc": "2026-09-19T16:56:00+00:00",
-      "age_of_latest_global_hours": 3.26,
-      "sha256": "78f004a30ac360b971e9a14b67b357a2cb2fb4cd17202950c1967987726b307a"
+      "latest_global_observation_utc": "2026-09-19T19:34:00+00:00",
+      "age_of_latest_global_hours": 2.157,
+      "sha256": "80e0a06b0bae4b170d69104c72ee6abf5d65789afb3ff0d54d7719e01d73f56a"
     },
     {
       "source": "noaa21",
-      "rows_global": 117860,
+      "rows_global": 119443,
       "rows_spain_before_time_filter": 106,
       "rows_spain_selected": 72,
-      "latest_global_observation_utc": "2026-09-19T17:39:00+00:00",
-      "age_of_latest_global_hours": 2.543,
-      "sha256": "2f589f90390250ed88f18fba3a359edac7637d773b49cf0047dd7b94286101fc"
+      "latest_global_observation_utc": "2026-09-19T18:34:00+00:00",
+      "age_of_latest_global_hours": 3.157,
+      "sha256": "c9ed7faa9b3f0629a412c8ed33d6ddecaddaa8d95da533ad0ee022e918a04eba"
     },
     {
       "source": "snpp",
-      "rows_global": 118309,
+      "rows_global": 126367,
       "rows_spain_before_time_filter": 112,
       "rows_spain_selected": 81,
-      "latest_global_observation_utc": "2026-09-19T17:24:00+00:00",
-      "age_of_latest_global_hours": 2.793,
-      "sha256": "d8f3e088f0f97a3670f0a8d0c1a9ce90ee6b063af94393a1f87d40a10da3ae0e"
+      "latest_global_observation_utc": "2026-09-19T19:00:00+00:00",
+      "age_of_latest_global_hours": 2.723,
+      "sha256": "fffe0ed8dcc095af57610a00b918aa53f446e8ee1adcb585f87d0d05668f1f1d"
     }
   ]
 }

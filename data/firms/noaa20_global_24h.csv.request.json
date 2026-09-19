@@ -1,10 +1,10 @@
 {
   "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/noaa-20-viirs-c2/csv/J1_VIIRS_C2_Global_24h.csv",
   "http_status": 200,
-  "requested_at_utc": "2026-09-19T20:11:29.739812+00:00",
-  "received_at_utc": "2026-09-19T20:11:31.461384+00:00",
+  "requested_at_utc": "2026-09-19T21:43:19.071906+00:00",
+  "received_at_utc": "2026-09-19T21:43:20.692943+00:00",
   "content_type": "text/csv",
-  "bytes": 9766674,
-  "sha256": "78f004a30ac360b971e9a14b67b357a2cb2fb4cd17202950c1967987726b307a",
+  "bytes": 10764235,
+  "sha256": "80e0a06b0bae4b170d69104c72ee6abf5d65789afb3ff0d54d7719e01d73f56a",
   "file": "noaa20_global_24h.csv"
 }

@@ -52,24 +52,44 @@ class SceneTests(TestCase):
         self.assertEqual(missing['mode'], 'simulated')
         self.assertIn('simulado', missing['label'])
 
-    def test_arrival_does_not_close_and_suppression_requires_work_then_watch(self):
+    def contain_seconds(self, engines):
+        self.setUp()
         self.scene.observe({'incidents': [incident()]}, 1789812000)
         self.scene.observe({'incidents': [incident()]}, 1789812009)
         record = self.scene.data['incidents']['sensor']
-        self.scene.evolve(1789812040)
+        for second in range(10, 100):
+            self.scene.evolve(1789812000 + second)
         self.assertEqual(record['phase'], 'active')
+        grown = record['radius_km']
+        self.assertGreater(grown, .3)
         self.director.state['assignments'] = {
-            str(n): {'incident_id': 'sensor', 'status': 'onscene', 'resource': {'kind': 'fire_engine'}} for n in range(2)}
-        self.scene.evolve(1789812041)
-        self.assertEqual(record['phase'], 'active')
-        self.scene.evolve(1789812090)
+            str(n): {'incident_id': 'sensor', 'status': 'onscene', 'resource': {'kind': 'fire_engine'}} for n in range(engines)}
+        for second in range(100, 700):
+            self.scene.evolve(1789812000 + second)
+            if record['phase'] != 'active':
+                return second - 100, record, grown
+        return None, record, grown
+
+    def test_arrival_does_not_close_and_more_resources_extinguish_sooner(self):
+        one, record, grown = self.contain_seconds(1)
+        self.assertIsNone(one, 'Un solo camión apenas frena el fuego')
+        self.assertLess(record['radius_km'], grown + .2)  # 600 s más: sin medios habría crecido hasta el tope de 1,2 km
+        three, record, _ = self.contain_seconds(3)
         self.assertEqual(record['phase'], 'contained')
-        self.scene.evolve(1789812115)
+        self.assertGreater(three, 30, 'Llegar no basta: la extinción es progresiva')
+        self.assertEqual(record['extinguished_pct'], round(100 * (1 - record['radius_km'] / record['peak_radius_km'])))
+        five, _, _ = self.contain_seconds(5)
+        self.assertLess(five, three)
+        kinds = [c.args[0] for c in self.director.event.call_args_list]
+        self.assertIn('suppression', kinds)
+        record = self.scene.data['incidents']['sensor']
+        at = 1789812000 + 100 + five
+        self.scene.evolve(at + 25)
         self.assertEqual(record['phase'], 'watching')
-        self.scene.evolve(1789812165)
+        self.scene.evolve(at + 71)
         self.assertEqual(record['phase'], 'releasing')
         self.director.state['assignments'] = {}
-        self.scene.evolve(1789812170)
+        self.scene.evolve(at + 72)
         self.assertEqual(record['phase'], 'closed')
 
     def test_happyrobot_template_normalization_does_not_weaken_prompt_check(self):
@@ -165,3 +185,27 @@ class SceneTests(TestCase):
     def test_no_automatic_maritime_incident(self):
         self.scene.observe({'incidents': []}, 1789812000)
         self.assertEqual(self.scene.overlay({'incidents': []})['incidents'], [])
+
+
+class FireShapeTests(TestCase):
+    def test_fire_polygon_has_fronts_and_keeps_mean_radius(self):
+        import math
+        from fireshape import fire_polygon, MAX_RADIUS_FACTOR, MIN_RADIUS_FACTOR
+        polygon = fire_polygon(2.17, 41.4, .5, 90, 'demo:x')
+        ring = polygon['coordinates'][0]
+        self.assertEqual(ring[0], ring[-1])
+        east = 111.32 * math.cos(math.radians(41.4))
+        reach = [math.hypot((lon - 2.17) * east, (lat - 41.4) * 111.32) for lon, lat in ring[:-1]]
+        self.assertAlmostEqual(sum(reach) / len(reach), .5, delta=.03)
+        self.assertLessEqual(max(reach), .5 * MAX_RADIUS_FACTOR + 1e-9)
+        self.assertGreaterEqual(min(reach), .5 * MIN_RADIUS_FACTOR - 1e-9)
+        self.assertGreater(max(reach) / min(reach), 2, 'frentes marcados, no un óvalo')
+        eastmost = max(ring, key=lambda p: p[0])
+        westmost = min(ring, key=lambda p: p[0])
+        self.assertGreater(eastmost[0] - 2.17, 2.17 - westmost[0], 'alargado a favor del viento')
+        self.assertEqual(polygon, fire_polygon(2.17, 41.4, .5, 90, 'demo:x'), 'estable por semilla')
+        self.assertNotEqual(polygon, fire_polygon(2.17, 41.4, .5, 90, 'demo:y'))
+        grown = fire_polygon(2.17, 41.4, 1.0, 90, 'demo:x')['coordinates'][0]
+        ratios = [math.hypot((g[0] - 2.17) * east, (g[1] - 41.4) * 111.32) / r for g, r in zip(grown[:-1], reach)]
+        self.assertAlmostEqual(min(ratios), 2, delta=.01)
+        self.assertAlmostEqual(max(ratios), 2, delta=.01)

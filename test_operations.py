@@ -1,6 +1,6 @@
 import unittest
 
-from operations import alert_allowed, build_wave, requested_resources, visible_testimonies
+from operations import COHERENT, DOUBTFUL, JOKES, WAVE_SIZE, alert_allowed, build_wave, requested_resources, visible_testimonies
 
 
 class OperationTests(unittest.TestCase):
@@ -8,10 +8,16 @@ class OperationTests(unittest.TestCase):
         incident = {'id': 'fire', 'name': 'Barcelona', 'demo_report': {'summary': {'ubicacion': 'Barcelona', 'emergencia': 'incendio'}}}
         first = build_wave(incident, 100)
         self.assertEqual(first, build_wave(incident, 100))
-        self.assertEqual(len(first), 24)
+        self.assertEqual(WAVE_SIZE, 5)
+        self.assertEqual(len(first), WAVE_SIZE)
         times = [100, *[item['at'] for item in first]]
         self.assertTrue(all(.5 <= b - a <= 2.001 for a, b in zip(times, times[1:])))
-        self.assertEqual(len({item['id'] for item in first}), 24)
+        self.assertEqual(len({item['id'] for item in first}), WAVE_SIZE)
+        kinds = {'coherent': [t.format(place='Barcelona') for t in COHERENT],
+                 'doubtful': [t.format(place='Barcelona') for t in DOUBTFUL], 'joke': [t.format(place='Barcelona') for t in JOKES]}
+        counts = {name: sum(item['text'] in texts for item in first) for name, texts in kinds.items()}
+        self.assertEqual(counts, {'coherent': 3, 'doubtful': 1, 'joke': 1})
+        self.assertEqual(len({item['text'] for item in first}), WAVE_SIZE)
         self.assertTrue(all('truth' not in item and 'classification' not in item for item in first))
         self.assertEqual(visible_testimonies(first, 100), [])
         self.assertEqual(visible_testimonies(first, 200), first)

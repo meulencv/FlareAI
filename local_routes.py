@@ -90,22 +90,61 @@ class RoadGraph:
                     self.edges.setdefault(b, []).append((a, cost, distance))
         for identifier, point in self.points.items():
             self.cells.setdefault((math.floor(point[0] * 100), math.floor(point[1] * 100)), []).append(identifier)
+        self.connected = self.main_component()
+        self.reverse: dict[int, list[tuple[int, float, float]]] | None = None
+
+    def main_component(self) -> set[int]:
+        # Componente débilmente conexo mayor: los fragmentos sueltos (tramos recortados por el filtro de acceso
+        # o por el borde de la descarga) no sirven de anclaje porque ninguna ruta puede llegar hasta ellos.
+        parent: dict[int, int] = {}
+
+        def find(node: int) -> int:
+            root = node
+            while parent.get(root, root) != root:
+                root = parent[root]
+            while parent.get(node, node) != root:
+                parent[node], node = root, parent[node]
+            return root
+
+        for a, edges in self.edges.items():
+            for b, _, _ in edges:
+                ra, rb = find(a), find(b)
+                if ra != rb:
+                    parent[ra] = rb
+        groups: dict[int, int] = {}
+        for node in self.points:
+            root = find(node)
+            groups[root] = groups.get(root, 0) + 1
+        if not groups:
+            return set()
+        best = max(groups, key=lambda root: groups[root])
+        return {node for node in self.points if find(node) == best}
 
     def nearest(self, point) -> int:
         x, y = math.floor(point[0] * 100), math.floor(point[1] * 100)
-        candidates = [n for dx in range(-2, 3) for dy in range(-2, 3) for n in self.cells.get((x + dx, y + dy), [])]
-        if not candidates:
-            raise ValueError('No hay carretera cerca del punto')
+        for reach in (2, 5, 10):
+            candidates = [n for dx in range(-reach, reach + 1) for dy in range(-reach, reach + 1)
+                          for n in self.cells.get((x + dx, y + dy), []) if n in self.connected]
+            if candidates:
+                break
+        else:
+            raise ValueError('No hay carretera conectada cerca del punto')
         node = min(candidates, key=lambda n: km(point, self.points[n]))
-        if km(point, self.points[node]) > .75:
-            raise ValueError('Punto a más de 750 m de la red viaria')
+        if km(point, self.points[node]) > 5:
+            raise ValueError('Punto a más de 5 km de la red viaria conectada')
         return node
 
-    def route(self, start: list[float], end: list[float], blocked: set[str] | None = None, congestion: dict[str, float] | None = None) -> dict:
-        blocked, congestion = blocked or set(), congestion or {}
-        source, target = self.nearest(start), self.nearest(end)
-        if source == target:
-            raise ValueError('No hay desplazamiento viario representable')
+    def neighbors(self, node: int, directed: bool) -> list[tuple[int, float, float]]:
+        if directed:
+            return self.edges.get(node, [])
+        if self.reverse is None:
+            self.reverse = {}
+            for a, edges in self.edges.items():
+                for b, cost, distance in edges:
+                    self.reverse.setdefault(b, []).append((a, cost, distance))
+        return self.edges.get(node, []) + self.reverse.get(node, [])
+
+    def search(self, source: int, target: int, blocked: set[str], congestion: dict[str, float], directed: bool, limit: int) -> tuple[list[int], float]:
         costs, previous = {source: 0.0}, {}
         queue = [(0.0, 0.0, source)]
         visited = 0
@@ -116,9 +155,9 @@ class RoadGraph:
             if node == target:
                 break
             visited += 1
-            if visited > 300000:
+            if visited > limit:
                 raise ValueError('Límite del cálculo local alcanzado')
-            for neighbor, duration, _ in self.edges.get(node, []):
+            for neighbor, duration, _ in self.neighbors(node, directed):
                 edge = edge_id(node, neighbor)
                 if edge in blocked:
                     continue
@@ -132,15 +171,39 @@ class RoadGraph:
         path = [target]
         while path[-1] != source:
             path.append(previous[path[-1]])
-        points = [self.points[n] for n in reversed(path)]
+        path.reverse()
+        return path, costs[target]
+
+    def route(self, start: list[float], end: list[float], blocked: set[str] | None = None, congestion: dict[str, float] | None = None, relaxed: bool = False) -> dict:
+        blocked, congestion = blocked or set(), congestion or {}
+        source, target = self.nearest(start), self.nearest(end)
+        approximate = False
+        if source == target:
+            if not relaxed:
+                raise ValueError('No hay desplazamiento viario representable')
+            path, duration = [source], 0.0
+        else:
+            try:
+                path, duration = self.search(source, target, blocked, congestion, directed=True, limit=300000)
+            except ValueError:
+                if not relaxed:
+                    raise
+                # Garantía de trayectoria: se ignoran los sentidos de circulación, nunca los cortes del escenario.
+                path, duration = self.search(source, target, blocked, congestion, directed=False, limit=1_000_000)
+                approximate = True
+        points = [self.points[n] for n in path]
         cumulative = [0.0]
         for a, b in zip(points, points[1:]):
             cumulative.append(cumulative[-1] + km(a, b))
-        return {'coordinates': points, 'cumulative_km': cumulative, 'distance_km': cumulative[-1],
-                'duration_seconds': costs[target], 'source': 'OpenStreetMap · A* local',
-                'edge_ids': [edge_id(a, b) for a, b in zip(reversed(path), list(reversed(path))[1:])],
-                'fetched_at': time.time(), 'limitations': LIMITATIONS,
-                'start_gap_m': round(km(start, points[0]) * 1000), 'end_gap_m': round(km(end, points[-1]) * 1000)}
+        route = {'coordinates': points, 'cumulative_km': cumulative, 'distance_km': cumulative[-1],
+                 'duration_seconds': duration, 'source': 'OpenStreetMap · A* local',
+                 'edge_ids': [edge_id(a, b) for a, b in zip(path, path[1:])],
+                 'fetched_at': time.time(), 'limitations': LIMITATIONS,
+                 'start_gap_m': round(km(start, points[0]) * 1000), 'end_gap_m': round(km(end, points[-1]) * 1000)}
+        if approximate:
+            route.update(approximate=True, source='OpenStreetMap · A* local (sin sentidos)',
+                         limitations=LIMITATIONS + ' Sentidos de circulación ignorados para garantizar una trayectoria.')
+        return route
 
 
 class LocalRouter:
@@ -181,11 +244,11 @@ class LocalRouter:
                     return roads
         return roads
 
-    def route(self, start: list[float], end: list[float], *, scenario: bool = False, blocked: set[str] | None = None, congestion: dict[str, float] | None = None) -> dict:
+    def route(self, start: list[float], end: list[float], *, scenario: bool = False, blocked: set[str] | None = None, congestion: dict[str, float] | None = None, relaxed: bool = False) -> dict:
         bounds = route_bounds(start, end)
         if scenario and in_demo(start) and in_demo(end):
             with self.lock:
-                return self.demo_graph().route(start, end, blocked, congestion)
+                return self.demo_graph().route(start, end, blocked, congestion, relaxed=relaxed)
         if blocked:
             raise ValueError('No se permite usar un proveedor que desconozca los cortes del escenario')
         key = 'local-route-v1:' + hashlib.sha256(json.dumps([start, end]).encode()).hexdigest()[:24]
@@ -217,8 +280,9 @@ class LocalRouter:
                         self.graph_bounds.pop(expired, None)
                 self.graphs[graph_id] = RoadGraph(payload)
                 self.graph_bounds[graph_id] = bounds
-            route = self.graphs[graph_id].route(start, end)
-            self.db.asset(key, 'director_route', route)
+            route = self.graphs[graph_id].route(start, end, relaxed=relaxed)
+            if not route.get('approximate'):
+                self.db.asset(key, 'director_route', route)
             return route
 
     def remote_route(self, start: list[float], end: list[float]) -> dict:

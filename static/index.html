@@ -11,10 +11,10 @@
     <script type="module" src="/app.js"></script>
   </head>
   <body class="map-only">
-    <div id="agent-aura" aria-hidden="true" hidden></div>
+    <div id="agent-aura" aria-hidden="true"><canvas></canvas><canvas></canvas><canvas></canvas></div>
     <p id="director-warning" role="status" aria-live="polite" hidden></p>
-    <section id="agent-card" role="status" aria-live="polite" hidden>
-      <span id="agent-label">FlareAI</span><strong id="agent-message"></strong><p id="agent-reason"></p><p id="agent-priority"></p>
+    <section id="agent-card" role="status" aria-live="polite">
+      <strong id="agent-message"></strong>
     </section>
     <aside id="agent-evidence" aria-labelledby="evidence-title" hidden>
       <header><div><span id="evidence-status"></span><h2 id="evidence-title"></h2></div><button id="evidence-close" aria-label="Cerrar evidencias">×</button></header>

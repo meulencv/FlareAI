@@ -173,7 +173,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
-        if path in {'/api/scenario', '/api/director/cancel-alert'}:
+        if path in {'/api/scenario', '/api/director/cancel-alert', '/api/admin/reset'}:
             if self.mobile_only or self.client_address[0] not in {'127.0.0.1', '::1'}:
                 self.send_error(404)
                 return
@@ -181,6 +181,18 @@ class Handler(SimpleHTTPRequestHandler):
                 control_origin = urlsplit(self.headers.get('Origin', ''))
                 if control_origin.netloc != self.headers.get('Host') or control_origin.scheme not in {'http', 'https'}:
                     raise PermissionError('Se requiere una orden local del mismo origen')
+                if path == '/api/admin/reset':
+                    if not self.store.db:
+                        raise ValueError('No hay base de datos configurada')
+                    with self.store.lock:
+                        self.store.db.reset_demo()
+                        if self.store.demo:
+                            self.store.db.start_demo(self.store.demo.session_id)
+                            self.store.demo.reset()
+                        if self.store.director:
+                            self.store.director.reset_demo()
+                    self.send_json({'ok': True})
+                    return
                 director = self.store.director
                 if not director or not director.scene:
                     raise ValueError('Arranca con --hackathon para activar el escenario')
@@ -401,7 +413,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise KeyError('Cartografía no importada')
                 self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js", "/operations.js",
+                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js", "/operations.js", "/aura.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()

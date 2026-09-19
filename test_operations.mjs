@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import process from 'node:process';
-import { testimonyRows } from './static/operations.js';
+import { testimonyRows, witnessPosition, hashSeed } from './static/operations.js';
 import { GET, POST } from './happyrobot-112/cloud/route.js';
 
 const { Request, Response } = globalThis;
@@ -12,6 +12,19 @@ test('el feed distingue webcall de testimonios sintéticos y conserva sus evalua
   assert.equal(rows[0].id, 'demo');
   assert.equal(rows[0].assessment.status, 'uncertain');
   assert.equal(rows[1].source, 'webcall');
+});
+
+test('las personitas se reparten de forma estable alrededor del aviso y la llamada 112 queda junto al foco', () => {
+  const incident = { lat: 41.4, lon: 2.17 };
+  const east = 111320 * Math.cos(incident.lat * Math.PI / 180);
+  const meters = ([lat, lon]) => Math.hypot((lat - incident.lat) * 111320, (lon - incident.lon) * east);
+  const call = witnessPosition({ id: 'citizen:run', source: 'webcall' }, incident, .2);
+  assert.deepEqual(call, witnessPosition({ id: 'citizen:run', source: 'webcall' }, incident, .2));
+  assert.ok(Math.abs(meters(call) - 430) < 1);
+  const spots = Array.from({ length: 24 }, (_, i) => witnessPosition({ id: `t${i}`, speaker: `Testigo ${String(i + 1).padStart(2, '0')}`, source: 'synthetic_demo' }, incident, .2));
+  for (const spot of spots) { assert.ok(meters(spot) >= 500 && meters(spot) <= 1060); }
+  assert.ok(new Set(spots.map(s => s.join(','))).size === 24, 'sin posiciones repetidas');
+  assert.notEqual(hashSeed('a'), hashSeed('b'));
 });
 
 test('112 cloud protege la sesión, rechaza 123 y no revela credenciales', async () => {

@@ -17,8 +17,8 @@ Necesita `FLAREAI_TWIN_API_KEY` en el entorno o en `.env.presentation` privado, 
 El comando anterior **no hace llamadas telefónicas**. Añadir `--allow-outbound` solo al autorizar un ensayo
 real; lee todos los números de `flare_contacts`, nunca de constantes del programa.
 
-- Una webcall produce 24 testimonios sintéticos, con cadencia 0,5–2 s. La IA evalúa el conjunto, sin conocer
-  las etiquetas de referencia, y moviliza medios. El feed distingue webcall y actores de simulación.
+- Una webcall produce cinco testimonios sintéticos (tres coherentes, uno dudoso y una broma), con cadencia
+  0,5–2 s. La IA evalúa el conjunto, sin conocer las etiquetas de referencia, y moviliza medios. El feed distingue webcall y actores de simulación.
 - En presentación no se disparan giros de viento ni cortes programados inesperados; siguen disponibles
   en los controles del escenario para ensayarlos explícitamente. Cerrar el servidor libera el turno de
   sala; tras una caída abrupta, otra instancia reintenta adquirirlo al caducar el lease.

@@ -4,6 +4,13 @@ export function priorityLine(record) {
   return record ? `Prioridad ${Number(record.priority).toFixed(1)}/10 · ${record.priority_reason}` : '';
 }
 
+export function extinctionLine(record) {
+  if (!record || !['active', 'contained'].includes(record.phase)) return '';
+  const working = record.suppression_power || 0;
+  const pct = Math.max(0, Math.min(100, Number(record.extinguished_pct) || 0));
+  return working ? `Extinción simulada ${pct} % · ${working} ${working === 1 ? 'medio trabajando' : 'medios trabajando'} · más medios, antes` : record.phase === 'active' ? 'Fuego creciendo · medios en camino' : '';
+}
+
 const HOSPITAL_ROLES = {
   transfer: 'destino del traslado de la ambulancia',
   reserved: 'plaza ficticia reservada en esta sesión',
@@ -31,7 +38,28 @@ export function engagedHospitals(scene, assignments = {}) {
   });
 }
 
-export function createSceneView({ map, L, document, fetch, focus }) {
+export const THREAT_MARGIN_KM = .3;
+
+// Superficie de riesgo ilustrativa: sigue el contorno del fuego del escenario con un margen
+// reducido, más amplio a favor del viento. Sin huella disponible recae en un círculo pequeño.
+export function threatOutline(record, footprint, marginKm = THREAT_MARGIN_KM) {
+  const ring = footprint?.type === 'Polygon' ? footprint.coordinates[0] : null;
+  const east = 111.32 * Math.cos(record.lat * Math.PI / 180), wind = record.wind_to * Math.PI / 180;
+  if (!ring || ring.length < 4) {
+    return Array.from({ length: 48 }, (_, i) => {
+      const angle = i / 48 * 2 * Math.PI, reach = record.radius_km + marginKm;
+      return [record.lat + Math.cos(angle) * reach / 111.32, record.lon + Math.sin(angle) * reach / east];
+    });
+  }
+  return ring.slice(0, -1).map(([lon, lat]) => {
+    const dx = (lon - record.lon) * east, dy = (lat - record.lat) * 111.32, length = Math.hypot(dx, dy) || 1;
+    const downwind = Math.max(0, (dx * Math.sin(wind) + dy * Math.cos(wind)) / length);
+    const reach = marginKm * (.7 + downwind * .9);
+    return [lat + dy / length * reach / 111.32, lon + dx / length * reach / east];
+  });
+}
+
+export function createSceneView({ map, L, document, fetch, focus, findIncident = () => null }) {
   const $ = id => document.getElementById(id), traffic = createTraffic({ map, L, document, fetch });
   const hospitals = L.layerGroup(), cuts = L.layerGroup().addTo(map), hazards = L.layerGroup().addTo(map);
   let state = null, session = null, offset = 0, renderedSequence = -1, mapKey = '', events = new Map(), historyLoading = false;
@@ -115,11 +143,11 @@ export function createSceneView({ map, L, document, fetch, focus }) {
     $('scene-summary').replaceChildren();
     for (const record of records) {
       const card = node('button', '', 'scene-incident-card');
-      card.append(node('strong', record.name), node('span', priorityLine(record)), node('small', `${record.source === 'sensor' ? 'Sensor FIRMS' : record.source === 'call' ? 'Llamada 112' : 'Ejercicio simulado'} · ${{ active: 'Intervención', contained: 'Contenido', watching: 'Vigilancia', releasing: 'Retirada', closed: 'Cerrado' }[record.phase]}`), node('small', record.contrast.label));
+      card.append(node('strong', record.name), node('span', priorityLine(record)), node('small', `${record.source === 'sensor' ? 'Sensor FIRMS' : record.source === 'call' ? 'Llamada 112' : 'Ejercicio simulado'} · ${{ active: 'Intervención', contained: 'Contenido', watching: 'Vigilancia', releasing: 'Retirada', closed: 'Cerrado' }[record.phase]}`), node('small', extinctionLine(record)), node('small', record.contrast.label));
       card.onclick = () => focus(record.id); $('scene-summary').append(card);
     }
     const engaged = engagedHospitals(scene, state.assignments);
-    const key = JSON.stringify([engaged, scene.closures, records.map(r => [r.id, Math.round(r.radius_km * 30), r.phase, r.wind_to])]);
+    const key = JSON.stringify([engaged, scene.closures, records.map(r => [r.id, Math.round(r.radius_km * 30), r.phase, r.wind_to, Boolean(findIncident(r.id)?.scenario?.footprint)])]);
     if (key === mapKey) return;
     mapKey = key; hospitals.clearLayers(); cuts.clearLayers(); hazards.clearLayers();
     for (const hospital of engaged) {
@@ -140,12 +168,13 @@ export function createSceneView({ map, L, document, fetch, focus }) {
     for (const record of records) {
       if (record.phase === 'closed') continue;
       const color = record.phase === 'active' ? '#e37554' : '#60a18c';
-      const angle = record.wind_to * Math.PI / 180, length = (record.radius_km + .8) / 111.32;
+      const angle = record.wind_to * Math.PI / 180, length = (record.radius_km + .55) / 111.32;
       const end = [record.lat + Math.cos(angle) * length, record.lon + Math.sin(angle) * length / Math.cos(record.lat * Math.PI / 180)];
       L.polyline([[record.lat, record.lon], end], { color: '#738a9c', weight: 2, dashArray: '4 5', interactive: false }).addTo(hazards);
       L.marker(end, { interactive: false, icon: L.divIcon({ className: 'scenario-wind', html: `Viento demo ${Math.round(record.wind_to)}°`, iconSize: [110, 20] }) }).addTo(hazards);
       if (record.maritime) L.marker([record.lat, record.lon], { icon: L.divIcon({ className: 'maritime-marker', html: '<svg viewBox="0 0 32 28" aria-hidden="true"><path d="M3 16h26l-5 8H8zM10 15V8h12v7M16 8V3M3 27l6-2 7 2 7-2 6 2"/></svg>', iconSize: [34, 30] }) }).bindTooltip(node('span', 'Barco comunicado en llamada · posición ilustrativa')).addTo(hazards);
-      L.circle([record.lat, record.lon], { radius: (record.radius_km + .8) * 1000, color, weight: 1, dashArray: '4 8', fillColor: color, fillOpacity: .045, interactive: false }).addTo(hazards);
+      const footprint = findIncident(record.id)?.scenario?.footprint;
+      L.polygon(threatOutline(record, footprint), { color, weight: 1.2, dashArray: '4 7', fillColor: color, fillOpacity: .07, interactive: false, className: 'threat-surface' }).addTo(hazards);
       const label = node('div', ''); label.append(node('strong', priorityLine(record)), node('p', `${record.exposed_population} residentes censales en el entorno simulado · no afectados medidos`), node('p', `Viento del escenario hacia ${Math.round(record.wind_to)}° · crecimiento y contención ilustrativos`));
       L.circleMarker([record.lat, record.lon], { radius: 14, opacity: 0, fillOpacity: 0 }).bindTooltip(label).addTo(hazards);
     }

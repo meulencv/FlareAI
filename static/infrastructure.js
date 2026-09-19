@@ -38,13 +38,22 @@ const PATHS = {
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${PATHS[name] || PATHS.factory}</svg>`;
 const WASTE_CATEGORIES = new Set(["vertedero", "gestion_residuos"]);
-export const WASTE_LIMIT = 2;
+export const FACILITY_LIMIT = 2, FACILITY_TOTAL = 8;
+const family = poi => CATEGORIES[poi.category]?.[1] || "factory";
+const rank = poi => [poi.priority === "alta_orientativa" ? 0 : 1, Number.isFinite(poi.distance_km) ? poi.distance_km : Infinity];
+const compare = (a, b) => { const [pa, da] = rank(a), [pb, db] = rank(b); return pa - pb || da - db; };
 
+// Muestra representativa: como mucho FACILITY_LIMIT por familia de icono y FACILITY_TOTAL en total,
+// priorizando prioridad alta orientativa y cercanía; residuos solo con prioridad alta.
 export function relevantFacilities(facilities) {
-  const kept = new Set(facilities.filter(poi => WASTE_CATEGORIES.has(poi.category) && poi.priority === "alta_orientativa")
-    .sort((a, b) => (Number.isFinite(a.distance_km) ? a.distance_km : Infinity) - (Number.isFinite(b.distance_km) ? b.distance_km : Infinity))
-    .slice(0, WASTE_LIMIT).map(poi => poi.id));
-  return facilities.filter(poi => !WASTE_CATEGORIES.has(poi.category) || kept.has(poi.id));
+  const slots = new Map(), chosen = [];
+  for (const poi of [...facilities].filter(poi => !WASTE_CATEGORIES.has(poi.category) || poi.priority === "alta_orientativa").sort(compare)) {
+    const slot = slots.get(family(poi)) || 0;
+    if (slot >= FACILITY_LIMIT) continue;
+    slots.set(family(poi), slot + 1); chosen.push({ poi, slot });
+  }
+  const kept = new Set(chosen.sort((a, b) => a.slot - b.slot || compare(a.poi, b.poi)).slice(0, FACILITY_TOTAL).map(c => c.poi.id));
+  return facilities.filter(poi => kept.has(poi.id));
 }
 const number = value => Number(value).toLocaleString("es-ES", { maximumFractionDigits: 2 });
 

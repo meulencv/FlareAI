@@ -1,8 +1,9 @@
 import { selectionBounds } from "./context.js";
 import { imagePoints } from "./simulation.js";
 import { safeLink } from "./infrastructure.js";
-import { createSceneView, priorityLine } from './scene.js';
+import { createSceneView } from './scene.js';
 import { createOperationView } from './operations.js';
+import { createAura } from "./aura.js";
 
 const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 
@@ -217,7 +218,7 @@ const AMBULANCE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7h13l
 const HELICOPTER = '<svg viewBox="0 0 32 28" aria-hidden="true"><path class="rotor" d="M3 4h26"/><path d="M16 4v5M12 9h8l7 7v4H9l-5-7H1M9 16h17M12 20v4m10-4v4M8 25h19M18 10v6"/></svg>';
 
 export function createDirectorView({ map, L, document, fetch, focus, clearContext, findIncident, getData, getCameras, openCamera, beforeMove }) {
-  const operationView = createOperationView({ document, fetch });
+  const operationView = createOperationView({ document, fetch, map, L, findIncident });
   const $ = id => document.getElementById(id);
   const routes = L.layerGroup().addTo(map), stations = L.layerGroup().addTo(map), alerts = L.layerGroup().addTo(map);
   const vehicles = new Map();
@@ -228,9 +229,10 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   let queue = [], current = null, shownUntil = 0, lastContact = 0, contextUntil = 0, routeKey = "";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
   const cameraTour = createCameraTour({ map, L });
+  const aura = createAura($("agent-aura"), { reduced });
   const evidence = createEvidenceView({ document, fetch, getData, getCameras, openCamera: item => { manual(); openCamera(item); } });
   let following = true, armed = false, nextVisit = 0, lastTarget = "", lastEvidence = "", evidenceAt = 0;
-  const sceneView = createSceneView({ map, L, document, fetch, focus: id => { const incident = findIncident(id); if (incident) { manual(); focus(incident); map.setView([incident.lat, incident.lon], 13, { animate: false }); } } });
+  const sceneView = createSceneView({ map, L, document, fetch, findIncident, focus: id => { const incident = findIncident(id); if (incident) { manual(); focus(incident); map.setView([incident.lat, incident.lon], 13, { animate: false }); } } });
   map.on('zoom', () => { if (!state?.scenario || map.getZoom() >= 11) stations.addTo(map); else stations.remove(); });
 
   function followControl() {
@@ -258,16 +260,21 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     }
     lastTarget = `vehicle:${assignment.resource.id}`;
   }
+  // Solo el título de la decisión, abajo en el centro; la explicación vive en el historial.
+  // Cada título nuevo reinicia la animación de entrada; salir quita la clase y CSS hace el fundido.
+  function caption(message) {
+    const text = $("agent-message");
+    text.textContent = message;
+    text.style.animation = "none"; void text.offsetWidth; text.style.animation = "";
+    $("agent-card").classList.add("is-visible");
+  }
+  const hideCaption = () => $("agent-card").classList.remove("is-visible");
   function show(event) {
     current = event;
     shownUntil = Date.now() + ({ thinking: 1800, report: 6500, focus: 5000, context: 5000 }[event.kind] || 5500);
     nextVisit = shownUntil + 10000;
-    $("agent-card").hidden = false;
-    $("agent-label").textContent = event.kind === "report" ? "AVISO RECIBIDO" : event.visual ? "FLAREAI · SEGUIMIENTO VISUAL" : event.kind === "error" || event.kind === "blocked" ? "FLAREAI · REVISIÓN" : "FLAREAI · DIRECTOR";
-    $("agent-message").textContent = event.message;
-    $("agent-reason").textContent = event.reason || "";
+    caption(event.message);
     const incident = findIncident(event.incident_id);
-    $('agent-priority').textContent = priorityLine(incident?.scenario);
     if (incident || event.resource_id) armed = true;
     if (!following || paused) return;
     if (incident && ["report", "focus", "context", "watch", "arrived", "field_report"].includes(event.kind)) visit(incident, ["report", "context", "watch"].includes(event.kind));
@@ -313,7 +320,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
         vehicles.set(resource.id, { marker, assignment, route });
       } else Object.assign(vehicles.get(resource.id), { assignment, route });
       const label = document.createElement("span");
-      label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : ambulance ? 'Ambulancia' : "Camión"} · ${resource.name} · ${assignment.status === 'blocked' ? 'detenido · vía cortada' : assignment.status === 'transporting' ? 'traslado a hospital' : assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km · tiempo visual acelerado`;
+      label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : ambulance ? 'Ambulancia' : "Camión"} · ${resource.name} · ${assignment.status === 'blocked' ? 'detenido · vía cortada' : assignment.status === 'transporting' ? 'traslado a hospital' : assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km${assignment.route.approximate ? ' · trayectoria aproximada' : ''} · tiempo visual acelerado`;
       vehicles.get(resource.id).marker.unbindTooltip().bindTooltip(label);
     }
     const inventory = engagedStations(state.stations || [...bases.values()].map(({ resource, count }) => ({ ...resource, available: 0, total: count, busy: count })), state.assignments);
@@ -340,7 +347,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     frame = 0;
     if (document.hidden) return;
     const now = Date.now(), connected = now - lastContact < 10000;
-    if (current && now > shownUntil) { current = null; $("agent-card").hidden = true; }
+    if (current && now > shownUntil) { current = null; hideCaption(); }
     if (!paused && !current && queue.length) {
       const event = queue[0];
       if (!event.incident_id || findIncident(event.incident_id) || ['cancelled', 'field_report', 'blocked'].includes(event.kind)) show(queue.shift());
@@ -349,7 +356,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     if (connected && following && armed && !paused && !current && !queue.length && !cameraTour.moving() && now > nextVisit) patrol();
     evidence.tick(now); sceneView.tick();
     if (contextUntil && now > contextUntil) { contextUntil = 0; clearContext(); }
-    $("agent-aura").hidden = !connected || !(state?.status === "thinking" || current && !["error", "blocked"].includes(current.kind));
+    aura.set(connected && (state?.status === "thinking" || current && !["error", "blocked"].includes(current.kind)));
     if (connected && !paused) for (const { marker, assignment } of vehicles.values()) {
       const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((now + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
       const [lon, lat] = assignment.held_position || routePosition(assignment.route, progress);
@@ -370,7 +377,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
         armed = false; lastTarget = ""; lastEvidence = ""; routeKey = ""; contextUntil = 0;
         cameraTour.cancel(); evidence.hide();
         if (Number.isFinite(map.getZoom())) clearContext();
-        $("agent-card").hidden = true;
+        hideCaption();
       }
       offset = next.server_time ? next.server_time * 1000 - Date.now() : 0;
       queue.push(...freshEvents(next.events || [], sequence, (Date.now() + offset) / 1000));
@@ -382,7 +389,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     } catch {
       $('director-warning').textContent = directorWarning('disconnected');
       $('director-warning').hidden = false;
-      $("agent-aura").hidden = true;
+      aura.set(false);
       if (state && state.status !== "disconnected") {
         state.status = "disconnected"; queue = []; cameraTour.cancel(); evidence.hide();
         show({ kind: "error", message: "Conexión con el director interrumpida", reason: "La vista conserva el último estado recibido." });
@@ -391,7 +398,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cameraTour.cancel(); evidence.hide(); queue = []; current = null; $("agent-card").hidden = true; }
+    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cameraTour.cancel(); evidence.hide(); queue = []; current = null; hideCaption(); }
     else { refresh(); if (!frame) frame = requestAnimationFrame(tick); }
   });
   refresh(); setInterval(refresh, 500); frame = requestAnimationFrame(tick);
@@ -405,7 +412,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       if (!call || call.state === "located" || call.state === 'field_report') return;
       queue.push({ kind: call.error ? "error" : "call", message: call.error || (call.state === "needs_location" ? "Precisando la ubicación del aviso" : call.state === "not_fire" ? "Aviso revisado · incendio no confirmado" : call.ended ? "Llamada finalizada" : "Llamada entrante · recogiendo datos"), reason: "" });
     },
-    setPaused(value) { paused = value; sceneView.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },
+    setPaused(value) { paused = value; sceneView.setPaused(value); aura.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },
     manual,
   };
 }

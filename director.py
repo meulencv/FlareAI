@@ -13,12 +13,16 @@ import uuid
 from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from build_emergency_db import proximity
 from demo import HappyRobotProvider
 from local_routes import LocalRouter, km, valid_point
+
+if TYPE_CHECKING:
+    from operations import Operations
+    from scene import Scene
 
 ROOT = Path(__file__).resolve().parent
 ACTION_TYPES = {'focus', 'context', 'dispatch', 'reassign', 'return', 'alert', 'watch'}
@@ -231,6 +235,18 @@ def route_position(route: dict, progress: float) -> list[float]:
     return [points[index - 1][axis] + (points[index][axis] - points[index - 1][axis]) * fraction for axis in (0, 1)]
 
 
+def ground_fallback(start: list[float], end: list[float]) -> dict:
+    # Último recurso cuando ninguna red viaria conectada ni proveedor OSM ofrece trayectoria: línea ilustrativa
+    # para que la unidad siempre salga en el mapa. No es geometría de carretera ni itinerario operativo.
+    if not valid_point(start) or not valid_point(end):
+        raise ValueError('Coordenadas no válidas para la trayectoria ilustrativa')
+    distance = km(start, end)
+    return {'coordinates': [list(start), list(end)], 'cumulative_km': [0, distance], 'distance_km': round(distance, 3),
+            'duration_seconds': max(60, distance / 40 * 3600), 'mode': 'ground_fallback', 'approximate': True,
+            'source': 'Trayectoria ilustrativa sin geometría viaria', 'fetched_at': time.time(),
+            'limitations': 'Sin ruta viaria calculable: trayectoria recta ilustrativa para no dejar el aviso sin recursos. No representa carreteras ni tiempos reales.'}
+
+
 def air_route(start: list[float], end: list[float]) -> dict:
     if not valid_point(start) or not valid_point(end) or km(start, end) > 180:
         raise ValueError('Vuelo fuera del alcance ilustrativo de 180 km')
@@ -286,25 +302,51 @@ class Director:
                                       'field_revisions': {}, 'field_actions': {}, 'alert_requests': {}, 'notifications': [], 'delivery_sequence': 0}
         self.retry_at = 0.0
         self.failure_count = 0
-        self.scene = None
-        self.operations = None
+        self.scene: Scene | None = None
+        self.operations: Operations | None = None
         self.scene_saved_at = 0.0
         if getattr(store, 'hackathon', False) is True:
-            from scene import Scene
-            from local_routes import in_demo
-            graph = self.router.demo_graph()
-            self.scene = Scene(self)
-            self.scene.data['network'] = {'nodes': len(graph.points), 'bounds': [41.28, 2.00, 41.54, 2.32], 'source': 'OpenStreetMap · red precargada local'}
-            self.scene.data['hospitals'] = [h for h in self.atlas.hospitals(41.41, 2.15) if in_demo([h['lon'], h['lat']])]
-            for lat, lon in [(41.39, 2.17), (41.44, 2.10), (41.40, 2.23)]:
-                for resource in self.atlas.nearby(lat, lon):
-                    if in_demo([resource['lon'], resource['lat']]):
-                        self.state['resources'][resource['id']] = resource
-            self.event('watch', 'Vigilancia de Barcelona, Collserola y costa', 'FIRMS, 112, NOAA y atlas reales; evolución, tráfico y recursos simulados. España permanece completa.')
+            self._setup_scenario()
+        from autodispatch import AutoDispatch
+        # Garantía de movilización (petición expresa 19/09/2026): bomberos de parques distintos, ambulancia y patrulla
+        # salen sin esperar al planner LLM y el dispositivo se mantiene mientras el aviso siga activo.
+        self.auto = AutoDispatch(self)
 
         if getattr(store, 'presentation', False) is True:
             from operations import Operations
             self.operations = Operations(self)
+
+    def _setup_scenario(self) -> None:
+        from scene import Scene
+        from local_routes import in_demo
+        graph = self.router.demo_graph()
+        self.scene = Scene(self)
+        self.scene.data['network'] = {'nodes': len(graph.points), 'bounds': [41.28, 2.00, 41.54, 2.32], 'source': 'OpenStreetMap · red precargada local'}
+        self.scene.data['hospitals'] = [h for h in self.atlas.hospitals(41.41, 2.15) if in_demo([h['lon'], h['lat']])]
+        self.state['resources'] = {}
+        for lat, lon in [(41.39, 2.17), (41.44, 2.10), (41.40, 2.23)]:
+            for resource in self.atlas.nearby(lat, lon):
+                if in_demo([resource['lon'], resource['lat']]):
+                    self.state['resources'][resource['id']] = resource
+        self.event('watch', 'Vigilancia de Barcelona, Collserola y costa', 'FIRMS, 112, NOAA y atlas reales; evolución, tráfico y recursos simulados. España permanece completa.')
+
+    def reset_demo(self) -> None:
+        """Vacía incidentes, avisos y despachos de simulaciones anteriores para empezar una demo desde cero.
+        No toca `flare_contacts` (teléfonos de bomberos) ni credenciales/ajustes."""
+        with self.lock:
+            self.state.update(sequence=0, events=[], assignments={}, alerts={}, last_fingerprint='', last_review=0,
+                              pending=None, history=[], runs=[], field_revisions={}, field_actions={},
+                              alert_requests={}, notifications=[], delivery_sequence=0, auto={})
+            self.state.pop('pending_alerts', None)
+            self.state.pop('alert_cooldowns', None)
+            self.retry_at = 0.0
+            self.failure_count = 0
+            if self.scene is not None:
+                self._setup_scenario()
+            if self.operations is not None:
+                from operations import Operations
+                self.operations = Operations(self)
+            self.save()
 
     def station_inventory(self) -> list[dict]:
         stations: dict[str, dict] = {}
@@ -319,7 +361,7 @@ class Director:
         with self.lock:
             return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time(), 'stations': self.station_inventory(),
                 'scenario': deepcopy(self.scene.data) if self.scene else None, 'pending_alerts': deepcopy(self.state.get('pending_alerts', {})),
-                'operations': self.operations.public_state() if self.operations else None}
+                'operations': self.operations.public_state() if self.operations else None, 'auto': self.auto.public_state()}
 
     def alert_feed(self, after: int | None = None) -> dict:
         with self.lock:
@@ -434,7 +476,7 @@ class Director:
             if r['assignment']:
                 r['assignment'] = {k: v for k, v in r['assignment'].items() if k not in ('route', 'resource')}
         context = {'mode': 'simulation_only', 'incidents': incidents, 'resources': resources, 'stations': self.station_inventory(),
-                   'dispatch_policy': 'Si falla la ruta de una unidad propuesta para dispatch, el ejecutor intentará hasta tres sedes alternativas con unidades libres del mismo tipo. Nunca tomará unidades ocupadas ni reservadas para otra acción del plan. Si todas fallan, revisa otra sede en el siguiente plan.',
+                   'dispatch_policy': 'Un dispositivo automático mínimo (camiones de parques distintos, ambulancia y patrulla) sale sin esperar tu plan y ya figura en resources[].assignment: no lo dupliques; añade, reasigna o retira según la situación. Si falla la ruta de una unidad propuesta para dispatch, el ejecutor intentará hasta tres sedes alternativas con unidades libres del mismo tipo. Nunca tomará unidades ocupadas ni reservadas para otra acción del plan. Si todas fallan, revisa otra sede en el siguiente plan.',
                    'alerts': self.state['alerts'], 'history': self.state['history'][-8:],
                    'source_status': payload.get('status'), 'at': time.time(), 'incident_limit': 8,
                    'field_reports': payload.get('demo', {}).get('field_reports', {}),
@@ -474,8 +516,10 @@ class Director:
             kind, rid = item['type'], item.get('resource_id')
             if kind in {'dispatch', 'reassign', 'return'}:
                 current = self.state['assignments'].get(rid)
-                if kind == 'dispatch' and current or kind in {'reassign', 'return'} and not current:
+                if kind in {'reassign', 'return'} and not current:
                     raise ValueError('Disponibilidad incompatible con el plan')
+                # Una unidad ya movilizada (p. ej. por el dispositivo automático) no se roba: se busca otra libre del mismo tipo.
+                occupied = kind == 'dispatch' and current is not None
                 resource = self.state['resources'][rid]
                 destination = resource if kind == 'return' else incidents[item['incident_id']]
                 scene = destination.get('scenario') or {}
@@ -503,7 +547,7 @@ class Director:
                     and r['kind'] == resource['kind'] and r['id'] not in reserved and r['id'] not in self.state['assignments']
                     and km([r['lon'], r['lat']], item['target']) <= 60), key=lambda r: km([r['lon'], r['lat']], item['target']))
                 attempted: set[str] = set()
-                for candidate in [resource, *alternatives]:
+                for candidate in [*([] if occupied else [resource]), *alternatives]:
                     station = candidate['station_id']
                     if station in attempted or len(attempted) >= 4:
                         continue
@@ -522,8 +566,18 @@ class Director:
                         item['blocked_reason'] = 'No se pudo calcular una ruta utilizable; se revisarán alternativas. ' + str(error)[:160]
                         if kind == 'dispatch':
                             failed_stations.add(failure_key)
+                if 'route' not in item and occupied:
+                    item.update(route_error=True, blocked_reason='La unidad pedida ya está movilizada por otra decisión y no queda otra libre del mismo tipo con ruta.')
+                    prepared.append(item)
+                    continue
                 if 'route' not in item:
-                    item['route_error'] = True
+                    # Garantía de movilización: red viaria sin sentidos desde la unidad pedida y, si tampoco, trayectoria ilustrativa.
+                    origin = self.vehicle_origin(resource)
+                    try:
+                        item['route'] = routing(origin, item['target'], relaxed=True)
+                    except (OSError, ValueError, RuntimeError):
+                        item['route'] = ground_fallback(origin, item['target'])
+                    item['route_fallback'] = item.pop('blocked_reason', 'Ruta estricta no disponible')
             if kind == 'alert':
                 incident = incidents[item['incident_id']]
                 fields = (incident.get('responder_report') or {}).get('fields', {})
@@ -558,6 +612,8 @@ class Director:
                 if action.get('requested_resource_id'):
                     self.event('alternative', 'Recurso alternativo disponible · ' + resource['name'], 'Sustituye una unidad sin ruta utilizable; mismo tipo y sin retirar recursos de otros avisos.', resource_id=rid, requested_resource_id=action['requested_resource_id'], **data)
                 route = action['route']
+                if action.get('route_fallback'):
+                    self.event('approximate', 'Trayectoria aproximada · ' + resource['name'], route.get('limitations', '') + ' ' + str(action['route_fallback'])[:160], resource_id=rid, **data)
                 delay = departures.get(resource['station_id'], 0) * 4 if kind == 'dispatch' else 0
                 departures[resource['station_id']] = departures.get(resource['station_id'], 0) + 1
                 self.state['assignments'][rid] = {'id': f'{run_id}:{rid}', 'resource': resource, 'incident_id': incident_id,
@@ -629,6 +685,10 @@ class Director:
             moved = self.advance()
             if moved:
                 self.save()
+        # Dispositivo automático: usa la carga con el escenario ya observado; calcula rutas fuera del cerrojo.
+        if self.auto.tick(self.store.payload()):
+            moved = True
+        with self.lock:
             if self.operations:
                 self.operations.tick(payload)
                 if not self.operations.ready():

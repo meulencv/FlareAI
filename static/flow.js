@@ -152,8 +152,13 @@ export function flameOutline(points, time, bearing, amplitude) {
     const length = Math.hypot(dx, dy) || 1;
     const normal = { x: dx / length, y: dy / length };
     const downwind = lean ? Math.max(0, normal.x * lean.x + normal.y * lean.y) : .5;
-    const pulse = (flicker(index / points.length * 11, time, 1.1) + 1) / 2;
-    const push = amplitude * (.35 + pulse * .65) * (.55 + downwind * 1.15);
+    const fraction = index / points.length;
+    const pulse = (flicker(fraction * 11, time, 1.1) + 1) / 2;
+    // Lenguas espaciales: varios armónicos sobre el contorno que derivan lentamente para que
+    // el borde tenga frentes y puntas en lugar de un halo uniforme.
+    const tongues = Math.max(0, .55 + .45 * Math.sin(fraction * 6.283 * 5 + time * .7) + .35 * Math.sin(fraction * 6.283 * 9 - time * .5)
+      + .25 * Math.sin(fraction * 6.283 * 14 + time * .9));
+    const push = amplitude * (.25 + pulse * .45 + tongues * .55) * (.5 + downwind * 1.25);
     return { x: point.x + normal.x * push, y: point.y + normal.y * push };
   });
 }

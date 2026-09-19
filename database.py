@@ -297,6 +297,14 @@ class Database:
             rows = conn.execute("SELECT data,path FROM flare_assets WHERE kind='satellite' AND data->'bbox'=%s AND data->>'mode'=%s ORDER BY data->>'checked_at_utc' DESC", (Jsonb(bbox), mode))
             return next((row['data'] for row in rows if row['path'] and (ROOT / row['path']).is_file()), None)
 
+    def reset_demo(self) -> None:
+        """Vacía incidentes, avisos, partes y sesiones de simulaciones anteriores para empezar una demo
+        desde cero. No toca el atlas, cámaras, ajustes/credenciales ni `flare_contacts`."""
+        with self.connect() as conn:
+            conn.execute('SELECT pg_advisory_xact_lock(804026)')
+            for table in ('confirmations', 'observations', 'director_events', 'director_state', 'demo_calls', 'incidents', 'demo_sessions'):
+                conn.execute(f'DELETE FROM flare_{table}')
+
     def stats(self) -> dict:
         with self.connect() as conn:
             return {table: conn.execute(f'SELECT count(*) AS n FROM flare_{table}').fetchone()['n'] for table in TABLES}

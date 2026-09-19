@@ -46,6 +46,34 @@ Validación nueva: `verify_presentation.py` (fixtures, rutas/UI reales); `--clou
 llamar; `--phone` llama a teléfonos reales y exige permiso. La documentación posterior que describe 123
 refleja el modo anterior y no sustituye estas reglas para la presentación.
 
+## Dispositivo automático garantizado (19/09/2026, petición expresa)
+
+`autodispatch.py::AutoDispatch` corre en cada `Director.step()` en todos los modos y no depende del planner
+LLM: cuando un aviso está activo (llamada 112, ejercicio de sala o sensor FIRMS del escenario) salen de
+inmediato tres camiones de **parques distintos** (`pick` reparte por sede antes de repetir una), una
+ambulancia (dos con riesgo vital) y una patrulla. Mientras el aviso siga activo mantiene ese nivel mínimo,
+aunque otra decisión haya retirado unidades, y lo eleva con el radio del escenario (≥0,45 km, ≥0,8 km),
+con un parte `empeora`/`critico` (+2 camiones) y tras 120 s de intervención sin contener (+1), hasta seis.
+Las peticiones explícitas del parte (`refuerzos`, `bomberos: N`, ambulancias, helicóptero, policía) se
+ejecutan una sola vez por revisión; en presentación las tramita `Operations.reinforce`, en el resto de
+modos esta capa. Cada oleada reutiliza `Director.prepare/apply` (rutas, alternativas, garantía de trayectoria,
+eventos `decision`/`dispatch`), con las rutas calculadas fuera del cerrojo. Un `dispatch` del LLM sobre una
+unidad ya movilizada ya no lanza error: busca otra libre del mismo tipo o queda `blocked` explicando el motivo.
+
+En Barcelona la evolución la gobierna `scene.py` con **extinción progresiva**: el radio crece a
+`GROWTH_KM_PER_S` (0,0025 km/s) y cada medio trabajando en el lugar (camión 1, helicóptero 2) lo reduce
+`SUPPRESSION_KM_PER_S` (0,0022 km/s); con un solo camión apenas se frena, con tres retrocede y con más se
+apaga antes. Se contiene al llegar a `CONTAINED_RADIUS_KM` (0,06 km) con medios presentes y sin retención;
+después vigilancia 25 s, retirada tras 45 s y cierre al llegar a base. `extinguished_pct` y
+`suppression_power` se exponen en el registro y la tarjeta del escenario los muestra (`extinctionLine`).
+Fuera del escenario `AutoDispatch.lifecycle` acumula trabajo (`CONTAIN_WORK` = 90 medios·s: dos camiones
+45 s, tres 30 s, cinco 18 s) y aplica el mismo ciclo ilustrativo y devuelve todas las unidades a su sede (`go_home`, con `relaxed` y recta
+ilustrativa como respaldo); un aviso que desaparece de la sesión también envía a casa a sus unidades. En
+presentación `Operations.held` ya no retiene la extinción indefinidamente: telefonía desactivada, contacto
+inalcanzable o conversación sin parte no bloquean, y `HOLD_LIMIT` (300 s desde el aviso) libera en cualquier
+caso. Todo es ficticio: no acredita disponibilidad real, tiempos, protocolos ni extinción medida. Estado
+público en `/api/director` → `auto`; pruebas en `test_autodispatch.py`.
+
 ## 1. Flujo de datos
 
 ```text
@@ -111,8 +139,12 @@ No es un modelo de propagación ni de humo y no interviene en el escenario ilust
 
 Al pulsar un foco se encuadra automáticamente su huella +5 km y `static/heat.js` pinta un
 **mapa de calor continuo** con `potential.samples`. `static/infrastructure.js` añade iconos por
-actividad y fichas al pulsar las instalaciones de `potential.facilities`. No hay botón de
-activación. Las actualizaciones no reencuadran el mapa. Calor e instalaciones se retiran al
+actividad y fichas al pulsar las instalaciones de `potential.facilities`. Solo se dibuja una
+**muestra representativa** (`relevantFacilities`): como mucho dos por familia de icono
+(`FACILITY_LIMIT`) y ocho en total (`FACILITY_TOTAL`), primero un representante de cada familia
+y priorizando prioridad alta orientativa y cercanía; residuos solo con prioridad alta. El resto
+sigue en la API y en el potencial, solo se omite el icono. Las cámaras no se recortan. No hay botón
+de activación. Las actualizaciones no reencuadran el mapa. Calor e instalaciones se retiran al
 cerrar o filtrar la selección; respuestas tardías no sustituyen la selección vigente.
 Las agrupaciones se separan al acercarse y los elementos coincidentes tienen una lista de elección.
 
@@ -778,7 +810,7 @@ que puede devolver la API de HappyRobot en `configuration.api_key`.
 
 `/api/director` publica reloj del servidor, estado, eventos secuenciales, asignaciones y vistas
 previas. El puerto móvil lo rechaza. `static/director.js` consume eventos recientes sin repetirlos,
-muestra mensajes temporales y el borde de actividad; ante desconexión deja de animar el estado
+muestra mensajes temporales (`#agent-card`: solo el título de la decisión, abajo en el centro, texto con degradado y entrada/salida con fundido y desenfoque; la explicación queda en el historial) y el borde de actividad; ante desconexión deja de animar el estado
 como si siguiera vivo. Respeta pausa/pestaña oculta/movimiento reducido. Calor temporal durante
 45 s, fichas cerradas por defecto; las instalaciones requieren zoom 13 y respetan cajas de exclusión
 calculadas con el mismo mínimo visual de las llamas. Vehículos y rutas van bajo el fuego.
