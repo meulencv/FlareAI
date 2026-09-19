@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#173f35" />
+    <meta name="description" content="Explora webcams de España en un mapa. Encuentra cámaras cerca de cualquier punto, con fuentes y disponibilidad transparentes." />
+    <title>Faro — España, a un vistazo</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Faro, inicio"><span class="brand-mark" aria-hidden="true"></span>faro<span class="brand-country">ESPAÑA</span></a>
+      <nav aria-label="Navegación principal"><span class="nav-active">Explorar el mapa</span><button id="sources-open">Fuentes y cobertura <span aria-hidden="true">↗</span></button></nav>
+      <div class="header-note"><span class="status-dot"></span> Un país, muchas perspectivas</div>
+    </header>
+    <main class="workspace">
+      <aside class="sidebar" aria-label="Buscar y filtrar webcams">
+        <div class="intro">
+          <p class="eyebrow">MIRA A TU ALREDEDOR</p>
+          <h1>España,<br />a un vistazo<span>.</span></h1>
+          <p class="subhead">De la carretera a la costa.<br />Encuentra una ventana cerca de ti.</p>
+          <form id="search-form" role="search">
+            <label class="sr-only" for="search">Buscar cámara, lugar o coordenadas</label>
+            <div class="searchbox"><span aria-hidden="true">⌕</span><input id="search" placeholder="Lugar, carretera o coordenadas…" autocomplete="off" /><button type="submit" aria-label="Buscar">→</button></div>
+          </form>
+          <div id="search-results" class="search-results" hidden></div>
+          <div class="explore-actions"><button id="locate" class="text-button">⌖ Mi ubicación</button><button id="reset" class="text-button">Restablecer mapa</button></div>
+        </div>
+        <div class="filter-block">
+          <div class="categories" role="group" aria-label="Tipo de cámara">
+            <button data-category="all" class="selected" aria-pressed="true">Todas</button>
+            <button data-category="traffic" aria-pressed="false">Tráfico</button>
+            <button data-category="landscape" aria-pressed="false">Paisaje</button>
+            <button data-category="tourism" aria-pressed="false">Turismo</button>
+          </div>
+          <div class="select-row">
+            <label>Fuente<select id="source-filter"><option value="">Todas las fuentes</option></select></label>
+            <label>Distancia<select id="radius"><option value="0">Sin límite</option><option value="5">5 km</option><option value="10">10 km</option><option value="25">25 km</option><option value="50">50 km</option><option value="100">100 km</option></select></label>
+          </div>
+          <label class="favorite-filter"><input type="checkbox" id="favorites-only" /> Solo mis favoritas <span id="favorite-total">0</span></label>
+        </div>
+        <div id="point-banner" class="point-banner" hidden></div>
+        <div class="results-heading"><div><strong id="result-count">Cargando catálogo…</strong><span id="result-subtitle">Conectando con las fuentes</span></div><span class="tiny-pin" aria-hidden="true">⌖</span></div>
+        <div id="camera-list" class="camera-list" aria-live="polite"><div class="empty-state"><span class="loader"></span><p>Buscando ventanas a España…</p></div></div>
+        <div class="sidebar-foot"><span class="status-dot"></span><span id="catalog-total">Catálogos públicos y webcams compartidas</span><button id="about-small" aria-label="Acerca de la cobertura">i</button></div>
+      </aside>
+      <section class="map-section" aria-label="Mapa interactivo de webcams">
+        <div id="map"></div>
+        <div class="map-help"><span class="map-help-icon">⌖</span><span><strong>Elige tu punto de vista</strong><small>Haz clic en el mapa para encontrar cámaras cercanas</small></span></div>
+        <div class="map-regions" role="group" aria-label="Ir a una región">
+          <button data-region="peninsula" class="region-selected">Península</button><button data-region="baleares">Baleares</button><button data-region="canarias">Canarias</button><button data-region="ceuta">Ceuta / Melilla</button>
+        </div>
+        <div id="map-warning" class="map-warning" hidden></div>
+        <div class="legend"><span><i class="traffic"></i>Tráfico</span><span><i class="landscape"></i>Paisaje</span><span><i class="tourism"></i>Turismo</span><span class="legend-note">Ubicaciones del proveedor</span></div>
+        <section id="inspector" class="inspector" aria-label="Detalle de la webcam" hidden></section>
+      </section>
+    </main>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="sources-dialog" aria-labelledby="sources-title">
+      <div class="dialog-top"><span class="eyebrow">DE DÓNDE VIENEN LAS IMÁGENES</span><button id="sources-close" class="icon-button" aria-label="Cerrar fuentes">×</button></div>
+      <h2 id="sources-title">Fuentes abiertas.<br />Cobertura transparente.</h2>
+      <p class="dialog-intro">Este mapa reúne catálogos públicos y webcams que sus responsables comparten. No es un censo de todas las cámaras de España. Una ubicación en el catálogo no garantiza que su imagen esté disponible ahora.</p>
+      <div class="explanation"><strong>Una captura no es un vídeo en directo.</strong><p>Las cámaras de tráfico y meteorología suelen publicar fotos periódicas. El visor indica cuándo se consultó la imagen y muestra, si existe, la fecha proporcionada por la fuente. Los reproductores de terceros pueden incluir anuncios o estar fuera de servicio.</p></div>
+      <div id="source-cards"></div>
+      <h3>Otras vías para ampliar el mapa</h3>
+      <p class="dialog-intro"><a href="https://api.windy.com/webcams/docs" target="_blank" rel="noopener noreferrer">Windy Webcams API</a> requiere una clave y su licencia; no está conectada. <a href="https://www.skylinewebcams.com/es/webcam/espana.html" target="_blank" rel="noopener noreferrer">SkylineWebcams</a> ofrece otro directorio público, con condiciones propias de integración.</p>
+      <p class="dialog-foot">Los favoritos se guardan solo en este navegador. La geolocalización se usa aquí para calcular distancias y no se envía a nuestro servidor. El mapa carga teselas de OpenStreetMap.</p>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

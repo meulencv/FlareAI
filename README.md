@@ -4,7 +4,9 @@
 
 ## Arranque
 
-Probado con Python 3.10 en Ubuntu. La interfaz no necesita Node, compilación, clave API ni servicios de mapas externos.
+Servidor Python + PostgreSQL; frontend Leaflet sin compilación ni claves API. Las carreteras usan
+el WMS oficial del IGN y las cámaras contactan con sus proveedores solo al abrirlas. Herramientas
+locales en `.venv/` y `.local/`; no se requieren instalaciones globales.
 
 ```bash
 python3 -m venv .venv
@@ -12,6 +14,22 @@ source .venv/bin/activate
 python -m pip install -r requirements.txt
 python app.py --host 127.0.0.1 --port 8090
 ```
+
+El arranque requiere PostgreSQL. En este equipo ya está instalado en `.local/pg/dist`, con una
+base independiente `flareai`, socket privado bajo `.local/pg`, sin escucha TCP. El servidor
+prepara el esquema e importa los datos iniciales una sola vez. En otro equipo, instala PostgreSQL
+en el proyecto o configura `FLAREAI_DATABASE_URL` con una base dedicada. No se usa la base SOS.
+
+```bash
+.venv/bin/python database.py start
+.venv/bin/python database.py import
+.venv/bin/python database.py stats
+.venv/bin/python database.py export --directory .local/export-NUEVO
+```
+
+La exportación crea un directorio nuevo con `schema.sql` y JSONL por tabla, leyendo mediante
+cursores en una transacción consistente. No borra ni sobrescribe la base original. Los medios
+referenciados se copian aparte al migrar. Véase la sección PostgreSQL de `docs/IMPLEMENTACION.md`.
 
 Abrir `http://127.0.0.1:8090` en el navegador de **esa máquina**. Para una máquina remota, usar un túnel SSH o un proxy HTTPS. `--host 0.0.0.0` permite conexiones a sus interfaces de red. La vista previa de Devin utiliza este modo; no es un despliegue permanente.
 
@@ -31,6 +49,12 @@ Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan t
 - Buscar provincias y filtrar el caso contrastado en prensa.
 - Cambiar entre Península, Baleares, Canarias y Ceuta/Melilla.
 - Ver viento, rachas, temperatura ambiente y brillo térmico.
+- Pulsar un foco para encuadrar automáticamente su entorno y ver el **mapa de calor de riesgo inmediato alrededor**, de crema a coral, con iconos de instalaciones.
+- Pulsar una instalación para ver actividad, distancia a la huella, prioridad orientativa, fecha y enlace OSM.
+- Ver cámaras **solo al acercarte** (zoom 10 o superior), sin iconos en la vista general. Del catálogo de 2.926 registros se muestran únicamente capturas o vídeos integrables comprobados; los enlaces externos y las cámaras no disponibles quedan ocultos, no borrados.
+- Ver la **red de carreteras IGN** siempre activada, con detalle por zoom. Se descarga por teselas visibles y se almacena en caché; no es una copia vectorial nacional ni informa de carreteras transitables.
+- Pasar el ratón por el calor para leer qué hay en ese punto: instalaciones, residentes censados, vegetación y distancia a la huella.
+- El potencial combina proximidad, población, vegetación, instalaciones y viento vigente. Es una prioridad exploratoria de revisión, no una probabilidad de incendio ni una recomendación operativa. Los datos y los motivos quedan en `/api/context?id=<id>` para análisis posterior por una IA.
 - Consultar color natural o SWIR y ampliar la imagen.
 - Acercar la huella aproximada de los píxeles.
 - Ver bordes de llama, núcleos de calor y chispas que siguen el viento local.
@@ -45,13 +69,54 @@ Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan t
 
 **No conocemos el perímetro quemado.** La cifra de huella térmica aproxima el área cubierta por los píxeles. No equivale a hectáreas quemadas. Por eso la superficie quemada confirmada aparece como «—».
 
-**Las llamas son un tratamiento visual.** El contorno parte de la huella de los píxeles y añade resplandor, ondulación y chispas. Al alejarse se amplían las formas pequeñas para poder verlas. El color, la velocidad de animación y las chispas no miden temperatura, transporte de pavesas ni avance del fuego. Para ver el detalle, selecciona **Igea → Acercar a la huella detectada**.
+**Gris no confirmado, color fuego confirmado.** La confianza de NASA FIRMS se refiere a la detección térmica, no a la confirmación de un incendio forestal. El color fuego requiere un registro en `flare_confirmations` con fuente, fecha y vigencia; una noticia histórica no basta. No hay una fuente automática de confirmaciones conectada, por lo que las detecciones actuales se muestran grises.
+
+**Las llamas son un tratamiento visual.** El contorno parte de la huella de los píxeles y añade resplandor, ondulación y chispas. La silueta queda anclada al terreno: al hacer zoom escala como el mapa, sin deformarse. Al alejarse se conserva la misma animación con tamaño visual mínimo de unos 32 px, sin icono estático. Se escala el conjunto desde su centro, sin alterar la geometría medida; al acercarse más allá del mínimo recupera su tamaño geográfico. El color, la velocidad de animación y las chispas no miden temperatura, transporte de pavesas ni avance del fuego. Para ver el detalle, selecciona **Igea → Acercar a la huella detectada**.
 
 **La imagen es un mosaico diario, no una cámara en directo.** La aplicación busca la fecha más reciente con suficiente cobertura y muestra su fecha.
 
 **Las dos temperaturas significan cosas distintas.** GFS proporciona temperatura ambiente modelizada a 2 m. VIIRS I4 proporciona temperatura de brillo de un píxel; no es temperatura de las llamas.
 
 **El escenario es ilustrativo.** Su velocidad de avance es un supuesto elegido en el control. Solo usa el viento para la dirección; no es un modelo de propagación ni una herramienta de emergencia.
+
+## Contexto territorial en PostgreSQL
+
+El atlas original se conserva en `data/Espana_Datos_y_Mapas/`. Una importación transaccional carga
+511.226 celdas y 44.787 elementos OSM en tablas SQL con claves e índices. Al seleccionar un foco,
+se consulta solo su caja de proximidad y se aplica la distancia a la huella con Shapely. Las
+pruebas comparan el resultado SQL con el cálculo sobre el atlas completo.
+
+`database.py` y `schema.sql` guardan además catálogos de cámaras y fuentes, instantáneas FIRMS/GFS,
+focos, observaciones, confirmaciones, modelo de potencial y cartografía. Imágenes, teselas y GRIB
+siguen como archivos; los medios consumidos por la aplicación tienen referencias y metadatos SQL.
+El esquema usa tipos admitidos por Twin, sin PostGIS ni dependencia de HappyRobot en ejecución.
+No se ha migrado nada a Twin ni se ha validado todavía la importación contra una instancia remota.
+
+El catálogo Faro se importa desde el ZIP y conserva las fechas de cada proveedor; **no se
+sincroniza automáticamente**. Su disponibilidad sí se comprueba periódicamente y se guarda en
+`flare_camera_checks`. Se prueban imágenes reales (excluyendo plantillas de servicio no disponible)
+y la reproducción de vídeos dentro de un iframe local. No se eluden restricciones del proveedor.
+Las cámaras visibles se actualizan cada minuto; las capturas abiertas respetan su intervalo.
+Recuperación no equivale a hora de captura, y un estado válido puede cambiar después.
+
+```bash
+.venv/bin/python territorial.py verify-cameras
+.venv/bin/python verify_camera_players.py
+```
+
+La segunda comprobación usa Playwright de `requirements-dev.txt` y Chromium instalado bajo
+`.local/playwright-browsers`. Sin navegador disponible, no se habilitan vídeos sin comprobar.
+Fuentes y derechos: `/webcams/sources`. Las carreteras retienen las teselas anteriores durante
+el zoom para no desaparecer mientras llegan las del nuevo nivel.
+
+- **Población:** INE / Eurostat, censo 2021; centros de celdas de 1 km², no ubicaciones de viviendas ni núcleos con nombre. Las edades publicadas pueden no sumar el total por protección estadística.
+- **Suelo:** Copernicus CGLS-LC100 2019; porcentajes ponderados por superficie clasificada, conservando ausencia de cobertura.
+- **Instalaciones:** OSM / Geofabrik, 18/09/2026; prioridad orientativa por actividad, no riesgo oficial. Puede haber omisiones o varios elementos de un mismo complejo.
+- **Viento:** sector de ±30° hacia donde sopla, desde la huella, con un mínimo de 3 km/h. Se desactiva con datos ausentes, errores meteorológicos, validez alejada más de 2 h o ciclo de más de 12 h. En modo offline solo se muestra orientación histórica.
+
+`potential` conserva todas las muestras, instalaciones cercanas, geometrías visuales, factores, puntuación 0–100 y versión del modelo. La escala no es un porcentaje de riesgo: los pesos son heurísticos, aún no calibrados operacionalmente. El suavizado de las áreas no delimita zonas de peligro y la ausencia de color no garantiza seguridad. Las actualizaciones refrescan la capa sin cambiar el encuadre elegido por el usuario.
+
+No se estima población afectada, tiempo de llegada ni evacuaciones. Se conservan los demás campos del atlas, pero sexo, lugar de nacimiento y movilidad no se utilizan para asignar riesgo de incendio. Fuentes y condiciones de reutilización: `data/Espana_Datos_y_Mapas/FUENTES.md` (también en `/atlas/sources`). Las condiciones de GISCO requieren revisión antes de uso comercial.
 
 ## Actualización y consumo
 
@@ -74,6 +139,7 @@ Los visitantes comparten una descarga meteorológica y una caché de focos. No s
 - `static/`: interfaz y Leaflet local.
 - `static/flow.js`: geometría, partículas, índice geográfico y presupuestos de dibujo.
 - `static/flames.js`: renderizador Canvas 2D de fuego y corrientes, sin dependencia de WebGL.
+- `static/heat.js`: mapa de calor del entorno (paleta, densidad acumulada y rótulo al pasar el ratón).
 - `data/`: datos activos y evidencias originales de las descargas.
 - `examples/`: muestra congelada para reproducir pruebas.
 - `evidence/`: verificación HTTP y captura de pantalla completa.
@@ -85,6 +151,7 @@ Los visitantes comparten una descarga meteorológica y una caché de focos. No s
 ```bash
 python -m pip install -r requirements-dev.txt
 python -m unittest -v
+FLAREAI_TEST_DATABASE=1 python -m unittest -v test_database
 ruff check *.py
 python -m mypy --ignore-missing-imports *.py
 python -m compileall -q *.py
@@ -229,4 +296,6 @@ procedencia y fechas al redistribuir; el acceso público no implica SLA. Más de
 
 Este servidor es un prototipo reproducible con la biblioteca estándar de Python. Para servicio público persistente, ejecutar un único proceso de adquisición, almacenar cachés y evidencias en un volumen persistente y servir los recursos mediante un proxy HTTPS. Configurar límites de concurrencia y peticiones en el proxy; para tráfico alto, trasladar el servidor a un framework de producción. Evitar iniciar varios escritores sobre el mismo directorio `data/`.
 
-No se han validado instalaciones Windows/macOS ni cargas de producción. Los binarios ecCodes pueden requerir instalación específica en esas plataformas.
+Probado localmente en macOS arm64 con PostgreSQL 17.11. No se han validado Windows ni cargas de
+producción. SQL e índices preparan el almacenamiento para crecer; no sustituyen un servidor HTTP
+de producción, pooling, límites de clientes, backups y monitorización al desplegar.

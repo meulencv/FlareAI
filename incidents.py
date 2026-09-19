@@ -104,9 +104,10 @@ def footprint(observations: list[Observation], lon: float, lat: float) -> tuple[
     return dict(mapping(degrees)), round(union.area / 10000, 1)
 
 
-def assemble(collection: Collection, weather: Snapshot, at: datetime | None = None) -> list[Incident]:
+def assemble(collection: Collection, weather: Snapshot, at: datetime | None = None,
+             province_features: list[dict] | None = None) -> list[Incident]:
     now = at or utcnow()
-    provinces = json.loads((ROOT / "static/provinces.geojson").read_text())["features"]
+    provinces = province_features if province_features is not None else json.loads((ROOT / "static/provinces.geojson").read_text())["features"]
     names = {"Rioja, La": "La Rioja", "Balears, Illes": "Illes Balears", "Coruña, A": "A Coruña", "Palmas, Las": "Las Palmas"}
     boundaries = [(names.get(f["properties"]["shapeName"], f["properties"]["shapeName"]), shape(f["geometry"])) for f in provinces]
     observations = [
@@ -144,7 +145,8 @@ def assemble(collection: Collection, weather: Snapshot, at: datetime | None = No
                 if documented else None
             ),
             burned_area_ha=None, footprint_ha=area, footprint=geom,
-            detections=[{"lon": o["geometry"]["coordinates"][0], "lat": o["geometry"]["coordinates"][1],
+            detections=[{"id": o['id'], "source": o['properties']['source'], "satellite": o['properties']['satellite'],
+                         "lon": o["geometry"]["coordinates"][0], "lat": o["geometry"]["coordinates"][1],
                          "at": o["properties"]["acquired_at_utc"], "confidence": o["properties"]["confidence"]}
                         for o in group],
             weather=point(weather, lat, lon),

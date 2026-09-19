@@ -152,7 +152,7 @@ export function flameOutline(points, time, bearing, amplitude) {
     const length = Math.hypot(dx, dy) || 1;
     const normal = { x: dx / length, y: dy / length };
     const downwind = lean ? Math.max(0, normal.x * lean.x + normal.y * lean.y) : .5;
-    const pulse = (flicker(index * 1.7, time, 1.1) + 1) / 2;
+    const pulse = (flicker(index / points.length * 11, time, 1.1) + 1) / 2;
     const push = amplitude * (.35 + pulse * .65) * (.55 + downwind * 1.15);
     return { x: point.x + normal.x * push, y: point.y + normal.y * push };
   });
