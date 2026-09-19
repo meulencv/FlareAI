@@ -98,8 +98,11 @@ FLAREAI_TEST_DATABASE=1 .venv/bin/python -m unittest -v test_demo test_database
 
 `configured: true` indica configuración local, no prueba de audio ni de permisos remotos.
 Validado: HTTPS público, cookie segura automática, carga del SDK LiveKit, aislamiento, workflow
-publicado/live, reinicio limpio con SQL y flujo HTTP con proveedor simulado. **Pendiente: una
-conversación humana real desde móvil que confirme el cambio automático del mapa.**
+publicado/live, reinicio limpio con SQL y flujo HTTP con proveedor simulado. El 19/09/2026 entró
+una **webcall real sobre Tarragona**: mensajes de usuario/asistente y `actualizar_ficha` en
+HappyRobot, aviso creado automáticamente y seleccionado como confirmado demo en Chromium, sin
+errores JavaScript. La calidad de escucha en el móvil requiere confirmación del usuario; no se
+ha medido latencia de audio ni probado exhaustivamente Safari/iOS.
 
 Para desplegar el frontend en Vercel u otro hosting, conserva un backend para la clave, los tokens,
 el polling de HappyRobot y PostgreSQL. La demo actual usa rutas relativas y cookies del mismo

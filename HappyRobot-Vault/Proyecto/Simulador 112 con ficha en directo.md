@@ -111,8 +111,16 @@ ni arrancar simultáneamente `happyrobot-112/server.py`: competiría por el mism
 - Prueba SQL nueva: tras una llamada simulada persistida, otro `Store` no recupera avisos ni
   acepta la cookie anterior, mientras el registro anterior sigue existiendo. Transacción de
   prueba revertida, sin borrar historial real. Prueba nueva del entorno filtrado de cloudflared.
-- **Pendiente:** conversación humana real desde móvil → `actualizar_ficha` → cambio automático
-  del mapa. Se entregó la URL al usuario; no confundir estas pruebas ni los mocks con voz real.
+- Tras entregar la URL al usuario entró una **webcall real sobre Tarragona**. La API real devolvió
+  22 mensajes en la comprobación: 11 de usuario, 8 de asistente, 2 eventos y 1 tool. Se extrajeron
+  ubicación y emergencia desde `actualizar_ficha`, sin copiar el transcript a la documentación.
+  El servidor activo no recibió mocks: creó `Aviso · Tarragona`, `source_kind=call`, sin errores
+  de sincronización. Chromium abrió el mapa y verificó selección automática, clase `confirmed`,
+  etiqueta **Confirmado por llamada · demo** y cero errores JS, sin hacer clic en el foco.
+- Resultado de regresiones: 57 pruebas Python raíz con SQL, 6 del marcador, 42 JavaScript,
+  Ruff, mypy y ESLint. El código funcional existente no necesitó cambios para esta prueba.
+- **Pendiente:** valoración humana de la calidad de escucha en el móvil y cobertura de otros
+  navegadores. El flujo real proveedor → mapa está probado; no se ha medido la latencia de audio.
 
 ### Modo independiente histórico (sin integración de mapa)
 

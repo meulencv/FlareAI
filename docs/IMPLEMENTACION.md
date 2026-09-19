@@ -292,8 +292,11 @@ posteriores no reencuadran continuamente. El enlace público se lee al cargar la
 Verificación: pruebas HTTP con proveedor simulado (foco existente, nuevo aviso, corrección,
 aislamiento, propiedad y origen), reinicio con respaldo PostgreSQL conservado y filtrado del
 entorno del túnel. Chromium verificó HTTPS público sin mocks, SDK de voz cargado, sesión segura
-sin código y enlace del mapa. El workflow se consultó por GET: publicado/live. Falta completar
-una conversación humana desde móvil para verificar audio real y actualización final del mapa.
+sin código y enlace del mapa. El workflow se consultó por GET: publicado/live. En la sesión del
+19/09/2026 entró una webcall real sobre Tarragona: HappyRobot devolvió mensajes de usuario/asistente
+y tool call `actualizar_ficha`. `/api/data` incorporó el aviso y Chromium lo seleccionó automáticamente
+con clase `confirmed`, etiqueta demo y sin errores JS. No se inyectaron mensajes simulados en el
+servidor activo. La calidad de escucha en el móvil queda pendiente de valoración humana.
 
 ## 3. FIRMS: detección térmica
 

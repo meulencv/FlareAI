@@ -68,8 +68,11 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 - `publish()` verifica aislamiento y excluye `HAPPYROBOT_*`, `TUNNEL_*`, `CLOUDFLARE_*` del entorno
   del subproceso. Pruebas: `test_demo.py` y regresión SQL de reinicio en `test_database.py`.
 - Verificación 19/09/2026: workflow publicado/live, HTTPS real, SDK LiveKit y cookie segura sin
-  código, aislamiento público y flujo HTTP simulado. Pendiente conversación humana móvil → mapa;
-  no confundir `configured=true`, SDK cargado o mocks con audio real verificado.
+  código, aislamiento público y flujo HTTP simulado. Webcall real sobre Tarragona: mensajes de
+  usuario/asistente y `actualizar_ficha` en HappyRobot; aviso automático confirmado demo y
+  seleccionado en Chromium sin errores JS. Falta valoración humana de escucha en móvil; no
+  confundir `configured=true`, SDK cargado o mocks con prueba de calidad del audio.
+  Pasan 57 tests Python raíz, 6 del marcador y 42 JS, Ruff/mypy/ESLint.
 
 ## Contexto territorial del atlas
 

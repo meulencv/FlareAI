@@ -61,7 +61,9 @@ y dashboard con aprobación humana.
   mapa en :8090. `demo.py publish` publica solo el marcador por HTTPS temporal. Sin código de
   vinculación; sesión limpia por arranque, avisos rojos etiquetados demo, sin Twin ni llamada al
   112 real. Véase [[Simulador 112 con ficha en directo]]. Workflow publicado/live y HTTPS con
-  sesión segura verificados; **pendiente la conversación humana móvil → mapa**.
+  sesión segura verificados. **Webcall real de Tarragona → aviso confirmado demo en mapa**,
+  con mensajes/tool de HappyRobot y selección automática comprobados; pendiente valoración
+  humana de la escucha en móvil.
 - **Datos activos en PostgreSQL local:** 511.226 celdas, 44.787 instalaciones OSM y 2.926 cámaras;
   fuentes, instantáneas FIRMS/GFS, focos, observaciones y metadatos de cartografía/medios en SQL.
   Esquema compatible en tipos con Twin, sin PostGIS; ninguna escritura remota. Véase [[2026-09-19]].
@@ -72,9 +74,9 @@ y dashboard con aprobación humana.
 - **Fuego:** la misma animación en todas las escalas, con radio visual mínimo de 16 px, sin icono
   estático. Confirmado = rojo; sin confirmar = gris. No modifica la geometría medida y la confianza
   FIRMS no es confirmación. Véase [[2026-09-19]].
-- **Verificación del proyecto activo:** 45 tests Python (incluyendo SQL), 42 JavaScript y prueba en navegador de
-  escritorio/móvil. Arquitectura y comandos actuales en `README.md`, `docs/IMPLEMENTACION.md`
-  y `AGENTS.md` de la raíz.
+- **Verificación del proyecto activo:** 57 tests Python (incluyendo SQL), 6 del marcador,
+  42 JavaScript, Ruff/mypy/ESLint y comprobaciones de navegador/HTTPS. Arquitectura y comandos
+  actuales en `README.md`, `docs/IMPLEMENTACION.md` y `AGENTS.md` de la raíz.
 
 ### Estado histórico de HappyRobot (implementación apartada)
 - 🧹 **Plataforma vaciada (2026-09-19, tarde)**: los 9 workflows SOS se **borraron** de HappyRobot a
