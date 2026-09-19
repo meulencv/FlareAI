@@ -138,6 +138,53 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   no cerraba turno. No confundir esa prueba con escucha humana en móvil. Usar expectativas de
   locators en Playwright para el marcador; `wait_for_function` puede chocar con su CSP sin unsafe-eval.
 
+## Concurrencia y geocodificación de demo (actualización 19/09/2026)
+
+- `DemoBridge`: hasta 16 llamadas activas combinadas 112/123, 256 por sesión. Reservas atómicas
+  permiten inicios simultáneos; 16 workers actualizan fichas sin esperar al run lento, sin duplicar
+  polling de un run. Colgar libera capacidad, manteniendo 20 s de recuperación final. Una llamada por
+  pestaña; cookies y vinculaciones de bomberos siguen independientes. La cuota remota puede limitarlo.
+- Sustituye la política anterior de ubicación pendiente: dirección/POI primero en OpenStreetMap
+  Nominatim y después IGN; si falla, intentar vía y municipio explícito, marcando aproximación.
+  No inventar un municipio ausente ni confundir un número de portal distinto. Una aproximación no
+  confirma un grupo NASA cercano; conserva su punto ilustrativo. `brief` incluye precisión y fuente.
+- Nominatim público: un solo proceso, máximo una petición por 1,05 s global, caché SQL 24 h en
+  `flare_assets` y caché de sesión. No reintenta periódicamente geocodificación sin cambio de ubicación.
+  `FLAREAI_NOMINATIM_URL` permite proveedor propio; vacío desactiva OSM. Solo datos ficticios/públicos
+  de demo, nunca información confidencial. Atribución OSM visible. No escalar este endpoint público.
+- Guiones breves publicados con autorización: 112 versión `01a0b9cb-262d-7f76-b81b-d7ef983ed615`;
+  123 versión `01a0b9cb-2fa1-72d3-a162-57a0284ac3d4`. Mismos workflows/voz/tools, director intacto.
+  Dos aclaraciones máximo en 112, una en 123; registrar y cerrar sin interrogatorio ni corte forzado.
+  `replace_voice_prompt` exige autorización, verifica versión/llamadas activas, crea fork y publica
+  con `unpublish_version_id` explícito; nunca `force`. No invocarlo automáticamente.
+- Pruebas: `test_demo` incluye ocho inicios concurrentes, aislamiento, errores, carrera al colgar,
+  OSM/IGN/fallback/caché/rate limit. `verify_director_ui.py` comprueba dos 112 y dos 123 activos,
+  partes independientes y precisión visible con voz fixture. Usa `examples/` congelado para evitar
+  que nuevas detecciones FIRMS invaliden la caché GIBS del ensayo. No es prueba de voz concurrente real.
+
+## Routing MVP: revisión posterior del 19/09/2026
+
+- Sustituye la descripción anterior de routing exclusivamente local: por petición expresa del usuario,
+  prima una API de rutas OSM/OSRM para ubicaciones nuevas, con dos proveedores HTTPS (Project OSRM y
+  routing.openstreetmap.de), caché SQL, timeout 6 s, 1,05 s entre peticiones y enfriamiento 30 s por
+  proveedor caído. A* conserva grafos cacheados como respaldo; ya no descarga Overpass durante el
+  despacho. Sin geometría real no inventa una línea de carretera. No hay SLA ni tráfico en las APIs demo.
+- El fallo Sagrada Familia no era falta de parques: LLM pidió dos camiones de Llevant y patrulla,
+  pero Overpass dio 504 al descargar una caja excesiva. La ruta comprobada de Llevant mide 3,18 km
+  en A* local; OSRM devuelve 3,28 km. No se descargó la red nacional; osmium quedó instalado en el
+  entorno durante la exploración, pero no es dependencia de ejecución ni está en requirements.
+- Dos camiones ficticios por parque, una patrulla por comisaría, un helicóptero por helipuerto.
+  Contexto considera seis parques cercanos (antes tres). `stations` publica total/disponible/ocupado;
+  mapa muestra disponibles/total y popup. Llegar no libera una unidad; volver sí.
+- `dispatch` conserva tipo/cantidad del plan del LLM y prueba hasta tres sedes alternativas libres si
+  falla la ruta elegida. No roba unidades ocupadas ni reservadas para otra acción; evento `alternative`
+  conserva `requested_resource_id`. Si todas fallan, revisión con backoff 15–180 s y cuota existente.
+  `return`/`reassign` no cambian de vehículo. Revisión de avisos antes/después de preparar rutas intacta.
+- Verificado con APIs reales: Barcelona, Madrid, Valencia, Sevilla, Roda de Ter y Las Palmas.
+  Regresiones `test_local_routes`/`test_director`: proveedor caído, geometría/endpoint inválido,
+  alternativa libre, reservas de otras acciones, inventario y reintento. No garantiza cualquier
+  ubicación fuera de carretera; siguen vigentes 60 km entre extremos y anclaje a ≤750 m de una vía.
+
 ## Traffic Lab de Lucía (aislado)
 
 - `traffic_lab/` conserva su propio servidor, frontend, dependencias, muestras y workflow.

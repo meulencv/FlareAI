@@ -4,12 +4,14 @@ import hashlib
 import importlib.util
 import json
 import math
+import os
 import re
 import secrets
 import threading
 import time
 import unicodedata
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -25,6 +27,8 @@ from gfs import Snapshot, point
 ROOT = Path(__file__).resolve().parent
 PHONE_ROOT = ROOT / 'happyrobot-112/static'
 GEOCODER = 'https://www.cartociudad.es/geocoder/api/geocoder/'
+MAX_ACTIVE_CALLS = 16
+MAX_SESSION_CALLS = 256
 REPORT_FIELDS = ('ubicacion', 'emergencia', 'personas', 'riesgos')
 PART_CHOICES = {
     'llegada': ('confirmada', 'en_camino'), 'incendio': ('confirmado', 'descartado', 'extinguido'),
@@ -131,26 +135,137 @@ def resolve_local(query: str, places: list[dict]) -> dict | None:
     return None
 
 
+def clean_location(query: str) -> str:
+    query = re.sub(r'^(?:(?:estoy|estamos|es|está|el incendio está|hay fuego|hay un incendio)\s+)?en\s+', '', query.strip(), flags=re.I)
+    return re.sub(r'[,;]?\s+(?:\d+[ºª]?|primera|segunda|tercera|cuarta|quinta)\s+(?:planta|piso)\b.*$', '', query, flags=re.I).strip()
+
+
+def select_osm_location(query: str, candidates: list[dict]) -> dict | None:
+    tokens = set(canonical_address(query).split())
+    ranked: list[tuple[int, dict]] = []
+    for candidate in candidates:
+        address = candidate.get('address', {})
+        try:
+            lat, lon = float(candidate['lat']), float(candidate['lon'])
+        except (KeyError, ValueError, TypeError):
+            continue
+        if address.get('country_code') != 'es' or not coordinates(lat, lon):
+            continue
+        name = candidate.get('name', '')
+        city = next((address[k] for k in ('city', 'town', 'village', 'municipality') if address.get(k)), '')
+        road, number = address.get('road', ''), address.get('house_number', '')
+        kind = candidate.get('addresstype', candidate.get('type', ''))
+        locality = kind in {'city', 'town', 'village', 'municipality', 'hamlet'}
+        label = ', '.join(filter(None, [road + (' ' + number if number else '') if road and not name else name, city]))
+        available = set(canonical_address(candidate.get('display_name', '') + ' ' + name).split())
+        if not tokens or not tokens <= available:
+            continue
+        if locality and tokens - set(canonical_address(name + ' ' + city).split()):
+            continue
+        numbers = set(re.findall(r'\b\d+\b', query))
+        if numbers and not numbers <= set(re.findall(r'\b\d+\b', number + ' ' + address.get('postcode', ''))):
+            continue
+        precision = 'locality' if locality else 'address' if number and numbers else 'street' if candidate.get('category') == 'highway' else 'area' if kind in {'suburb', 'quarter', 'neighbourhood', 'state', 'county', 'province'} else 'poi'
+        score = 2 if numbers and number and candidate.get('type') == 'house' else 1
+        ranked.append((score, {'lat': lat, 'lon': lon, 'label': label or candidate.get('display_name', ''), 'precision': precision,
+                              'source': 'OpenStreetMap / Nominatim', 'candidate_id': f'{candidate.get("osm_type", "")}/{candidate.get("osm_id", "")}',
+                              'attribution': '© OpenStreetMap contributors · ODbL', 'query': query}))
+    ranked.sort(key=lambda pair: pair[0], reverse=True)
+    if not ranked:
+        return None
+    best = ranked[0][1]
+    for score, other in ranked[1:]:
+        distance = math.hypot((best['lat'] - other['lat']) * 111.32, (best['lon'] - other['lon']) * 111.32 * math.cos(math.radians(best['lat'])))
+        if score == ranked[0][0] and distance > .2:
+            return None
+    return best
+
+
 class LocationResolver:
+    osm_lock = threading.Lock()
+    osm_next_request = 0.0
+
     def __init__(self, database) -> None:
         self.db = database
         self.places = database.get_asset('map:places.json')['data']['places']
-        self.country = shape(database.get_asset('map:spain.geojson')['data']['geometry'])
-        self.cache: dict[str, tuple[float, dict | None]] = {}
+        self.country = shape(database.get_asset('map:spain.geojson')['data']['geometry']).buffer(.02)
+        self.cache: dict[str, dict | None] = {}
+        self.cache_lock = threading.Lock()
+        self.osm_url = os.environ.get('FLAREAI_NOMINATIM_URL', 'https://nominatim.openstreetmap.org/search')
 
     def __call__(self, query: str) -> dict | None:
+        original, query = query, clean_location(query)
         key = normalized(query)
-        if key in self.cache and time.monotonic() - self.cache[key][0] < 60:
-            return self.cache[key][1]
+        with self.cache_lock:
+            if key in self.cache:
+                return deepcopy(self.cache[key])
         result = resolve_local(query, self.places)
-        if not result and len(key) >= 4 and key not in {'pendiente', 'desconocido'}:
-            result = self.remote(query)
-        if result and not self.country.buffer(.02).covers(Point(result['lon'], result['lat'])):
+        if not result and len(key) >= 4 and key not in {'pendiente', 'desconocido', 'no se donde estoy'}:
+            result = self.osm(query) or self.remote(query)
+            if not result:
+                street = re.sub(r'\b\d+[a-zA-Z]?\b', '', query).strip(' ,')
+                if street != query and re.search(r'\b(calle|avenida|plaza|paseo)\b', canonical_address(query)):
+                    result = self.osm(street) or self.remote(street)
+                    if result and result['precision'] == 'street':
+                        result = {**result, 'reason': 'No se encontró el portal; punto representativo de la vía.'}
+                    else:
+                        result = None
+            if not result:
+                result = self.locality_fallback(query)
+        if result and not self.country.covers(Point(result['lon'], result['lat'])):
             result = None
-        self.cache[key] = (time.monotonic(), result)
-        if len(self.cache) > 100:
-            self.cache.pop(next(iter(self.cache)))
-        return result
+        if result:
+            result = {**result, 'query': original, 'approximate': result['precision'] in {'locality', 'street', 'area'}}
+            if result['approximate']:
+                result.setdefault('reason', 'Punto representativo de la zona indicada, no ubicación exacta del incendio.')
+        with self.cache_lock:
+            if len(self.cache) >= 512:
+                self.cache.pop(next(iter(self.cache)))
+            self.cache[key] = result
+        return deepcopy(result)
+
+    def locality_fallback(self, query: str) -> dict | None:
+        text = normalized(query)
+        if re.search(r'\b(?:o|entre|no)\b', text):
+            return None
+        matches = [p for p in self.places if re.search(r'\b' + re.escape(normalized(p['name'])) + r'\b', text)]
+        matches = [p for p in matches if not any(p != other and normalized(p['name']) in normalized(other['name']) for other in matches)]
+        if len(matches) == 1 and not re.fullmatch(r'(?:calle|avenida|plaza|paseo) ' + re.escape(canonical_address(matches[0]['name'])) + r'(?: \d+)?', canonical_address(query)):
+            return {**matches[0], 'label': matches[0]['name'], 'precision': 'locality', 'source': 'local_places',
+                    'reason': 'Dirección no resuelta; se usa el municipio comunicado como aproximación de demo.'}
+        parts = [p.strip() for p in query.split(',') if p.strip()]
+        if len(parts) > 1 and not re.search(r'\d', parts[-1]):
+            city = parts[-1]
+            result = self.osm(city) or self.remote(city)
+            if result and result['precision'] in {'locality', 'area'}:
+                return {**result, 'reason': 'Dirección no resuelta; se usa la zona comunicada como aproximación de demo.'}
+        return None
+
+    def osm(self, query: str) -> dict | None:
+        return select_osm_location(query, self.osm_fetch(query))
+
+    def osm_fetch(self, query: str) -> list[dict]:
+        if not self.osm_url:
+            return []
+        identifier = 'geocode:osm:' + hashlib.sha256((self.osm_url + normalized(query)).encode()).hexdigest()
+        with self.osm_lock:
+            cached = self.db.get_asset(identifier)
+            if cached and time.time() - cached['data'].get('at', 0) < 86400:
+                return cached['data']['results']
+            time.sleep(max(0, LocationResolver.osm_next_request - time.monotonic()))
+            LocationResolver.osm_next_request = time.monotonic() + 1.05
+            try:
+                args = {'q': query, 'format': 'jsonv2', 'addressdetails': 1, 'countrycodes': 'es', 'limit': 5}
+                request = Request(self.osm_url + '?' + urlencode(args), headers={'User-Agent': 'FlareAI-Demo/1.0 (local fire-observatory demo)', 'Accept-Language': 'es'})
+                with urlopen(request, timeout=5) as response:
+                    body = response.read(1_000_001)
+                results = json.loads(body) if len(body) <= 1_000_000 else []
+                if not isinstance(results, list):
+                    results = []
+            except (OSError, ValueError):
+                results = []
+            self.db.asset(identifier, 'geocoding', {'at': time.time(), 'results': results})
+            return results
 
     def remote(self, query: str) -> dict | None:
         def fetch(path: str, args: dict) -> Any:
@@ -176,7 +291,7 @@ class LocationResolver:
             if not coordinates(candidate.get('lat'), candidate.get('lng')):
                 return None
             return {'lat': candidate['lat'], 'lon': candidate['lng'], 'label': candidate['address'],
-                    'precision': 'locality' if candidate['type'].lower() in {'municipio', 'poblacion'} else 'poi' if candidate['type'].lower() == 'toponimo' else 'address',
+                    'precision': 'locality' if candidate['type'].lower() in {'municipio', 'poblacion'} else 'poi' if candidate['type'].lower() == 'toponimo' else 'street' if candidate['type'].lower() in {'callejero', 'via', 'vial'} else 'address',
                     'source': 'CartoCiudad / IGN', 'candidate_id': candidate.get('id'), 'query': query}
         except (OSError, ValueError, KeyError, TypeError):
             return None
@@ -198,7 +313,7 @@ def call_incident(run_id: str, call: dict, weather: dict) -> dict:
     lat, lon = location['lat'], location['lon']
     support = translate(scale(Point(0, 0).buffer(.08, quad_segs=12), xfact=1 / (111.32 * math.cos(math.radians(lat))), yfact=1 / 111.32, origin=(0, 0)), lon, lat)
     return {'id': 'demo:' + run_id, 'source_kind': 'call', 'name': 'Aviso · ' + location['label'],
-            'province': 'Demo · ubicación ' + ('aproximada' if location['precision'] == 'locality' else 'comunicada'),
+            'province': 'Demo · ubicación ' + ('aproximada' if location.get('approximate') or location['precision'] == 'locality' else 'comunicada'),
             'lat': lat, 'lon': lon, 'first_seen': call['reported_at'], 'last_seen': call['reported_at'],
             'observations': 0, 'passes': 0, 'satellites': [], 'frp_peak_mw': None,
             'brightness_i4_k': None, 'brightness_i4_c': None, 'brightness_at_utc': None,
@@ -266,6 +381,10 @@ class DemoBridge:
         self.latest_id: str | None = None
         self.public_url: str | None = None
         self.starting = 0
+        self.polling: set[str] = set()
+        self.call_locks: dict[str, Any] = {}
+        self.executor = ThreadPoolExecutor(max_workers=MAX_ACTIVE_CALLS, thread_name_prefix='demo-call')
+        self.closed = threading.Event()
         self.field_reports: dict[str, dict] = {}
         self.db.start_demo(self.session_id)
 
@@ -290,6 +409,7 @@ class DemoBridge:
                                   'poll_until': time.monotonic() + 900, 'last_poll': 0, 'target_id': None,
                                   'role': role, 'binding': deepcopy(binding or {}), 'part': {}, 'part_updates': {}}
             self.owners[run_id] = owner
+            self.call_locks[run_id] = threading.Lock()
             self.persist(run_id)
 
     def create_call(self, owner: str, role: str = 'citizen', binding: dict | None = None) -> dict:
@@ -302,17 +422,24 @@ class DemoBridge:
                 raise ValueError('Selecciona un aviso activo para informar')
             if not self.provider.ready or role == 'firefighter' and not self.provider.responder_ready:
                 raise RuntimeError('HappyRobot no está configurado para este número')
-            if self.starting or len(self.calls) >= 20 or sum(c['poll_until'] > time.monotonic() for c in self.calls.values()) >= 3:
-                raise RuntimeError('La demo está ocupada. Cuelga la llamada anterior o espera.')
+            active = sum(not c.get('ended') and c['poll_until'] > time.monotonic() for c in self.calls.values())
+            if len(self.calls) + self.starting >= MAX_SESSION_CALLS or active + self.starting >= MAX_ACTIVE_CALLS:
+                raise RuntimeError('La demo ha alcanzado su capacidad de llamadas; reintenta al quedar una plaza libre.')
             self.starting += 1
+        reserved = True
         try:
             payload = self.provider.create(self.session_id, role, binding) if role == 'firefighter' else self.provider.create(self.session_id)
             run_id = str(uuid.UUID(payload['run_id']))
-            self.register(run_id, owner, role, binding)
-            return {key: payload[key] for key in ('url', 'token', 'room_name', 'run_id')}
-        finally:
+            result = {key: payload[key] for key in ('url', 'token', 'room_name', 'run_id')}
             with self.lock:
                 self.starting -= 1
+                reserved = False
+                self.register(run_id, owner, role, binding)
+            return result
+        finally:
+            if reserved:
+                with self.lock:
+                    self.starting -= 1
 
     def persist(self, run_id: str, value: dict | None = None) -> None:
         data = {key: item for key, item in (value if value is not None else self.calls[run_id]).items() if key not in {'poll_until', 'last_poll', 'location_retry'}}
@@ -339,6 +466,12 @@ class DemoBridge:
 
     def accept(self, run_id: str, messages: list[dict]) -> None:
         with self.lock:
+            call_lock = self.call_locks[run_id]
+        with call_lock:
+            self.accept_update(run_id, messages)
+
+    def accept_update(self, run_id: str, messages: list[dict]) -> None:
+        with self.lock:
             role = self.calls[run_id].get('role', 'citizen')
         if role == 'firefighter':
             self.accept_part(run_id, messages)
@@ -347,14 +480,13 @@ class DemoBridge:
         with self.lock:
             call = self.calls[run_id]
             summary = {**call['summary'], **incoming}
-            retry = call['state'] == 'needs_location' and time.monotonic() >= call.get('location_retry', 0)
-            if summary == call['summary'] and not retry:
+            if summary == call['summary']:
                 return
             old_location = call['summary'].get('ubicacion')
-        location = call['location'] if old_location == summary.get('ubicacion') and not retry else self.resolver(summary.get('ubicacion', ''))
+        location = call['location'] if old_location == summary.get('ubicacion') else self.resolver(summary.get('ubicacion', ''))
         state = 'not_fire' if not is_fire(summary) else 'located' if location else 'needs_location'
         with self.lock:
-            call['location_retry'] = time.monotonic() + 30
+            call = self.calls[run_id]
             if summary == call['summary'] and location == call['location'] and state == call['state']:
                 return
             updated = {**call, 'summary': summary, 'location': location, 'state': state, 'revision': self.version + 1,
@@ -364,22 +496,43 @@ class DemoBridge:
             self.calls[run_id] = updated
             self.version += 1
 
-    def poll_once(self) -> None:
+    def poll_call(self, run_id: str) -> None:
+        try:
+            self.accept(run_id, self.provider.messages(run_id))
+            with self.lock:
+                self.calls[run_id].pop('error', None)
+        except Exception:
+            with self.lock:
+                self.calls[run_id]['error'] = 'No se pudo actualizar desde HappyRobot; reintentando'
+        finally:
+            with self.lock:
+                self.calls[run_id]['last_poll'] = time.monotonic()
+                self.polling.discard(run_id)
+
+    def poll_once(self, wait: bool = True) -> None:
         with self.lock:
-            runs = [key for key, call in self.calls.items() if call['poll_until'] > time.monotonic()]
-        for run_id in runs:
-            try:
-                self.accept(run_id, self.provider.messages(run_id))
-                with self.lock:
-                    self.calls[run_id].pop('error', None)
-            except Exception:
-                with self.lock:
-                    self.calls[run_id]['error'] = 'No se pudo actualizar desde HappyRobot; reintentando'
+            if self.closed.is_set():
+                return
+            now = time.monotonic()
+            runs = [key for key, call in sorted(self.calls.items(), key=lambda pair: pair[1]['last_poll'])
+                    if call['poll_until'] > now and key not in self.polling and now - call['last_poll'] >= 2]
+            if not wait:
+                runs = runs[:max(0, MAX_ACTIVE_CALLS - len(self.polling))]
+            self.polling.update(runs)
+            futures = [self.executor.submit(self.poll_call, run_id) for run_id in runs]
+        if wait:
+            for future in futures:
+                future.result()
 
     def loop(self) -> None:
-        while True:
-            self.poll_once()
-            threading.Event().wait(2)
+        while not self.closed.is_set():
+            self.poll_once(wait=False)
+            self.closed.wait(.25)
+
+    def close(self) -> None:
+        with self.lock:
+            self.closed.set()
+        self.executor.shutdown(wait=True)
 
     def brief(self, run_id: str, owner: str) -> dict:
         with self.lock:
@@ -387,7 +540,7 @@ class DemoBridge:
                 raise PermissionError('Esta llamada no pertenece a este navegador')
             call = self.calls[run_id]
             return {'status': call['state'], 'summary': dict(call['summary']), 'map_status': call['state'],
-                    'updated_at': call.get('updated_at', call['reported_at']), 'error': call.get('error'),
+                    'updated_at': call.get('updated_at', call['reported_at']), 'error': call.get('error'), 'location': deepcopy(call['location']),
                     'role': call.get('role', 'citizen'), 'part': deepcopy(call.get('part', {})), 'binding': deepcopy(call.get('binding', {}))}
 
     def stop(self, run_id: str, owner: str) -> None:
@@ -415,7 +568,7 @@ class DemoBridge:
         for run_id, call in calls.items():
             if call['state'] != 'located' or (now - datetime.fromisoformat(call['reported_at'])).total_seconds() > 86400:
                 continue
-            target = match_incident(call['location'], [i for i in result if i.get('source_kind') != 'call']) if call['location']['precision'] == 'locality' else None
+            target = match_incident(call['location'], [i for i in result if i.get('source_kind') != 'call']) if call['location']['precision'] == 'locality' and not call['location'].get('reason') else None
             if target is None:
                 item = call_incident(run_id, call, weather)
                 result.append(item)

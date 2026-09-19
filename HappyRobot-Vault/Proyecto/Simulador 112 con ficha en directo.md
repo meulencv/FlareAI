@@ -42,7 +42,7 @@ el agente actúa como operador del 112: no rompe el rol ni deriva al llamante a 
 
 - Workflow: `Simulador 112 · Asistente de voz`
 - Workflow ID: `01a0b8bc-b078-7eb0-86fc-b91a7abb6ca8`
-- Version ID: `01a0b8bc-b086-755f-8816-f90e5186d1a0`
+- Version ID actual: `01a0b9cb-262d-7f76-b81b-d7ef983ed615` (guion breve; fork autorizado el 19/09/2026)
 - Entorno: `production`, publicado y live
 - LLM: `gpt-5.6-sol-low`
 - Tool: `actualizar_ficha`, con un hijo Python de confirmación sin efectos externos
@@ -60,15 +60,17 @@ nuevo, sin pulsar nada en el mapa y sin código de vinculación. No hay Twin dis
 - Se abandonó el código de vinculación para reducir pasos durante la demo. El navegador abre
   `/112/api/session` automáticamente y recibe una cookie HttpOnly/SameSite, Secure bajo HTTPS.
   Esto no es autenticación: cualquiera con el enlace puede consumir cuota. Hay límites locales
-  de 64 navegadores, 20 llamadas por sesión y 3 llamadas en seguimiento simultáneo.
+  de 64 navegadores, 256 llamadas por sesión y 16 llamadas activas combinadas de 112/123.
+  Inicios concurrentes con reservas atómicas y polling independiente por run; colgar libera capacidad.
 - El puerto 8112 expone solo el marcador y su API, y Cloudflare publica exclusivamente ese puerto.
   Así el enlace del móvil no abre el mapa, su API de datos, SQL ni archivos del repositorio.
 - `actualizar_ficha` del asistente es la evidencia; una frase libre del llamante no basta por sí
   sola para confirmar. El backend consulta mensajes cada 2 s y el mapa cada 2,5 s. La ficha móvil
   consulta el backend cada 0,9 s. No hay webhook ni necesidad de Twin.
-- Geocodificación: topónimos locales primero; CartoCiudad/IGN para direcciones españolas sin
-  API key. Se exige coincidencia inequívoca y dentro de España: lo ambiguo queda pendiente.
-  Un municipio sigue siendo aproximado; no se inventa el punto exacto del incendio.
+- Geocodificación: topónimos locales, OpenStreetMap/Nominatim y después CartoCiudad/IGN para
+  direcciones/POI. Si falla, vía o municipio comunicado, etiquetado aproximado; sin zona identificable
+  queda pendiente. OSM público limitado a una petición por 1,05 s global, caché SQL 24 h y ubicaciones
+  públicas/ficticias, nunca datos personales. Detalle: [[2026-09-19#Llamadas concurrentes y ubicación OSM]].
 - Emparejamiento a ≤3 km de la **huella**, no del centroide, porque un foco alargado puede estar
   cerca aunque su centro no lo esté. Si no coincide, se crea `source_kind=call` con geometría
   ilustrativa, sin observaciones, FRP ni hectáreas NASA. No es perímetro quemado.

@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlareAI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #fff;
+    font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .stage {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    display: grid;
+    place-items: center;
+  }
+  canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .flare {
+    position: relative;
+    font-size: clamp(3.2rem, 13vw, 11.5rem);
+    font-weight: 900;
+    letter-spacing: -0.045em;
+    line-height: 1.05;
+    color: transparent;
+    user-select: none;
+    animation: textFade 1.2s ease-out both;
+  }
+  @keyframes textFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .flare { animation: none !important; }
+  }
+</style>
+</head>
+<body>
+<main class="stage">
+  <canvas id="fire" aria-hidden="true"></canvas>
+  <h1 class="flare">FlareAI</h1>
+</main>
+<script>
+(function () {
+  const canvas = document.getElementById("fire");
+  const ctx = canvas.getContext("2d");
+  const title = document.querySelector(".flare");
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const mask = document.createElement("canvas");
+  const mctx = mask.getContext("2d", { willReadFrequently: true });
+  const fill = document.createElement("canvas");
+  const fctx = fill.getContext("2d");
+
+  let W, H, DPR, time = 0, parts = [];
+
+  function makeSprite(core, mid) {
+    const S = 128;
+    const s = document.createElement("canvas");
+    s.width = s.height = S;
+    const c = s.getContext("2d");
+    const g = c.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, "rgba(" + core + ",1)");
+    g.addColorStop(0.35, "rgba(" + mid + ",0.55)");
+    g.addColorStop(0.7, "rgba(" + mid + ",0.18)");
+    g.addColorStop(1, "rgba(" + mid + ",0)");
+    c.fillStyle = g;
+    c.fillRect(0, 0, S, S);
+    return s;
+  }
+
+  const sprites = [
+    makeSprite("255,220,90", "255,160,10"),
+    makeSprite("255,150,20", "255,88,0"),
+    makeSprite("242,72,10", "198,30,0")
+  ];
+
+  function paintMask() {
+    mask.width = W;
+    mask.height = H;
+    mctx.clearRect(0, 0, W, H);
+    const cs = getComputedStyle(title);
+    mctx.font = cs.font;
+    mctx.textAlign = "center";
+    mctx.textBaseline = "middle";
+    mctx.fillStyle = "#000";
+    mctx.letterSpacing = cs.letterSpacing;
+    const r = title.getBoundingClientRect();
+    mctx.fillText(
+      title.textContent,
+      (r.left + r.width / 2) * DPR,
+      (r.top + r.height / 2) * DPR
+    );
+  }
+
+  function spawn(init) {
+    const r = title.getBoundingClientRect();
+    const hN = r.height * DPR;
+    return {
+      x: (r.left + Math.random() * r.width) * DPR,
+      y: (r.top + Math.random() * r.height) * DPR,
+      r: hN * (0.08 + Math.random() * 0.12),
+      vy: -hN * (0.004 + Math.random() * 0.008),
+      phase: Math.random() * Math.PI * 2,
+      wob: (0.4 + Math.random()) * hN * 0.004,
+      life: init ? Math.random() * 90 : 0,
+      maxLife: 70 + Math.random() * 60
+    };
+  }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = canvas.width = fill.width = Math.floor(innerWidth * DPR);
+    H = canvas.height = fill.height = Math.floor(innerHeight * DPR);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    paintMask();
+    parts = [];
+    const n = Math.max(80, Math.min(180, Math.round(title.getBoundingClientRect().width / 8)));
+    for (let i = 0; i < n; i++) parts.push(spawn(true));
+  }
+
+  function drawFlow() {
+    const box = title.getBoundingClientRect();
+    const top = box.top * DPR;
+    const height = Math.max(1, box.height * DPR);
+    const shift = reduced ? 0 : (time * 0.00028) % 1;
+    const y0 = top - height * 2 * shift;
+    const y1 = y0 + height * 2;
+
+    const g = fctx.createLinearGradient(0, y0, 0, y1);
+    const stops = [
+      [0, "#c81e00"],
+      [0.16, "#f43000"],
+      [0.32, "#ff7a00"],
+      [0.44, "#ffb300"],
+      [0.54, "#ff9500"],
+      [0.70, "#ff5e00"],
+      [0.86, "#e82000"],
+      [1, "#c81e00"]
+    ];
+    for (const [p, c] of stops) g.addColorStop(p, c);
+    fctx.fillStyle = g;
+    fctx.fillRect(0, 0, W, H);
+
+    const y2 = top + height * 2 * shift;
+    const g2 = fctx.createLinearGradient(0, y2, 0, y2 + height * 2);
+    g2.addColorStop(0, "#e82000");
+    g2.addColorStop(0.25, "#ff6a00");
+    g2.addColorStop(0.5, "#ffb300");
+    g2.addColorStop(0.75, "#ff5e00");
+    g2.addColorStop(1, "#e82000");
+    fctx.globalAlpha = 0.6;
+    fctx.globalCompositeOperation = "multiply";
+    fctx.fillStyle = g2;
+    fctx.fillRect(0, 0, W, H);
+    fctx.globalAlpha = 1;
+    fctx.globalCompositeOperation = "source-over";
+  }
+
+  function frame() {
+    time += 16;
+    fctx.setTransform(1, 0, 0, 1, 0, 0);
+    fctx.globalCompositeOperation = "source-over";
+    drawFlow();
+
+    fctx.globalCompositeOperation = "multiply";
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.life++;
+      p.phase += 0.05;
+      p.y += p.vy;
+      p.x += Math.sin(p.phase) * p.wob;
+      const t = p.life / p.maxLife;
+      if (t >= 1) {
+        parts.splice(i, 1);
+        continue;
+      }
+      const sprite = t < 0.28 ? sprites[0] : t < 0.62 ? sprites[1] : sprites[2];
+      const rad = p.r * (0.55 + 0.45 * Math.min(1, t * 6)) * (1 - 0.42 * t);
+      const alpha = Math.min(1, t * 7) * Math.pow(1 - t, 1.35) * 0.75;
+      fctx.globalAlpha = alpha;
+      fctx.drawImage(sprite, p.x - rad, p.y - rad, rad * 2, rad * 2);
+    }
+    fctx.globalAlpha = 1;
+    while (parts.length < 120) parts.push(spawn(false));
+
+    fctx.globalCompositeOperation = "destination-in";
+    fctx.drawImage(mask, 0, 0);
+
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(fill, 0, 0);
+
+    if (!reduced) requestAnimationFrame(frame);
+  }
+
+  function start() {
+    resize();
+    frame();
+  }
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(start);
+  else addEventListener("load", start);
+
+  let timer;
+  addEventListener("resize", () => {
+    clearTimeout(timer);
+    timer = setTimeout(resize, 120);
+  }, { passive: true });
+})();
+</script>
+</body>
+</html>

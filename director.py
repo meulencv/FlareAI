@@ -101,7 +101,7 @@ class EmergencyAtlas:
         with closing(sqlite3.connect(f'file:{ROOT / "emergencias_espana.db"}?mode=ro', uri=True)) as db:
             stations = []
             for category, kind, count in [('fire_station', 'fire_engine', 2), ('police', 'police', 1), ('helipad', 'helicopter', 1)]:
-                for row in proximity(db, lat, lon, 60, category, 3):
+                for row in proximity(db, lat, lon, 60, category, 6 if kind == 'fire_engine' else 3):
                     for index in range(count):
                         stations.append({'id': f'{row["id"]}:{kind}:{index + 1}', 'station_id': row['id'],
                                          'name': row['name'] or {'fire_engine': 'Parque de bomberos', 'police': 'Policía', 'helicopter': 'Helipuerto · sede para recurso simulado'}[kind],
@@ -175,9 +175,18 @@ class Director:
         self.retry_at = 0.0
         self.failure_count = 0
 
+    def station_inventory(self) -> list[dict]:
+        stations: dict[str, dict] = {}
+        for resource in self.state['resources'].values():
+            station = stations.setdefault(resource['station_id'], {k: resource[k] for k in ('station_id', 'name', 'lat', 'lon', 'kind')} | {
+                'total': 0, 'available': 0, 'busy': 0, 'simulated_capacity': True})
+            station['total'] += 1
+            station['busy' if resource['id'] in self.state['assignments'] else 'available'] += 1
+        return list(stations.values())
+
     def public_state(self) -> dict:
         with self.lock:
-            return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time()}
+            return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time(), 'stations': self.station_inventory()}
 
     def alert_feed(self, after: int | None = None) -> dict:
         with self.lock:
@@ -250,7 +259,8 @@ class Director:
         for r in resources:
             if r['assignment']:
                 r['assignment'] = {k: v for k, v in r['assignment'].items() if k not in ('route', 'resource')}
-        context = {'mode': 'simulation_only', 'incidents': incidents, 'resources': resources,
+        context = {'mode': 'simulation_only', 'incidents': incidents, 'resources': resources, 'stations': self.station_inventory(),
+                   'dispatch_policy': 'Si falla la ruta de una unidad propuesta para dispatch, el ejecutor intentará hasta tres sedes alternativas con unidades libres del mismo tipo. Nunca tomará unidades ocupadas ni reservadas para otra acción del plan. Si todas fallan, revisa otra sede en el siguiente plan.',
                    'alerts': self.state['alerts'], 'history': self.state['history'][-8:],
                    'source_status': payload.get('status'), 'at': time.time(), 'incident_limit': 8,
                    'field_reports': payload.get('demo', {}).get('field_reports', {}),
@@ -272,6 +282,8 @@ class Director:
         plan = validate_plan(plan, context)
         incidents = {i['id']: i for i in context['incidents']}
         prepared = []
+        reserved = {a['resource_id'] for a in plan['actions'] if a.get('resource_id')}
+        failed_stations: set[tuple] = set()
         for action in plan['actions']:
             item = dict(action)
             kind, rid = item['type'], item.get('resource_id')
@@ -290,9 +302,29 @@ class Director:
                     item['blocked_reason'] = 'Apoyo aéreo pendiente de solicitud explícita o empeoramiento confirmado en un parte de bomberos.'
                     prepared.append(item)
                     continue
-                try:
-                    item['route'] = air_route(self.vehicle_origin(resource), item['target']) if resource['kind'] == 'helicopter' else self.router.route(self.vehicle_origin(resource), item['target'])
-                except (OSError, ValueError, RuntimeError):
+                alternatives = sorted((r for r in context['resources'] if kind == 'dispatch' and resource['kind'] != 'helicopter'
+                    and r['kind'] == resource['kind'] and r['id'] not in reserved and r['id'] not in self.state['assignments']
+                    and km([r['lon'], r['lat']], item['target']) <= 60), key=lambda r: km([r['lon'], r['lat']], item['target']))
+                attempted: set[str] = set()
+                for candidate in [resource, *alternatives]:
+                    station = candidate['station_id']
+                    if station in attempted or len(attempted) >= 4:
+                        continue
+                    attempted.add(station)
+                    failure_key = (station, *item['target'])
+                    if kind == 'dispatch' and failure_key in failed_stations:
+                        continue
+                    try:
+                        item['route'] = air_route(self.vehicle_origin(candidate), item['target']) if candidate['kind'] == 'helicopter' else self.router.route(self.vehicle_origin(candidate), item['target'])
+                        if candidate['id'] != rid:
+                            item.update(resource_id=candidate['id'], requested_resource_id=rid)
+                            reserved.add(candidate['id'])
+                        break
+                    except (OSError, ValueError, RuntimeError) as error:
+                        item['blocked_reason'] = 'No se pudo calcular una ruta utilizable; se revisarán alternativas. ' + str(error)[:160]
+                        if kind == 'dispatch':
+                            failed_stations.add(failure_key)
+                if 'route' not in item:
                     item['route_error'] = True
             if kind == 'alert':
                 incident = incidents[item['incident_id']]
@@ -305,7 +337,8 @@ class Director:
         return prepared
 
     def apply(self, plan: dict, actions: list[dict], run_id: str) -> None:
-        self.event('decision', plan['summary'], run_id=run_id)
+        blocked = any(action.get('route_error') for action in actions)
+        self.event('decision', 'Plan con rutas pendientes; revisando alternativas' if blocked else plan['summary'], plan['summary'] if blocked else '', run_id=run_id)
         departures: dict[str, int] = {}
         for action in actions:
             kind, incident_id = action['type'], action.get('incident_id')
@@ -316,6 +349,8 @@ class Director:
             if kind in {'dispatch', 'reassign', 'return'}:
                 rid = action['resource_id']
                 resource = self.state['resources'][rid]
+                if action.get('requested_resource_id'):
+                    self.event('alternative', 'Recurso alternativo disponible · ' + resource['name'], 'Sustituye una unidad sin ruta utilizable; mismo tipo y sin retirar recursos de otros avisos.', resource_id=rid, requested_resource_id=action['requested_resource_id'], **data)
                 route = action['route']
                 delay = departures.get(resource['station_id'], 0) * 4 if kind == 'dispatch' else 0
                 departures[resource['station_id']] = departures.get(resource['station_id'], 0) + 1
@@ -397,6 +432,9 @@ class Director:
                         self.apply(plan, actions, pending['run_id'])
                         self.state['last_fingerprint'] = current
                         self.state['last_review'] = time.time()
+                        route_failed = any(a.get('route_error') and not a.get('blocked_reason', '').startswith('Apoyo aéreo pendiente') for a in actions)
+                        self.state['route_retry_count'] = self.state.get('route_retry_count', 0) + 1 if route_failed else 0
+                        self.state['route_retry_at'] = time.time() + min(180, 15 * 2 ** min(4, self.state['route_retry_count'] - 1)) if route_failed else 0
                         self.state['status'], self.state['pending'] = 'watching', None
                         self.save()
                     except Exception:
@@ -414,7 +452,8 @@ class Director:
                 if moved:
                     self.save()
                 return
-            if current == self.state['last_fingerprint'] and time.time() - self.state['last_review'] < 180 and not moved:
+            retry_route = self.state.get('route_retry_at', 0) and time.time() >= self.state['route_retry_at']
+            if current == self.state['last_fingerprint'] and time.time() - self.state['last_review'] < 180 and not moved and not retry_route:
                 return
             self.state['runs'] = [at for at in self.state['runs'] if time.time() - at < 3600]
             if len(self.state['runs']) >= 30:

@@ -35,6 +35,50 @@ class LocalRouteTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             graph.route([1.001, 41], [1, 41])
 
+    def test_routing_api_fallback_returns_real_geometry_without_overpass(self):
+        import io
+        import json
+        from unittest.mock import Mock, patch
+        from local_routes import LocalRouter
+        body = {'code': 'Ok', 'routes': [{'duration': 60, 'geometry': {'type': 'LineString', 'coordinates': [[1, 41], [1.001, 41], [1.002, 41]]}}]}
+        db = Mock()
+        db.get_asset.return_value = None
+        router = LocalRouter(db)
+        with patch('local_routes.urlopen', side_effect=[OSError('timeout'), io.BytesIO(json.dumps(body).encode())]) as network, patch('local_routes.time.sleep'), patch.object(LocalRouter, 'route_unavailable', {}), patch.object(router, 'download') as download:
+            route = router.route([1, 41], [1.002, 41])
+        self.assertEqual(network.call_count, 2)
+        self.assertEqual(route['mode'], 'road_api')
+        self.assertEqual(len(route['coordinates']), 3)
+        self.assertGreater(route['distance_km'], .1)
+        download.assert_not_called()
+
+    def test_routing_api_rejects_invented_or_distant_endpoints(self):
+        import io
+        import json
+        from unittest.mock import Mock, patch
+        from local_routes import LocalRouter
+        body = {'code': 'Ok', 'routes': [{'duration': 60, 'geometry': {'type': 'LineString', 'coordinates': [[2, 42], [2.01, 42]]}}]}
+        with patch('local_routes.urlopen', side_effect=lambda *a, **k: io.BytesIO(json.dumps(body).encode())), patch('local_routes.time.sleep'), patch.object(LocalRouter, 'route_unavailable', {}):
+            with self.assertRaises(RuntimeError):
+                LocalRouter(Mock()).remote_route([1, 41], [1.002, 41])
+
+    def test_barcelona_query_is_local_not_the_whole_metropolitan_area(self):
+        south, west, north, east = route_bounds([2.1986627, 41.4051832], [2.1744283, 41.4035046])
+        self.assertLess((east - west) * (north - south), .01)
+
+    def test_download_uses_alternate_provider_after_timeout(self):
+        import io
+        import json
+        from unittest.mock import Mock, patch
+        from urllib.error import HTTPError
+        from local_routes import LocalRouter
+        data = {'elements': [way(1, [1, 2], [(1, 41), (1.001, 41)])]}
+        with patch('local_routes.urlopen', side_effect=[HTTPError('fixture', 504, 'Timeout', {}, None), io.BytesIO(json.dumps(data).encode())]) as fetch, patch('local_routes.time.sleep'):
+            result = LocalRouter(Mock()).download((40.98, .98, 41.02, 1.02))
+        self.assertEqual(len(result['elements']), 1)
+        self.assertEqual(fetch.call_count, 2)
+        self.assertNotEqual(fetch.call_args_list[0].args[0].full_url, fetch.call_args_list[1].args[0].full_url)
+
     def test_too_far_from_road_and_bounded_download(self):
         graph = RoadGraph({'elements': [way(1, [1, 2], [(1, 41), (1.001, 41)])]})
         with self.assertRaises(ValueError):

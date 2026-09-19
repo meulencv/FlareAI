@@ -6,10 +6,11 @@ import json
 import math
 import threading
 import time
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from build_emergency_db import distance_km
+from build_emergency_db import OVERPASS, distance_km
 
 SPEEDS = {'motorway': 90, 'trunk': 70, 'primary': 60, 'secondary': 50, 'tertiary': 45,
           'unclassified': 35, 'residential': 25, 'living_street': 10, 'service': 15, 'track': 10}
@@ -28,10 +29,10 @@ def km(a, b) -> float:
 def route_bounds(start, end) -> tuple[float, float, float, float]:
     if not valid_point(start) or not valid_point(end) or km(start, end) > 60:
         raise ValueError('Fuera del ámbito local de rutas (60 km)')
-    west = math.floor((min(start[0], end[0]) - .03) * 10) / 10
-    east = math.ceil((max(start[0], end[0]) + .03) * 10) / 10
-    south = math.floor((min(start[1], end[1]) - .025) * 10) / 10
-    north = math.ceil((max(start[1], end[1]) + .025) * 10) / 10
+    west = math.floor((min(start[0], end[0]) - .015) * 100) / 100
+    east = math.ceil((max(start[0], end[0]) + .015) * 100) / 100
+    south = math.floor((min(start[1], end[1]) - .015) * 100) / 100
+    north = math.ceil((max(start[1], end[1]) + .015) * 100) / 100
     if (east - west) * (north - south) > .7:
         raise ValueError('Área viaria demasiado grande para consulta bajo demanda')
     return south, west, north, east
@@ -128,11 +129,17 @@ class RoadGraph:
 
 
 class LocalRouter:
+    route_lock = threading.Lock()
+    route_next_request = 0.0
+    route_unavailable: dict[str, float] = {}
+
     def __init__(self, database, offline: bool = False) -> None:
         self.db, self.offline = database, offline
         self.graphs: dict[str, RoadGraph] = {}
+        self.graph_bounds: dict[str, tuple] = {}
         self.lock = threading.Lock()
         self.last_download = 0.0
+        self.failures: dict[tuple, float] = {}
 
     def route(self, start: list[float], end: list[float]) -> dict:
         bounds = route_bounds(start, end)
@@ -141,38 +148,110 @@ class LocalRouter:
             cached = self.db.get_asset(key)
             if cached and time.time() - cached['data']['fetched_at'] < 604800:
                 return cached['data']
-            graph_id = 'local-road-graph-v1:' + ':'.join(map(str, bounds))
+            if not self.offline:
+                try:
+                    route = self.remote_route(start, end)
+                except RuntimeError:
+                    pass
+                else:
+                    self.db.asset(key, 'director_route', route)
+                    return route
+            graph_id = next((identifier for identifier, box in self.graph_bounds.items()
+                             if box[0] <= bounds[0] and box[1] <= bounds[1] and box[2] >= bounds[2] and box[3] >= bounds[3]),
+                            'local-road-graph-v1:' + ':'.join(map(str, bounds)))
             if graph_id not in self.graphs:
                 stored = self.db.get_asset(graph_id)
                 if stored and (self.offline or time.time() - stored['data']['fetched_at'] < 604800):
                     payload = stored['data']
                 else:
-                    payload = self.download(bounds)
-                    self.db.asset(graph_id, 'local_road_graph', payload)
+                    raise RuntimeError('Proveedores de rutas no disponibles y sin red local cacheada; buscando otra sede')
                 if len(self.graphs) >= 6:
-                    self.graphs.pop(next(iter(self.graphs)))
+                    expired = next(iter(self.graphs))
+                    self.graphs.pop(expired)
+                    self.graph_bounds.pop(expired)
                 self.graphs[graph_id] = RoadGraph(payload)
+                self.graph_bounds[graph_id] = bounds
             route = self.graphs[graph_id].route(start, end)
             self.db.asset(key, 'director_route', route)
             return route
 
+    def remote_route(self, start: list[float], end: list[float]) -> dict:
+        route_bounds(start, end)
+        points = ';'.join(','.join(map(str, p)) for p in (start, end))
+        providers = ('https://router.project-osrm.org', 'https://routing.openstreetmap.de/routed-car')
+        with self.route_lock:
+            for provider in providers:
+                if self.route_unavailable.get(provider, 0) > time.monotonic():
+                    continue
+                time.sleep(max(0, LocalRouter.route_next_request - time.monotonic()))
+                LocalRouter.route_next_request = time.monotonic() + 1.05
+                request = Request(provider + '/route/v1/driving/' + points + '?overview=full&geometries=geojson&steps=false',
+                                  headers={'User-Agent': 'FlareAI-Hackathon/1.0 (simulated response map)'})
+                try:
+                    with urlopen(request, timeout=6) as response:
+                        raw = response.read(4_000_001)
+                    if len(raw) > 4_000_000:
+                        raise ValueError('Ruta demasiado grande')
+                    payload = json.loads(raw)
+                    if payload.get('code') != 'Ok' or not payload.get('routes'):
+                        continue
+                    result = payload['routes'][0]
+                    coords = result['geometry']['coordinates']
+                    duration = float(result['duration'])
+                    if result['geometry'].get('type') != 'LineString' or not 2 <= len(coords) <= 20000 or any(not valid_point(p) for p in coords) or not math.isfinite(duration) or duration <= 0:
+                        raise ValueError('Geometría de ruta inválida')
+                    start_gap, end_gap = km(start, coords[0]), km(end, coords[-1])
+                    if max(start_gap, end_gap) > .75:
+                        raise ValueError('La ruta termina lejos de la ubicación comunicada')
+                    cumulative = [0.0]
+                    for a, b in zip(coords, coords[1:]):
+                        cumulative.append(cumulative[-1] + km(a, b))
+                    if not 0 < cumulative[-1] <= 400:
+                        raise ValueError('Distancia de ruta inválida')
+                    return {'coordinates': coords, 'cumulative_km': cumulative, 'distance_km': cumulative[-1],
+                            'duration_seconds': duration, 'source': 'OpenStreetMap · OSRM', 'provider': provider,
+                            'mode': 'road_api', 'fetched_at': time.time(), 'start_gap_m': round(start_gap * 1000), 'end_gap_m': round(end_gap * 1000),
+                            'limitations': 'Ruta de conducción sobre OSM para demo, sin tráfico ni validación operativa para vehículos de emergencia. Tiempo visual acelerado.'}
+                except OSError as error:
+                    if isinstance(error, HTTPError):
+                        error.close()
+                    self.route_unavailable[provider] = time.monotonic() + 30
+                except (ValueError, KeyError, TypeError):
+                    continue
+        raise RuntimeError('No hay ruta utilizable en los proveedores OSM; se intentarán otras unidades')
+
     def download(self, bounds) -> dict:
         if self.offline:
             raise RuntimeError('Grafo viario no disponible offline')
-        time.sleep(max(0, 5 - (time.monotonic() - self.last_download)))
-        self.last_download = time.monotonic()
+        if self.failures.get(bounds, 0) > time.monotonic():
+            raise RuntimeError('Servicio de calles temporalmente no disponible; reintento pendiente')
         bbox = ','.join(map(str, bounds))
         highway = '|'.join(sorted(HIGHWAYS))
-        query = f'[out:json][timeout:25];way["highway"~"^({highway})$"]({bbox});out geom;'
-        request = Request('https://overpass-api.de/api/interpreter', data=urlencode({'data': query}).encode(),
-                          headers={'User-Agent': 'FlareAI-Hackathon/1.0 local road graph', 'Content-Type': 'application/x-www-form-urlencoded'})
-        with urlopen(request, timeout=35) as response:
-            raw = response.read(24_000_001)
-        if len(raw) > 24_000_000:
-            raise ValueError('Grafo demasiado grande')
-        payload = json.loads(raw)
-        if payload.get('remark') or not payload.get('elements'):
-            raise ValueError('Descarga viaria incompleta o sin datos')
-        payload['fetched_at'] = time.time()
-        payload['bounds'] = bounds
-        return payload
+        query = f'[out:json][timeout:20];way["highway"~"^({highway})$"]({bbox});out geom;'
+        error: Exception | None = None
+        for endpoint in OVERPASS:
+            time.sleep(max(0, 5 - (time.monotonic() - self.last_download)))
+            self.last_download = time.monotonic()
+            request = Request(endpoint, data=urlencode({'data': query}).encode(),
+                              headers={'User-Agent': 'FlareAI-Hackathon/1.0 local road graph', 'Content-Type': 'application/x-www-form-urlencoded'})
+            try:
+                with urlopen(request, timeout=25) as response:
+                    raw = response.read(24_000_001)
+                if len(raw) > 24_000_000:
+                    raise ValueError('Grafo demasiado grande')
+                payload = json.loads(raw)
+                if payload.get('remark') or not payload.get('elements'):
+                    raise ValueError('Descarga viaria incompleta o sin datos')
+                payload.update(fetched_at=time.time(), bounds=bounds)
+                self.failures.pop(bounds, None)
+                return payload
+            except HTTPError as caught:
+                caught.close()
+                if caught.code not in {429, 500, 502, 503, 504}:
+                    raise
+                error = caught
+            except (OSError, ValueError) as caught:
+                error = caught
+        self.failures = {key: until for key, until in self.failures.items() if until > time.monotonic()}
+        self.failures[bounds] = time.monotonic() + 30
+        raise RuntimeError('No se pudo descargar la red viaria desde los proveedores OSM; se reintentará') from error

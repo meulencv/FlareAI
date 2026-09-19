@@ -55,6 +55,12 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-19)
+- **Routing MVP revisado:** APIs OSM/OSRM con respaldo y caché, alternativas de parque libre e
+  inventario disponible/ocupado. Sustituye Overpass durante el despacho tras un 504 en Barcelona;
+  probado en seis localidades, incluida Las Palmas. [[2026-09-19#Rutas MVP y parques alternativos]].
+- **112/123 simultáneos y llamadas breves:** límite local de 16 llamadas activas, polling independiente,
+  OpenStreetMap + IGN con aproximación explícita si falla la dirección. Guiones breves publicados con
+  autorización, voz/tools conservados. [[2026-09-19#Llamadas concurrentes y ubicación OSM|Pruebas y límites]].
 - **Bomberos 123 y alertas móviles:** mismo marcador con dos números, workflow de voz separado,
   partes por incidente/unidad, confirmación o retirada, refuerzos y helicópteros ficticios.
   `/112/alerts/` recibe ES-Alert simulado con sonido tras activación. Probados LLM real y habla

@@ -151,7 +151,7 @@ function selectIncident(incident, focus = false, details = false) {
   $("passes").textContent = incident.passes;
   $("frp").textContent = number(incident.frp_peak_mw);
   $("detail-caveat").textContent = incident.demo_report
-    ? `Aviso de demostración por webcall: ${incident.demo_report.location.label}. ${incident.demo_report.location.precision === "locality" ? "Ubicación aproximada de localidad, no del punto exacto." : "Ubicación comunicada por el llamante."} No es una confirmación oficial de NASA. ${incident.source_kind === "call" ? "El contorno es un símbolo, no una huella térmica medida." : "Se ha asociado al foco térmico cercano."}`
+    ? `Aviso de demostración por webcall: ${incident.demo_report.location.label}. ${incident.demo_report.location.approximate || incident.demo_report.location.precision === "locality" ? "Ubicación aproximada, no del punto exacto. " + (incident.demo_report.location.reason || '') : "Ubicación comunicada por el llamante."} ${incident.demo_report.location.source || ''} ${incident.demo_report.location.attribution || ''}. No es una confirmación oficial de NASA. ${incident.source_kind === "call" ? "El contorno es un símbolo, no una huella térmica medida." : "Se ha asociado al foco térmico cercano."}`
     : `${incident.satellites.join(" · ")}. Última detección: ${date(incident.last_seen, true)}. ${incident.low_confidence} de baja confianza. ${incident.documented ? "Caso contrastado en prensa; no confirma que continúe activo." : "La detección de calor no confirma un incendio forestal."}`;
   $("news-link").hidden = !confirmed && !incident.documentation_url;
   if (confirmed) {

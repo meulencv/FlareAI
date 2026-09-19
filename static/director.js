@@ -179,6 +179,8 @@ export function createEvidenceView({ document, fetch, getData, getCameras, openC
     $("evidence-title").textContent = incident.demo_report?.location?.label || incident.name;
     $("evidence-status").textContent = payload.status === "offline" ? "MUESTRA HISTÓRICA · SIN CONEXIÓN" : payload.status !== "ready" ? "FUENTES SIN ACTUALIZAR · CONSULTA LAS FECHAS" : "REVISIÓN AUTOMÁTICA DE FUENTES";
     const facts = $("evidence-facts"); facts.replaceChildren();
+    const location = incident.demo_report?.location;
+    if (location) facts.append(node("p", `${location.approximate || location.precision === 'locality' ? 'Ubicación aproximada' : 'Punto localizado'} · ${location.reason || 'Según ubicación comunicada.'} ${location.source || ''} ${location.attribution || ''}`));
     if (thermal) {
       const i = thermal.incident;
       facts.append(node("p", `NASA FIRMS · detección a ${number(thermal.distance_km)} km. ${i.observations} observaciones en el grupo · última ${date(i.last_seen)}.`));
@@ -201,7 +203,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   const vehicles = new Map();
   map.createPane("response-routes"); map.getPane("response-routes").style.zIndex = 420;
   map.createPane("response-vehicles"); map.getPane("response-vehicles").style.zIndex = 425;
-  map.attributionControl.addAttribution('Rutas locales © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Corregir mapa</a>');
+  map.attributionControl.addAttribution('Rutas OSM/OSRM y caché local © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · <a href="https://www.openstreetmap.org/fixthemap" target="_blank" rel="noopener">Corregir mapa</a>');
   let state = null, session = null, sequence = 0, loading = false, paused = false, frame = 0, offset = 0;
   let queue = [], current = null, shownUntil = 0, lastContact = 0, contextUntil = 0, routeKey = "";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
@@ -268,7 +270,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
 
   function renderAssignments() {
     const assignments = Object.values(state.assignments || {});
-    const key = JSON.stringify(assignments.map(a => [a.id, a.status]));
+    const key = JSON.stringify([assignments.map(a => [a.id, a.status]), state.stations]);
     if (key === routeKey) return;
     routeKey = key; routes.clearLayers(); stations.clearLayers();
     const active = new Set(assignments.map(a => a.resource.id));
@@ -290,11 +292,12 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : "Camión"} · ${resource.name} · ${assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km · tiempo visual acelerado`;
       vehicles.get(resource.id).marker.unbindTooltip().bindTooltip(label);
     }
-    for (const { resource, count } of bases.values()) {
-      const marker = L.marker([resource.lat, resource.lon], { pane: "response-vehicles",
-        icon: L.divIcon({ className: "response-station", html: String(count), iconSize: [24, 24], iconAnchor: [12, 12] }) }).addTo(stations);
-      const label = document.createElement("span"); label.textContent = `${resource.name} · ${count} recurso${count === 1 ? "" : "s"} asignado${count === 1 ? "" : "s"}`;
-      marker.bindTooltip(label);
+    const inventory = state.stations || [...bases.values()].map(({ resource, count }) => ({ ...resource, available: 0, total: count, busy: count }));
+    for (const station of inventory) {
+      const marker = L.marker([station.lat, station.lon], { pane: "response-vehicles",
+        icon: L.divIcon({ className: "response-station", html: `${station.available}/${station.total}`, iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(stations);
+      const label = document.createElement("span"); label.textContent = `${station.name} · ${station.available} disponibles / ${station.busy} ocupados / ${station.total} total · flota simulada`;
+      marker.bindTooltip(label).bindPopup(label.cloneNode(true));
     }
   }
 

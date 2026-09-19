@@ -75,8 +75,8 @@ permiten cambiar el puerto móvil, usando el mismo valor en ambos.
    confirma el foco más cercano a ≤3 km de su huella o crea un aviso ilustrativo nuevo.
    La actualización es automática, sin código de vinculación ni botón de confirmación.
 4. El rojo lleva la etiqueta **Llamada web · demo**, nunca confirmación oficial. Un aviso nuevo
-   no inventa observaciones NASA, FRP, hectáreas ni perímetro quemado. Una ubicación ambigua
-   queda pendiente hasta que el agente la precise.
+   no inventa observaciones NASA, FRP, hectáreas ni perímetro quemado. Una dirección no resuelta
+   usa la vía o municipio comunicado como aproximación explícita; sin zona identificable queda pendiente.
 
 Cada arranque online crea una sesión vacía: no recupera avisos ni cookies de sesiones anteriores.
 Recarga el marcador después de reiniciar. El respaldo SQL conserva los registros anteriores sin
@@ -139,10 +139,14 @@ la ausencia de imagen o detección **no descarta la llamada**. Es contraste visu
 fuentes, no un análisis de píxeles por IA ni una confirmación oficial. No conecta el Traffic Lab
 ni cambia decisiones del Reasoning Agent.
 
-Las rutas se calculan **localmente con A\***: se descargan geometrías OSM acotadas vía Overpass y se
-cachean en PostgreSQL. No se llama a un servicio externo de routing. Se respetan sentidos únicos
-y acceso básico, pero no hay cortes/tráfico real, gálibos ni todas las restricciones de giro. Sin
-ruta conectada no se inventa un trayecto. La animación está acelerada, no representa una ETA real.
+Las rutas nuevas se calculan mediante **APIs OSM/OSRM**, con un segundo proveedor de respaldo,
+caché PostgreSQL y A* sobre grafos ya guardados si fallan las APIs. No se descarga Overpass durante
+el despacho. Si una unidad propuesta no tiene ruta, se prueban hasta tres sedes alternativas libres
+del mismo tipo, sin retirar recursos de otros avisos. Los parques muestran disponibles/total y,
+al pulsarlos, ocupados; cada parque tiene dos camiones ficticios. Si falla todo, se reevalúa con
+espera progresiva. Son APIs públicas de demo sin SLA: no garantizan disponibilidad ni incorporan
+tráfico o validación operativa. Se conservan límites de 60 km entre extremos y 750 m de acceso a vía.
+Sin geometría utilizable no se inventa carretera. La animación está acelerada, no es una ETA real.
 
 ```bash
 .venv/bin/python director_workflow.py status
@@ -185,10 +189,20 @@ se sitúan en helipuertos del atlas y siguen una trayectoria aérea recta ilustr
 operativo de vuelo ni protocolos oficiales españoles. Se requiere petición explícita de apoyo
 aéreo o un parte de incendio confirmado que empeora. Los camiones siguen usando rutas locales A*.
 
-Las direcciones precisas no se sustituyen por el centro de una ciudad ni de un grupo NASA. IGN
-resuelve, por ejemplo, «Carrer de Mallorca 401 Barcelona». Si hay homónimos, precisa el lugar:
-«Basílica de la Sagrada Familia, Barcelona» distingue el monumento de otros centros con ese nombre.
-Un resultado ambiguo queda pendiente; no se inventan coordenadas.
+Las direcciones se buscan primero en OpenStreetMap/Nominatim y después en IGN, conservando el
+punto preciso cuando se encuentra. Si no hay coincidencia, se intenta la vía y el municipio indicado;
+el mapa y la ficha muestran **ubicación aproximada**, fuente y motivo. No se inventa un municipio
+que no se haya podido identificar ni se sustituye el punto por un centroide NASA. Nominatim público
+se usa solo para ubicaciones públicas/ficticias de demo: máximo una petición por 1,05 s global,
+caché SQL de 24 h y atribución OSM. `FLAREAI_NOMINATIM_URL` permite cambiar de proveedor (vacío lo
+desactiva); para mayor volumen usa un servicio propio. No enviar información personal/confidencial.
+
+Se admiten hasta **16 llamadas activas combinadas de 112 y 123**, desde móviles o pestañas distintas,
+y 256 por sesión del servidor; las fichas se procesan independientemente. Una pestaña mantiene una
+llamada. La cuenta HappyRobot puede imponer límites adicionales. Ambos guiones publicados son
+breves: como máximo dos aclaraciones en 112 y una en 123, sin insistir en datos desconocidos ni
+cortar automáticamente el audio. La concurrencia local está probada con proveedores simulados;
+queda validar varias conversaciones de audio reales en los móviles.
 
 **Altavoz:** el marcador prepara manos libres y permite seleccionar salida si el navegador la
 expone. El botón Altavoz ya funciona; usa una mezcla Web Audio para reproducir la voz por una salida

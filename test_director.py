@@ -71,6 +71,34 @@ class DirectorTests(unittest.TestCase):
         self.assertEqual(config['tool_id'], 'tool2')
         self.assertEqual(config['trigger_id'], 'hook2')
 
+    def test_voice_prompt_replacement_preserves_voice_tools_and_requires_consent(self):
+        from director_workflow import replace_voice_prompt
+        client = Mock()
+        with self.assertRaises(ValueError):
+            replace_voice_prompt(client, 'voice', 'Voice', 'live', 'Short prompt')
+        client.request.assert_not_called()
+        prompt = {'id': 'prompt', 'type': 'prompt', 'name': 'Voice', 'configuration': {'keep': True}, 'model': {'original': True}, 'initial_message': 'Hola'}
+        client.request.side_effect = [
+            {'name': 'Voice', 'latest_version': {'id': 'live', 'is_live': True}}, {'data': []},
+            {'id': 'draft'}, [{'id': 'prompt', 'type': 'prompt'}, {'id': 'tool', 'type': 'tool'}],
+            prompt, {}, {**prompt, 'prompt_md': 'Short prompt'}, {'data': []}, {'is_live': True, 'is_published': True},
+        ]
+        result = replace_voice_prompt(client, 'voice', 'Voice', 'live', 'Short prompt', replace_live=True)
+        self.assertEqual(result['previous_version_id'], 'live')
+        writes = [call for call in client.request.call_args_list if call.args[0] == 'PUT']
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0].args[2]['configuration'], prompt['configuration'])
+        self.assertEqual(writes[0].args[2]['model'], prompt['model'])
+        self.assertEqual(client.request.call_args_list[-1].args, ('POST', '/versions/draft/publish', {'environment': 'production', 'unpublish_version_id': 'live'}))
+
+    def test_active_voice_call_prevents_fork_and_publication(self):
+        from director_workflow import replace_voice_prompt
+        client = Mock()
+        client.request.side_effect = [{'name': 'Voice', 'latest_version': {'id': 'live', 'is_live': True}}, {'data': [{'id': 'active'}]}]
+        with self.assertRaises(RuntimeError):
+            replace_voice_prompt(client, 'voice', 'Voice', 'live', 'Short prompt', replace_live=True)
+        self.assertTrue(all(call.args[0] == 'GET' for call in client.request.call_args_list))
+
     def test_fingerprint_ignores_poll_clock_but_tracks_corrections_and_weather(self):
         payload = {'generated_at': '1', 'status': 'ready', 'incidents': [{'id': 'a', 'lat': 41, 'lon': 1,
                    'demo_report': {'run_id': 'call', 'summary': {'riesgos': 'humo'}}, 'weather': {'wind_speed_kmh': 10}}]}
@@ -139,11 +167,53 @@ class ExecutionTests(unittest.TestCase):
         self.director.step()
         self.assertEqual(self.director.state['assignments'], {})
 
+    def test_unreachable_station_uses_available_alternative_without_taking_busy_units(self):
+        alternative = {**self.resource, 'id': 'alternative', 'station_id': 'other-base', 'lon': 1.02}
+        busy = {**self.resource, 'id': 'busy', 'station_id': 'busy-base', 'lon': 1.001}
+        self.context['resources'].extend([alternative, busy])
+        self.director.state['resources'].update({r['id']: r for r in [alternative, busy]})
+        self.director.state['assignments']['busy'] = {'incident_id': 'other-fire'}
+        self.router.route.side_effect = [ValueError('Sin conexión'), self.route]
+        actions = self.director.prepare(self.plan, self.context)
+        self.assertEqual(actions[0]['resource_id'], 'alternative')
+        self.assertEqual(actions[0]['requested_resource_id'], 'truck')
+        self.director.apply(self.plan, actions, 'replacement-run')
+        self.assertIn('alternative', self.director.state['assignments'])
+        self.assertEqual(self.director.state['assignments']['busy']['incident_id'], 'other-fire')
+        self.assertTrue(any(e['kind'] == 'alternative' for e in self.director.state['events']))
+
+    def test_alternative_does_not_steal_another_action_resource(self):
+        second = {**self.resource, 'id': 'second', 'station_id': 'other-base', 'lon': 1.02}
+        self.context['resources'].append(second)
+        self.director.state['resources']['second'] = second
+        plan = deepcopy(self.plan)
+        plan['actions'].append({**plan['actions'][0], 'resource_id': 'second'})
+        self.router.route.side_effect = [ValueError('Sin conexión'), self.route]
+        actions = self.director.prepare(plan, self.context)
+        self.assertTrue(actions[0]['route_error'])
+        self.assertEqual(actions[1]['resource_id'], 'second')
+        self.assertIn('route', actions[1])
+
+    def test_station_inventory_counts_busy_and_available_resources(self):
+        second = {**self.resource, 'id': 'second'}
+        self.director.state['resources']['second'] = second
+        self.director.step()
+        station = self.director.public_state()['stations'][0]
+        self.assertEqual((station['total'], station['available'], station['busy']), (2, 1, 1))
+        self.assertTrue(station['simulated_capacity'])
+
     def test_no_route_no_dispatch(self):
         self.router.route.side_effect = ValueError('Sin carretera')
         self.director.step()
         self.assertEqual(self.director.state['assignments'], {})
         self.assertEqual(self.director.state['events'][-1]['kind'], 'blocked')
+        self.assertGreater(self.director.state['route_retry_at'], time.time())
+        self.assertLess(self.director.state['route_retry_at'], time.time() + 16)
+        self.director.state['route_retry_at'] = time.time() - 1
+        with patch.object(self.director, 'context', return_value=self.context):
+            self.planner.start.return_value = 'retry-run'
+            self.director.step()
+        self.planner.start.assert_called_once()
 
     def test_arrival_is_not_availability_and_return_frees_only_on_arrival(self):
         self.director.step()

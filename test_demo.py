@@ -1,8 +1,12 @@
+import threading
+import time
 import unittest
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
-from demo import DemoBridge, extract_report, extract_part, is_fire, match_incident, resolve_local, select_location_candidate
+from demo import DemoBridge, LocationResolver, extract_report, extract_part, is_fire, match_incident, resolve_local, select_location_candidate
 
 
 def message(location='Igea', emergency='Incendio forestal'):
@@ -191,6 +195,183 @@ class ResponderTests(unittest.TestCase):
         self.assertEqual(self.target['lon'], self.location['lon'])
         self.assertEqual(self.target['source_kind'], 'call')
         self.assertEqual(self.target['observations'], 0)
+
+
+class ConcurrentCallTests(unittest.TestCase):
+    def setUp(self):
+        self.provider = Mock(ready=True, responder_ready=True)
+        self.bridge = DemoBridge(Mock(), provider=self.provider, resolver=Mock(return_value={'lat': 41.38, 'lon': 2.17, 'label': 'Barcelona', 'precision': 'address'}))
+        self.addCleanup(self.bridge.close)
+
+    def test_four_citizens_and_four_firefighters_can_start_together(self):
+        citizen = str(uuid.uuid4())
+        self.bridge.register(citizen)
+        self.bridge.accept(citizen, [message('Barcelona')])
+        barrier = threading.Barrier(8)
+        def create(*args):
+            barrier.wait(timeout=3)
+            run = str(uuid.uuid4())
+            return {'run_id': run, 'token': 'fixture', 'url': 'wss://example.invalid', 'room_name': run}
+        self.provider.create.side_effect = create
+        owners = [self.bridge.open_browser() for _ in range(8)]
+        def start(index):
+            role = 'citizen' if index < 4 else 'firefighter'
+            return self.bridge.create_call(owners[index], role, {'run_id': citizen})['run_id']
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            runs = list(executor.map(start, range(8)))
+        self.assertEqual(len(set(runs)), 8)
+        self.assertEqual(self.bridge.starting, 0)
+        for index, run in enumerate(runs):
+            self.assertEqual(self.bridge.brief(run, owners[index])['role'], 'citizen' if index < 4 else 'firefighter')
+            with self.assertRaises(PermissionError):
+                self.bridge.brief(run, owners[(index + 1) % 8])
+
+    def test_slow_poll_does_not_block_other_updates_or_overlap_same_run(self):
+        slow, fast = str(uuid.uuid4()), str(uuid.uuid4())
+        started, release, updated = threading.Event(), threading.Event(), threading.Event()
+        self.bridge.register(slow)
+        self.bridge.register(fast)
+        def messages(run):
+            if run == slow:
+                started.set()
+                release.wait(timeout=4)
+            return [message(run)]
+        self.provider.messages.side_effect = messages
+        original = self.bridge.accept
+        def accept(run, messages):
+            original(run, messages)
+            if run == fast:
+                updated.set()
+        with patch.object(self.bridge, 'accept', side_effect=accept):
+            try:
+                self.bridge.poll_once(wait=False)
+                self.assertTrue(started.wait(1))
+                self.assertTrue(updated.wait(1))
+                self.assertEqual(self.bridge.calls[fast]['state'], 'located')
+                self.bridge.poll_once(wait=False)
+                self.assertEqual(sum(c.args[0] == slow for c in self.provider.messages.call_args_list), 1)
+            finally:
+                release.set()
+
+    def test_hangup_during_geocoding_is_not_undone_by_late_result(self):
+        owner = self.bridge.open_browser()
+        run = str(uuid.uuid4())
+        self.bridge.register(run, owner)
+        started, release = threading.Event(), threading.Event()
+        location = self.bridge.resolver.return_value
+        def resolve(query):
+            started.set()
+            release.wait(timeout=3)
+            return location
+        self.bridge.resolver.side_effect = resolve
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            task = executor.submit(self.bridge.accept, run, [message()])
+            try:
+                self.assertTrue(started.wait(1))
+                self.bridge.stop(run, owner)
+            finally:
+                release.set()
+            task.result()
+        self.assertTrue(self.bridge.calls[run]['ended'])
+        self.assertLess(self.bridge.calls[run]['poll_until'] - time.monotonic(), 21)
+
+    def test_poll_failure_is_isolated_and_finished_calls_release_capacity(self):
+        self.provider.create.side_effect = lambda *args: {'run_id': str(uuid.uuid4()), 'token': 'fixture', 'url': 'wss://example.invalid', 'room_name': 'fixture'}
+        owner = self.bridge.open_browser()
+        for _ in range(24):
+            run = self.bridge.create_call(owner)['run_id']
+            self.bridge.stop(run, owner)
+        good = self.bridge.create_call(owner)['run_id']
+        def messages(run):
+            if run != good:
+                raise OSError('fixture')
+            return [message()]
+        self.provider.messages.side_effect = messages
+        self.bridge.poll_once()
+        self.assertEqual(self.bridge.calls[good]['state'], 'located')
+        self.assertTrue(self.bridge.calls[run]['error'])
+
+    def test_reservations_enforce_capacity_and_failures_release_them(self):
+        from demo import MAX_ACTIVE_CALLS
+        owner = self.bridge.open_browser()
+        self.bridge.starting = MAX_ACTIVE_CALLS
+        with self.assertRaises(RuntimeError):
+            self.bridge.create_call(owner)
+        self.provider.create.assert_not_called()
+        self.bridge.starting = 0
+        self.provider.create.side_effect = OSError('fixture')
+        with self.assertRaises(OSError):
+            self.bridge.create_call(owner)
+        self.assertEqual(self.bridge.starting, 0)
+
+
+class GeocodingTests(unittest.TestCase):
+    def setUp(self):
+        db = Mock()
+        self.places = [{'name': 'Barcelona', 'lat': 41.3874, 'lon': 2.1686}, {'name': 'Madrid', 'lat': 40.4168, 'lon': -3.7038}]
+        db.get_asset.side_effect = lambda name: {'data': {'places': self.places} if name.endswith('places.json') else {'geometry': {'type': 'Polygon', 'coordinates': [[[-19,27],[5,27],[5,44.5],[-19,44.5],[-19,27]]]}}}
+        self.resolver = LocationResolver(db)
+
+    def test_osm_address_wins_over_municipality_and_is_cached(self):
+        candidate = {'lat': '41.4031876', 'lon': '2.1748235', 'osm_type': 'node', 'osm_id': 1, 'category': 'place', 'type': 'house', 'name': '',
+                     'display_name': '401, Carrer de Mallorca, Barcelona, España', 'address': {'house_number': '401', 'road': 'Carrer de Mallorca', 'city': 'Barcelona', 'country_code': 'es'}}
+        with patch.object(self.resolver, 'osm_fetch', return_value=[candidate]) as osm, patch.object(self.resolver, 'remote') as ign:
+            result = self.resolver('Carrer de Mallorca 401 Barcelona')
+            self.assertEqual(result['precision'], 'address')
+            self.assertEqual(result['lat'], 41.4031876)
+            self.assertEqual(result['source'], 'OpenStreetMap / Nominatim')
+            self.assertEqual(self.resolver('Carrer de Mallorca 401 Barcelona'), result)
+            self.assertEqual(osm.call_count, 1)
+            ign.assert_not_called()
+
+    def test_failed_address_falls_back_to_explicit_city_not_another_house_number(self):
+        candidate = {'lat': '41.40', 'lon': '2.17', 'category': 'place', 'type': 'house', 'display_name': '404, Carrer de Mallorca, Barcelona',
+                     'address': {'house_number': '404', 'road': 'Carrer de Mallorca', 'city': 'Barcelona', 'country_code': 'es'}}
+        with patch.object(self.resolver, 'osm_fetch', return_value=[candidate]), patch.object(self.resolver, 'remote', return_value=None):
+            result = self.resolver('Carrer de Mallorca 99999 Barcelona')
+        self.assertEqual(result['precision'], 'locality')
+        self.assertTrue(result['approximate'])
+        self.assertEqual(result['lat'], self.places[0]['lat'])
+        self.assertEqual(result['query'], 'Carrer de Mallorca 99999 Barcelona')
+        self.assertIn('reason', result)
+
+    def test_ign_is_used_if_osm_cannot_resolve_precise_address(self):
+        precise = {'lat': 41.403, 'lon': 2.174, 'label': 'Mallorca 401 Barcelona', 'precision': 'address', 'source': 'CartoCiudad / IGN'}
+        with patch.object(self.resolver, 'osm_fetch', return_value=[]), patch.object(self.resolver, 'remote', return_value=precise):
+            self.assertEqual(self.resolver('Carrer Mallorca 401 Barcelona')['precision'], 'address')
+
+    def test_unknown_city_can_be_resolved_by_osm_and_missing_location_is_not_invented(self):
+        candidate = {'lat': '41.1189', 'lon': '1.2445', 'category': 'boundary', 'type': 'administrative', 'addresstype': 'city',
+                     'name': 'Tarragona', 'display_name': 'Tarragona, Cataluña, España', 'address': {'city': 'Tarragona', 'country_code': 'es'}}
+        with patch.object(self.resolver, 'osm_fetch', side_effect=lambda query: [candidate] if query == 'Tarragona' else []), patch.object(self.resolver, 'remote', return_value=None):
+            self.assertEqual(self.resolver('Calle inventada 9, Tarragona')['precision'], 'locality')
+            self.assertIsNone(self.resolver('No sé dónde estoy'))
+            self.assertIsNone(self.resolver('Calle Barcelona'))
+
+    def test_osm_requests_are_throttled_and_persistently_cached(self):
+        import io
+        assets = {}
+        self.resolver.db.get_asset.side_effect = lambda key: assets.get(key)
+        self.resolver.db.asset.side_effect = lambda key, kind, data: assets.update({key: {'data': data}})
+        with patch('demo.urlopen', side_effect=lambda *a, **k: io.BytesIO(b'[]')) as network, patch('demo.time.sleep') as sleep, patch('demo.time.monotonic', return_value=10), patch.object(LocationResolver, 'osm_next_request', 0):
+            self.resolver.osm_fetch('Barcelona')
+            self.resolver.osm_fetch('Madrid')
+            self.resolver.osm_fetch('Barcelona')
+        self.assertEqual(network.call_count, 2)
+        self.assertAlmostEqual(sleep.call_args_list[1].args[0], 1.05)
+        self.assertEqual(len(assets), 2)
+
+    def test_ambiguous_pois_do_not_invent_an_exact_point(self):
+        from demo import select_osm_location
+        candidate = {'lat': '41.4', 'lon': '2.17', 'category': 'amenity', 'type': 'school', 'name': 'Sagrada Familia',
+                     'display_name': 'Sagrada Familia, Barcelona', 'address': {'city': 'Barcelona', 'country_code': 'es'}}
+        self.assertIsNone(select_osm_location('Sagrada Familia Barcelona', [candidate, {**candidate, 'lat': '41.45'}]))
+        self.assertIsNone(select_osm_location('Sagrada Familia Barcelona', [{**candidate, 'address': {'country_code': 'fr'}}]))
+
+    def test_plain_city_does_not_need_network(self):
+        with patch.object(self.resolver, 'osm_fetch') as osm:
+            self.assertEqual(self.resolver('Estoy en Barcelona')['label'], 'Barcelona')
+            osm.assert_not_called()
 
 
 class PublishTests(unittest.TestCase):

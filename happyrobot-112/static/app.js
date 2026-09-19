@@ -34,7 +34,7 @@ import { createSpeakerOutput } from './audio.js';
   let timerHandle = null;
   let startedAt = 0;
   let polling = false;
-  let stopping = false;
+  let stopping = false, starting = false;
   let muted = false, callGeneration = 0;
   let firefighterReady = false, incidents = [], loadingIncidents = false;
   const speakerButton = document.querySelector('#speaker-button'), outputChoice = document.querySelector('#audio-output');
@@ -187,13 +187,15 @@ import { createSpeakerOutput } from './audio.js';
       const data = await response.json();
       if (targetRunId !== runId && (!final || runId)) return;
       updateSummary(data.summary);
+      const locationNote = document.querySelector('#location-note');
+      locationNote.textContent = data.location ? `${data.location.approximate || data.location.precision === 'locality' ? 'Ubicación aproximada' : 'Punto localizado'}: ${data.location.label}. ${data.location.reason || ''} ${data.location.source || ''} ${data.location.attribution || ''}` : '';
       const part = document.querySelector('#part-details'); part.replaceChildren(); part.hidden = data.role !== 'firefighter';
       for (const [key, label] of Object.entries(partLabels)) if (data.part?.[key]) {
         const row = document.createElement('div'), term = document.createElement('dt'), value = document.createElement('dd');
         term.textContent = label; value.textContent = data.part[key].replaceAll('_', ' '); row.append(term, value); part.append(row);
       }
       syncState.textContent = data.map_status === 'field_report' ? 'Parte de bomberos registrado · demo'
-        : data.map_status === 'located' ? 'Aviso enviado al mapa · demo'
+        : data.map_status === 'located' ? (data.location?.approximate ? 'Aviso en el mapa · ubicación aproximada' : 'Aviso enviado al mapa · demo')
         : data.map_status === 'needs_location' ? 'Indica municipio y ubicación más precisa'
         : final ? "Ficha final" : (data.status === "waiting" ? "Esperando datos…" : "Actualizando en directo");
     } catch (error) {
@@ -227,7 +229,7 @@ import { createSpeakerOutput } from './audio.js';
 
     callButton.disabled = true;
     void speaker.prepare().catch(() => { document.querySelector('#audio-note').textContent = 'Pulsa Altavoz al conectar para habilitar el sonido.'; });
-    updateSummary({}); document.querySelector('#part-details').replaceChildren();
+    updateSummary({}); document.querySelector('#part-details').replaceChildren(); document.querySelector('#location-note').textContent = '';
     document.querySelector('#contact-name').textContent = firefighter ? 'Central de bomberos' : 'Emergencias';
     document.querySelector('.caller-avatar').textContent = dialNumber;
     document.querySelector('.caller-number').textContent = `${dialNumber} · ${firefighter ? incidentChoice.selectedOptions[0].textContent : 'Simulación'}`;
@@ -300,6 +302,8 @@ import { createSpeakerOutput } from './audio.js';
   }
 
   async function handleStart() {
+    if (starting || room || stopping || callButton.disabled) return;
+    starting = true;
     const attempt = ++callGeneration;
     try {
       await startCall(attempt);
@@ -323,6 +327,8 @@ import { createSpeakerOutput } from './audio.js';
       dialStatus.textContent = error instanceof Error ? error.message : "Error al iniciar";
       dialStatus.classList.add("error");
       syncState.textContent = "Sin conexión";
+    } finally {
+      starting = false;
     }
   }
 

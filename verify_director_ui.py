@@ -231,11 +231,80 @@ AudioContext.prototype.createOscillator = function() {
     for page in (phone, receiver, map_page):
         page.close()
     print('123 + receptor: selección de incidente/unidad, parte, llegada, ES-Alert con AudioContext, idempotencia, refuerzo/camión/helicóptero, reasignación y cancelación: OK (voz y plan fixtures).')
+    verify_concurrent_calls(browser, url, store, provider)
+
+
+def verify_concurrent_calls(browser, url, store, provider):
+    from test_demo import message, part
+    pages, errors, citizens, firefighters = [], [], [], []
+    resolver = store.demo.resolver
+    locations = {
+        'Mallorca 401, Barcelona': {'lat': 41.4031876, 'lon': 2.1748235, 'label': 'Mallorca 401, Barcelona', 'precision': 'address', 'approximate': False},
+        'Calle inventada, Madrid': {'lat': 40.4168, 'lon': -3.7038, 'label': 'Madrid', 'precision': 'locality', 'approximate': True, 'reason': 'Dirección no resuelta; municipio aproximado.'},
+    }
+    store.demo.resolver = lambda query: locations[query]
+    def phone(number, incident_id=None):
+        page = browser.new_page(viewport={'width': 390, 'height': 844}, is_mobile=True)
+        pages.append(page)
+        page.on('pageerror', lambda error: errors.append(error.stack))
+        page.route('https://cdn.jsdelivr.net/**', lambda route: route.fulfill(content_type='text/javascript', body='''
+window.LivekitClient = {RoomEvent: {TrackSubscribed: 'track', Disconnected: 'disconnected'}, Track: {Kind: {Audio: 'audio'}},
+Room: class { constructor(){ this.localParticipant = {setMicrophoneEnabled: async () => {}}; } on(){} async connect(){} disconnect(){} }};
+'''))
+        page.goto(url + '/112/')
+        expect(page.locator('#call-button')).to_be_enabled()
+        page.locator(f'[data-number="{number}"]').click()
+        if incident_id:
+            page.locator('#incident-choice').select_option(incident_id)
+        page.locator('#call-button').click()
+        expect(page.locator('#status')).to_have_text('En llamada')
+        return provider.created[-1][0]
+    try:
+        for query in locations:
+            run = phone('112')
+            citizens.append(run)
+            provider.transcripts[run] = [message(query)]
+        store.demo.poll_once()
+        incidents = {i['demo_report']['run_id']: i for i in store.payload()['incidents'] if i.get('demo_report')}
+        assert len({incidents[r]['id'] for r in citizens}) == 2
+        for index, run in enumerate(citizens):
+            responder = phone('123', incidents[run]['id'])
+            firefighters.append(responder)
+            provider.transcripts[responder] = [part(incendio='confirmado' if index == 0 else 'descartado', detalle=f'Parte independiente {index}')]
+        store.demo.poll_once()
+        payload = store.payload()
+        assert incidents[citizens[0]]['id'] in [i['id'] for i in payload['incidents']]
+        assert incidents[citizens[1]]['id'] not in [i['id'] for i in payload['incidents']]
+        for index, run in enumerate(citizens):
+            fields = payload['demo']['field_reports'][incidents[run]['id']]['fields']
+            assert fields['detalle'] == f'Parte independiente {index}'
+        for page in pages:
+            expect(page.locator('#status')).to_have_text('En llamada')
+            page.locator('#details-toggle').click()
+        expect(pages[0].locator('#location-note')).to_contain_text('Punto localizado')
+        expect(pages[1].locator('#location-note')).to_contain_text('Ubicación aproximada')
+        for index, page in enumerate(pages[2:]):
+            expect(page.locator('#part-details')).to_contain_text(f'Parte independiente {index}')
+        foreign_status = pages[0].evaluate('(run) => fetch("/112/api/brief?run_id=" + run).then(r => r.status)', citizens[1])
+        assert foreign_status == 403
+        pages[0].locator('#details-close').click()
+        pages[0].locator('#hangup-button').click()
+        for page in pages[1:]:
+            expect(page.locator('#status')).to_have_text('En llamada')
+        assert not errors, errors
+    finally:
+        store.demo.resolver = resolver
+        for page in pages:
+            page.close()
+    print('Concurrencia UI: dos 112 y dos 123 activos, avisos/partes separados, fichas privadas, precisión visible y colgado independiente: OK (voz fixture).')
 
 
 def main(cloud: bool = False) -> None:
     database = Database()
     store = Store(offline=True, database=database)
+    store.fires = json.loads((ROOT / 'examples/firms.geojson').read_text())
+    store.weather = json.loads((ROOT / 'examples/weather.json').read_text())
+    store.incidents = json.loads((ROOT / 'examples/combined.json').read_text())['incidents']
     store.demo = DemoBridge(database, provider=type('IntakeFixture', (), {'ready': True})(),
                             resolver=lambda query: {'lat': 41.1189, 'lon': 1.2445, 'label': 'Tarragona', 'precision': 'locality', 'source': 'test_fixture'})
     store.director = Director(store, planner=None if cloud else PlannerFixture(), router=LocalRouter(database, offline=not cloud))

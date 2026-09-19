@@ -251,11 +251,23 @@ conserva correcciones y distingue `waiting`, `not_fire`, `needs_location` y `loc
 por confianza FIRMS ni por inferencias desde la transcripción libre. Solo consulta llamadas que
 ha creado; cookies y propiedad del run impiden consultar/controlar llamadas de otro navegador.
 
-La ubicación se intenta resolver contra los topónimos locales y, cuando no basta, CartoCiudad/IGN.
-Se eligió este geocodificador por su cobertura de direcciones españolas sin clave. Se exige
-coincidencia inequívoca y coordenadas dentro de España; no se toma el primer candidato sin más.
-Una localidad representa su posición aproximada, no el lugar exacto del incendio. La cercanía se
-mide a la huella con Shapely (≤3 km) para evitar perder focos alargados cuyo centro queda lejos.
+La ubicación usa coordenadas/topónimos locales, OpenStreetMap/Nominatim y después CartoCiudad/IGN
+para dirección o POI. Valida los tokens, el portal y coordenadas dentro de España. Si falla, intenta
+vía y municipio comunicado; no inventa una zona ausente. `location` incluye `query`, `precision`,
+`approximate`, `source` y motivo cuando corresponde; ficha móvil y mapa muestran esa incertidumbre.
+Las aproximaciones del resolver conservan un aviso ilustrativo propio, sin confirmar por proximidad
+un grupo NASA. El emparejamiento legado a huella (≤3 km) queda para localidades sin ese motivo.
+Nominatim público se serializa globalmente a una petición por 1,05 s en un proceso, con caché SQL
+24 h y atribución; no se reconsulta periódicamente una ubicación sin cambios. Configurable mediante
+`FLAREAI_NOMINATIM_URL` (vacío deshabilita OSM). Solo ubicaciones públicas/ficticias de demo, nunca
+información personal/confidencial. Para varias instancias o mayor volumen usar proveedor propio.
+
+`DemoBridge` admite 16 llamadas activas combinadas 112/123 y 256 por sesión. Reserva capacidad antes
+de pedir tokens, permite altas simultáneas y consulta fichas con 16 workers independientes, una
+consulta en vuelo por run y separación de al menos dos segundos. Colgar libera capacidad pero
+mantiene veinte segundos de recuperación final. El navegador evita dobles inicios por teclado.
+Los guiones breves publicados limitan aclaraciones, no imponen un corte de audio automático.
+La cuota del proveedor puede limitar la concurrencia de voz real por debajo del límite local.
 
 Sin foco cercano se genera `source_kind=call`, con soporte circular ilustrativo de 80 m de radio,
 `geometry_role=illustrative_report_location`, cero observaciones y área/FRP/brillo desconocidos.

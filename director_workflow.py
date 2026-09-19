@@ -201,7 +201,10 @@ Llegar no implica confirmar fuego; confirmar fuego no implica que esté extingui
 Preguntar "¿hace falta ES-Alert?" no es pedir que se emita. "Activad ES-Alert" sí es solicitado.
 Ubicación: conserva vía, número, municipio y referencias; no la reduzcas a ciudad. No cambies el incidente seleccionado.
 Si piden refuerzos/helicóptero/ES-Alert registra la solicitud y di que la trasladas; nunca afirmes envío real.
-Haz como máximo una pregunta breve sobre el dato esencial que falte. No leas campos ni JSON.
+Objetivo orientativo: parte de 20–40 segundos, sin cortar información importante ni imponer un temporizador.
+Haz como máximo UNA pregunta breve de aclaración en toda la llamada, solo si el dato es imprescindible.
+No preguntes por cada campo ni por datos ya indicados. Si no sabe algo, omítelo y continúa.
+No pidas de nuevo dirección ni incidente: ya están vinculados por el marcador. No leas campos ni JSON.
 Campos y valores EXACTOS:
 llegada: confirmada | en_camino
 incendio: confirmado | descartado | extinguido
@@ -209,7 +212,9 @@ es_alert, refuerzos, helicoptero: solicitado | no_solicitado
 evolucion: estable | empeora | critico
 zona_urbana: si | no
 detalle: resumen breve de riesgos/personas/necesidades; ubicacion: ubicación comunicada.
-La herramienta acusa recepción; no confirma despacho, alerta ni ejecución. Espera el siguiente turno tras registrarla.
+La herramienta acusa recepción; no confirma despacho, alerta ni ejecución.
+Tras registrar el parte, cierra: «Parte recibido, traslado las necesidades. Gracias». No preguntes «¿algo más?».
+Si el bombero añade información, regístrala y acusa recibo sin reiniciar preguntas. No fuerces el corte de audio.
 '''
 
 
@@ -262,6 +267,39 @@ def deploy_responder(database: Database) -> dict:
     config.update(published=True, version_id=version, prompt_id=prompt['id'], tool_id=tool['id'])
     database.responder_setting(config)
     return config
+
+
+def replace_voice_prompt(client, workflow_id: str, expected_name: str, expected_version: str, prompt_text: str, *, replace_live: bool = False) -> dict:
+    if not replace_live:
+        raise ValueError('Se requiere autorización explícita para sustituir la versión de voz publicada')
+    workflow = unwrap(client.request('GET', f'/workflows/{workflow_id}'))
+    current = workflow['latest_version']
+    if workflow['name'] != expected_name or current['id'] != expected_version or not current.get('is_live'):
+        raise RuntimeError('La versión de voz ha cambiado; revisa antes de publicar')
+    running_path = f'/workflows/{workflow_id}/runs?status=running&page_size=1'
+    if client.request('GET', running_path).get('data'):
+        raise RuntimeError('Hay llamadas activas; espera a que terminen antes de publicar')
+    draft = unwrap(client.request('POST', f'/versions/{expected_version}/fork', {}))
+    version = draft['id']
+    nodes = client.request('GET', f'/versions/{version}/nodes')
+    nodes = nodes.get('data', []) if isinstance(nodes, dict) else nodes
+    prompts = [node for node in nodes if node.get('type') == 'prompt']
+    if len(prompts) != 1:
+        raise RuntimeError('Se esperaba un único prompt de voz; se conserva la versión viva')
+    prompt = unwrap(client.request('GET', f'/versions/{version}/nodes/{prompts[0]["id"]}'))
+    body = {key: prompt[key] for key in ('type', 'name', 'configuration', 'model', 'initial_message', 'initial_message_uninterruptible') if key in prompt}
+    body['prompt_md'] = prompt_text
+    client.request('PUT', f'/versions/{version}/nodes/{prompt["id"]}', body)
+    verified = unwrap(client.request('GET', f'/versions/{version}/nodes/{prompt["id"]}'))
+    if verified.get('prompt_md') != prompt_text:
+        raise RuntimeError('El borrador no conserva el guion esperado; no se publica')
+    if client.request('GET', running_path).get('data'):
+        raise RuntimeError('Ha entrado una llamada; el borrador queda preparado sin sustituir la versión viva')
+    published = unwrap(client.request('POST', f'/versions/{version}/publish', {'environment': 'production', 'unpublish_version_id': expected_version}))
+    if not published.get('is_live') or not published.get('is_published') or published.get('test_errors') or published.get('missing_variables'):
+        raise RuntimeError('Revisa el resultado de publicación de voz y sus validaciones')
+    return {'workflow_id': workflow_id, 'version_id': version, 'previous_version_id': expected_version,
+            'prompt_id': prompt['id'], 'published': True, 'name': expected_name}
 
 
 if __name__ == '__main__':
