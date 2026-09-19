@@ -44,7 +44,7 @@ def decode_image(body):
 
 class Lab:
     def __init__(self):
-        self.detector = Detector()
+        self._detector = None
         self.lock = threading.Lock()
         self.cache = {}
         self.observations = {}
@@ -53,6 +53,12 @@ class Lab:
         self.cloud_lock = threading.Lock()
         self.api = API() if os.environ.get("HAPPYROBOT_API_KEY") else None
         self.monitor = Monitor(self.api)
+
+    @property
+    def detector(self):
+        if self._detector is None:
+            self._detector = Detector()
+        return self._detector
 
     def reference_views(self, camera_id):
         camera = CAMERAS[camera_id]

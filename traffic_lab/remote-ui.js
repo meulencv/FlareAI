@@ -109,7 +109,7 @@
       card.fields.analysis.textContent = format(result.analyzed_at, result.capture_timezone);
       card.fields.expiry.textContent = format(result.expires_at, result.capture_timezone);
       card.reason.textContent = usable ? result.reason : age > 600
-        ? 'La imagen supera los 10 minutos. Su estimación no se utiliza como estado actual.'
+        ? 'La hora leída por IA queda fuera de los 10 minutos. Puede ser una captura antigua o una lectura errónea del reloj; se descarta como estado actual.'
         : 'Falta una imagen o un reloj legible y coherente. No se inventa que la carretera esté libre.';
     }
     if (el('remote-auto').checked && !running) {
@@ -223,12 +223,20 @@
     const restore = requested && /^[a-f0-9-]{36}$/i.test(requested) ? requested : status.active_job_id;
     if (restore) {running = true; updateControls(); poll(restore);}
   }).catch(error => {el('remote-state').textContent = error.message;});
-  request('/api/remote/incidents').then(value => {
-    incidents = value.incidents || [];
-    for (const incident of incidents) {
-      const option = document.createElement('option'); option.value = incident.id; option.textContent = incident.description;
-      el('remote-incident').append(option);
-    }
-    el('remote-flare').textContent = value.available ? `${incidents.length} incidentes obtenidos del mapa local; consulta de solo lectura.` : value.reason;
-  }).catch(() => {el('remote-flare').textContent = 'Mapa no disponible. Usa las coordenadas manuales.';});
+  function loadIncidents() {
+    request('/api/remote/incidents').then(value => {
+      incidents = value.incidents || [];
+      const previous = el('remote-incident').value;
+      const manual = document.createElement('option'); manual.value = ''; manual.textContent = 'Ubicación manual';
+      el('remote-incident').replaceChildren(manual);
+      for (const incident of incidents) {
+        const option = document.createElement('option'); option.value = incident.id; option.textContent = incident.description;
+        el('remote-incident').append(option);
+      }
+      if (incidents.some(item => item.id === previous)) el('remote-incident').value = previous;
+      el('remote-flare').textContent = value.available ? `${incidents.length} incidentes del mapa · fuente ${value.source_status || 'sin estado'} · contexto de ubicación, no confirmación actual del incidente.` : value.reason;
+    }).catch(() => {el('remote-flare').textContent = 'Mapa no disponible. Usa las coordenadas manuales.';});
+  }
+  loadIncidents();
+  setInterval(() => {if (!document.hidden && !running) loadIncidents();}, 60000);
 })();

@@ -18,10 +18,9 @@ def main():
     python = ROOT / (".venv/Scripts/python.exe" if os.name == "nt" else ".venv/bin/python")
     if not python.exists():
         subprocess.run([sys.executable, "-m", "venv", str(ROOT / ".venv")], check=True)
-    check = subprocess.run([str(python), "-c", "import cv2,numpy"], capture_output=True)
+    check = subprocess.run([str(python), "-c", "import cv2,numpy,tzdata"], capture_output=True)
     if check.returncode:
         subprocess.run([str(python), "-m", "pip", "install", "-r", str(ROOT / "requirements.txt")], check=True)
-    subprocess.run([str(python), str(ROOT / "prepare.py")], check=True, cwd=ROOT)
     environment = os.environ.copy()
     if args.local:
         environment.pop("HAPPYROBOT_API_KEY", None)
@@ -29,7 +28,8 @@ def main():
         key = environment.get("HAPPYROBOT_API_KEY") or getpass.getpass("API key de HappyRobot (oculta; Enter para modo local): ").strip()
         if key:
             environment["HAPPYROBOT_API_KEY"] = key
-            subprocess.run([str(python), str(ROOT / "happyrobot.py"), "deploy"], env=environment, check=True, cwd=ROOT)
+    if not environment.get("HAPPYROBOT_API_KEY"):
+        subprocess.run([str(python), str(ROOT / "prepare.py")], check=True, cwd=ROOT)
     if not args.no_browser:
         timer = threading.Timer(2, lambda: webbrowser.open("http://127.0.0.1:8790"))
         timer.daemon = True
