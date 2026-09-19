@@ -53,8 +53,10 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine completo (plan, laboratorio de formatos, deploy, local, simulador, dashboard)
 
 ## Estado actual (resumen rápido, 2026-09-19)
-- ✅ **9 workflows SOS** publicados en HappyRobot (EU, org `hackspainteam3`), definidos como código y
-  desplegables con `python -m sos deploy`. Los 2 cron (meteo, FIRMS) despublicados hasta tener Twin.
+- 🧹 **Plataforma vaciada (2026-09-19, tarde)**: los 9 workflows SOS se **borraron** de HappyRobot a
+  petición del usuario (sin Twin no servían). Siguen definidos como código: `python -m sos deploy`
+  los vuelve a crear en una pasada cuando haya Twin. En la org solo quedan `FlareAI Web Voice`
+  (lo usa el dashboard como voz de reserva) y `test`.
 - ⚠️ **Twin no provisionado** (404) y API key sin `twin.manage` → **acción del usuario**:
   Settings → Twin Database → Enable + key con Full Twin access. Mientras: Postgres embebido en
   `.local/pg` con el mismo esquema, y `sos twin sync-to-twin` para migrar.

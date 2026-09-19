@@ -26,7 +26,10 @@ tags: [happyrobot, referencia]
 | test (preexistente, no nuestro) | `01a0b58b-ed5a-7a09-a663-51761e874588` | `qta0phzc98ww` |
 | **FlareAI Web Voice** ⭐ | `01a0b665-2a84-725f-a714-947e427ea6d2` | `cx7sisk9if6q` |
 
-## Workflows SOS (desplegados por `sos deploy` el 2026-09-19)
+## Workflows SOS (desplegados por `sos deploy` el 2026-09-19 — **BORRADOS esa misma tarde**)
+
+> ⚠️ Estos ids ya no existen: se vació la plataforma a petición del usuario mientras no haya Twin.
+> `python -m sos deploy` los recrea con ids/slugs nuevos y actualiza `deploy-state.json`.
 
 | Clave | Nombre | ID | Slug | Publicado |
 |---|---|---|---|---|

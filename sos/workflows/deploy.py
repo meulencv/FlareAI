@@ -205,6 +205,12 @@ class Deployer:
             entry = self.state["workflows"].pop(key, None)
             if entry:
                 try:
+                    # La API rechaza borrar con una versión live: despublicar todas antes.
+                    for env in ("production", "staging"):
+                        try:
+                            self.c.workflows.unpublish(entry["id"], env)
+                        except HappyRobotError:
+                            pass
                     self.c.workflows.delete(entry["id"])
                     self.log(f"  - borrado {entry['name']}")
                 except HappyRobotError as exc:

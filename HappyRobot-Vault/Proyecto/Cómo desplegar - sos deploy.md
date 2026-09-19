@@ -18,7 +18,7 @@ tags: [happyrobot, proyecto]
 ```bash
 python -m sos deploy                 # todos
 python -m sos deploy assess execute  # solo algunos (por clave)
-python -m sos destroy <clave>        # borrar (hace unpublish antes)
+python -m sos destroy <clave>        # borrar (despublica todas las versiones antes; si no, 400 'live version')
 python -m sos status                 # org, backend, workflows desplegados
 ```
 
