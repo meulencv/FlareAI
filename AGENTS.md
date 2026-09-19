@@ -5,23 +5,43 @@ este repositorio.
 
 ## Proyecto
 
-**S.O.S. Agentic Crisis Engine** (HackSpain 2026, reto HappyRobot): gestión autónoma de crisis
-sobre HappyRobot. Lee primero `HappyRobot-Vault/00 Índice.md` y `README.md`.
+**FlareAI**: observatorio web de incendios en España (anomalías térmicas NASA FIRMS, viento y
+temperatura NOAA GFS, imágenes satelitales NASA GIBS y un escenario visual de avance orientado
+por el viento). Servidor Python stdlib + frontend estático (Leaflet local, sin build). Lee
+primero `README.md` y `docs/IMPLEMENTACION.md`.
 
-- `sos/` — todo lo que vive en HappyRobot, como código: cliente API (`happyrobot/`), esquema Twin y
-  seed (`twin/`), los 9 workflows + DSL + deployer (`workflows/`), motor de riesgo (`risk/`),
-  intérprete local de los workflows (`runtime/`), fuentes (`sources/`), simulador (`simulation/`).
-  `python -m sos deploy` crea/actualiza/publica los workflows por API.
-- `web/` — dashboard operativo (stdlib + Leaflet/LiveKit por CDN). `main_simulation.py` — demo.
-- `config/` — pesos/umbrales y escenario demo. `tests/` — pytest. `deploy-state.json` — ids desplegados.
-- `.local/` — Postgres embebido (mientras Twin no está provisionado). **Regla del usuario: no
-  instalar nada fuera de esta carpeta** (venv + `.local`).
-- `voice/`, `main.py` — legado (web de voz simple, mapa FIRMS en terminal).
+> **Reorganización (2026-09-19):** se sustituyó la implementación anterior (S.O.S. Agentic Crisis
+> Engine sobre HappyRobot) por este proyecto (FlareAI) a petición del usuario. Todo el código e
+> implementación anterior (sos/, web/, config/, tests/, voice/, main.py, main_simulation.py,
+> requirements.txt, deploy-state.json, .env, .local/, .venv/) se apartó a `versión-anterior/` —
+> no se toca por ahora. Ese Vault (`HappyRobot-Vault/`) sigue documentando esa implementación
+> anterior sobre HappyRobot.
+
+- `app.py` — servidor HTTP (stdlib) y caché compartida entre visitantes; sirve la API y los
+  estáticos.
+- `gfs.py` — descarga parcial GRIB2 de NOAA GFS, validación con eccodes e interpolación de
+  viento/temperatura.
+- `detectar.py` — descarga y filtro geográfico/temporal de CSV globales NASA FIRMS (VIIRS).
+- `incidents.py` — agrupación de focos, asignación de provincia, huellas y métricas derivadas.
+- `satellite.py` — imágenes NASA GIBS (natural/SWIR) con caché en disco y control de cobertura.
+- `static/` — frontend: `index.html`, `app.js`, `flow.js` (geometría/partículas/índice
+  geográfico), `flames.js` (renderizador Canvas 2D de llamas/corrientes), `simulation.js`,
+  `wind.js`, `styles.css`, GeoJSON de España/provincias, Leaflet vendorizado.
+- `data/` — caché activa de descargas (FIRMS, GFS, satélite) y evidencias originales.
+- `examples/` — muestra congelada para reproducir pruebas sin red.
+- `docs/IMPLEMENTACION.md` — arquitectura, fórmulas, APIs y fuentes en detalle.
+- `test_integration.py`, `test_flow.mjs`, `test_renderer.mjs`, `test_simulation.mjs`,
+  `verify_api.py` — pruebas Python/JS existentes.
+- `versión-anterior/` — implementación previa completa (S.O.S. Agentic Crisis Engine sobre
+  HappyRobot: `sos/`, `web/`, `voice/`, `config/`, `tests/`, etc.), apartada por ahora.
 - `HappyRobot-Vault/` — vault de **Obsidian** con la documentación de cómo funciona HappyRobot
-  y de todo lo construido (formatos de nodos por API, problemas resueltos, IDs, bitácora).
+  y de todo lo construido en esa implementación anterior (formatos de nodos por API, problemas
+  resueltos, IDs, bitácora). Se mantiene aunque HappyRobot ya no sea el proyecto activo.
 - `.claude/skills/obsidian-docs/` — skill de Claude Code equivalente a la sección siguiente.
 
-Secretos: solo en `.env` (`HAPPYROBOT_API_KEY`) o como variables de workflow; nunca en el repo/vault.
+Sin claves ni secretos: FlareAI no requiere API key para NASA/NOAA. Si en el futuro hiciera
+falta alguna, solo en `.env` (nunca en el repo/vault). Los secretos de la implementación
+anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
 ## Documentar en el vault de Obsidian (`HappyRobot-Vault/`)
 

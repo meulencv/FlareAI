@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#fafbfc" />
+    <title>FlareAI — España, bajo observación</title>
+    <link rel="stylesheet" href="/vendor/leaflet.css" />
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/vendor/leaflet.js" defer></script>
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <svg class="symbols" aria-hidden="true">
+      <defs>
+        <symbol id="i-wind" viewBox="0 0 24 24">
+          <path
+            d="M3 8h12a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h6a3 3 0 1 1-3 3"
+          />
+        </symbol>
+        <symbol id="i-arrow" viewBox="0 0 24 24">
+          <path d="M12 20V4m-6 6 6-6 6 6" />
+        </symbol>
+        <symbol id="i-search" viewBox="0 0 24 24">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 4 4" />
+        </symbol>
+        <symbol id="i-plus" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14" />
+        </symbol>
+        <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14" /></symbol>
+        <symbol id="i-locate" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="6" />
+          <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+        </symbol>
+        <symbol id="i-close" viewBox="0 0 24 24">
+          <path d="m6 6 12 12M6 18 18 6" />
+        </symbol>
+        <symbol id="i-download" viewBox="0 0 24 24">
+          <path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4" />
+        </symbol>
+        <symbol id="i-temp" viewBox="0 0 24 24">
+          <path d="M9 14V5a3 3 0 0 1 6 0v9a5 5 0 1 1-6 0Z" />
+          <path d="M12 8v10" />
+        </symbol>
+        <symbol id="i-expand" viewBox="0 0 24 24">
+          <path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5" />
+        </symbol>
+        <symbol id="i-play" viewBox="0 0 24 24">
+          <path d="m8 5 11 7-11 7Z" />
+        </symbol>
+      </defs>
+    </svg>
+    <header class="header">
+      <a class="brand" href="/" aria-label="FlareAI, inicio"
+        ><span class="brand-mark"
+          ><svg viewBox="0 0 24 28">
+            <path
+              d="M13 1c2 8-5 8-3 13 3-1 4-3 5-6 7 7 10 16-1 19C-2 28-2 16 4 9c0 5 2 6 3 6C6 8 12 6 13 1Z"
+            /></svg></span
+        >flareai<span class="brand-separator">/</span
+        ><span class="brand-country">España</span></a
+      >
+      <nav class="header-nav">
+        <span class="nav-active">Observatorio</span
+        ><button id="about-button">Cómo leer el mapa <span>↗</span></button>
+      </nav>
+      <div class="header-actions">
+        <span class="feed-state" id="feed-state"><i></i>Conectando fuentes</span
+        ><a class="export-button" href="/api/data?download=1"
+          ><svg><use href="#i-download" /></svg><span>Exportar datos</span></a
+        >
+      </div>
+    </header>
+    <main class="workspace">
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-heading">
+          <p class="eyebrow">INTELIGENCIA TERRITORIAL</p>
+          <h1>Todo empieza<br />por observar.</h1>
+          <p class="intro">
+            Actividad térmica y atmósfera,<br />en un mismo lugar.
+          </p>
+        </div>
+        <div class="summary">
+          <div>
+            <strong id="zone-count">—</strong><span>zonas detectadas</span>
+          </div>
+          <div><strong id="obs-count">—</strong><span>observaciones</span></div>
+        </div>
+        <label class="search"
+          ><svg><use href="#i-search" /></svg
+          ><input
+            id="search"
+            placeholder="Buscar provincia o zona"
+            aria-label="Buscar provincia o zona"
+            type="search"
+        /></label>
+        <div class="list-tabs">
+          <button class="active" data-filter="all">
+            Todas <span id="tab-count">—</span></button
+          ><button data-filter="documented">Contrastadas</button>
+        </div>
+        <div class="list-caption">
+          <span>SEÑALES · ÚLTIMAS 24 H</span><span id="list-count"></span>
+        </div>
+        <div
+          id="incident-list"
+          class="incident-list"
+          aria-label="Zonas con detecciones térmicas"
+        >
+          <p class="empty">Conectando con el observatorio…</p>
+        </div>
+        <div class="sidebar-bottom">
+          <span class="sat-dot"></span>
+          <div>
+            <strong>Desde la órbita, con contexto.</strong>
+            <p>NASA VIIRS + NOAA GFS</p>
+          </div>
+          <button id="sources-button" aria-label="Ver fuentes y metodología">
+            ⓘ
+          </button>
+        </div>
+      </aside>
+      <section
+        class="map-section"
+        aria-label="Mapa de actividad térmica en España"
+      >
+        <div id="map"></div>
+        <canvas class="flow-canvas" id="flow" aria-hidden="true"></canvas>
+        <div class="map-toolbar">
+          <button class="mobile-list" id="show-list">Zonas</button>
+          <div class="regions">
+            <button class="active" data-region="peninsula">Península</button
+            ><button data-region="baleares">Baleares</button
+            ><button data-region="canarias">Canarias</button
+            ><button data-region="ceuta">Ceuta / Melilla</button>
+          </div>
+        </div>
+        <div class="map-label">
+          <span class="eyebrow">PANORAMA NACIONAL</span>
+          <h2>España, bajo observación.</h2>
+          <p id="map-date">Cargando datos de satélite</p>
+        </div>
+        <div class="map-tools">
+          <button id="zoom-in" aria-label="Acercar mapa">
+            <svg><use href="#i-plus" /></svg></button
+          ><button id="zoom-out" aria-label="Alejar mapa">
+            <svg><use href="#i-minus" /></svg></button
+          ><span></span
+          ><button id="reset-map" aria-label="Restablecer vista de España">
+            <svg><use href="#i-locate" /></svg></button
+          ><button
+            id="motion-toggle"
+            aria-label="Pausar animaciones"
+            title="Pausar o reanudar animaciones"
+            aria-pressed="false"
+          >
+            <span class="pause-icon">Ⅱ</span>
+          </button>
+        </div>
+        <div class="map-toast" id="map-toast" role="status" hidden></div>
+        <div class="map-bottom">
+          <div class="map-legend">
+            <span><i class="legend-heat"></i>Huella térmica</span
+            ><span><i class="legend-flow"></i>Viento animado</span
+            ><small
+              >Llamas y chispas ilustrativas · detalle ampliado al alejar</small
+            >
+          </div>
+          <div class="map-toggles">
+            <button class="wind-toggle" id="scenario-shortcut" disabled>
+              <svg><use href="#i-play" /></svg>Escenario</button
+            ><button
+              class="wind-toggle active"
+              id="wind-toggle"
+              aria-pressed="true"
+            >
+              <svg><use href="#i-wind" /></svg>Viento <span></span>
+            </button>
+          </div>
+        </div>
+        <div class="simulation-card" id="simulation-card" hidden>
+          <div class="simulation-top">
+            <div>
+              <span class="eyebrow">ESCENARIO ILUSTRATIVO</span
+              ><strong>Una dirección. No una predicción.</strong>
+            </div>
+            <button
+              class="icon-button"
+              id="close-simulation"
+              aria-label="Cerrar simulación"
+            >
+              <svg><use href="#i-close" /></svg>
+            </button>
+          </div>
+          <div class="timeline">
+            <button class="play" id="play" aria-label="Reproducir escenario">
+              <svg><use href="#i-play" /></svg></button
+            ><input
+              id="horizon"
+              aria-label="Horas del escenario"
+              type="range"
+              min="0"
+              max="6"
+              value="0"
+              step=".1"
+            /><strong id="horizon-value">Ahora</strong>
+          </div>
+          <div class="simulation-settings">
+            <label
+              >Avance supuesto
+              <select id="spread-rate">
+                <option value=".1">0,1 km/h</option>
+                <option value=".3" selected>0,3 km/h</option>
+                <option value=".6">0,6 km/h</option>
+                <option value="1">1 km/h</option>
+              </select></label
+            ><span id="scenario-direction">Orientación según GFS</span>
+          </div>
+          <p>
+            No modela combustible, relieve ni extinción. El contorno proyectado
+            no es superficie quemada.
+          </p>
+        </div>
+      </section>
+      <aside
+        class="details"
+        id="details"
+        aria-label="Detalle de zona seleccionada"
+      >
+        <div class="detail-heading">
+          <div>
+            <span class="eyebrow">ZONA SELECCIONADA</span>
+            <h2 id="detail-name">Selecciona una zona</h2>
+            <p id="detail-location">Explora el mapa de España</p>
+          </div>
+          <button
+            class="icon-button"
+            id="close-details"
+            aria-label="Cerrar detalle"
+          >
+            <svg><use href="#i-close" /></svg>
+          </button>
+        </div>
+        <div id="detail-content" hidden>
+          <div class="detection-status">
+            <span class="status-tag" id="detection-tag">Señal térmica</span
+            ><span id="seen-age"></span>
+          </div>
+          <section class="satellite-section">
+            <div class="section-heading">
+              <h3>Una mirada desde arriba</h3>
+              <span>VIIRS / NASA</span>
+            </div>
+            <div class="image-tabs">
+              <button class="active" data-image="natural">Color natural</button
+              ><button data-image="swir">Infrarrojo SWIR</button>
+            </div>
+            <button
+              class="satellite-image"
+              id="enlarge-image"
+              aria-label="Ampliar imagen satelital"
+              disabled
+            >
+              <img id="sat-image" alt="" hidden /><svg
+                id="image-detections"
+                viewBox="0 0 900 600"
+                aria-hidden="true"
+              ></svg
+              ><span class="image-message" id="image-message"
+                >Buscando el mosaico más reciente…</span
+              ><span class="image-badge">NASA GIBS</span
+              ><span class="image-expand"
+                ><svg><use href="#i-expand" /></svg
+              ></span>
+            </button>
+            <div class="image-caption">
+              <span id="image-date">Comprobando cobertura…</span
+              ><a id="image-source" target="_blank" rel="noopener" hidden
+                >Fuente ↗</a
+              >
+            </div>
+            <p class="tiny">
+              Mosaico diario, no vídeo en directo. Círculos: detecciones del
+              periodo.
+            </p>
+          </section>
+          <section class="area-section">
+            <div class="section-heading"><h3>La superficie, con rigor</h3></div>
+            <div class="area-metrics">
+              <div>
+                <span>Área quemada confirmada</span
+                ><strong>— <small>ha</small></strong>
+                <p>Sin perímetro oficial disponible</p>
+              </div>
+              <div>
+                <span>Huella térmica aprox.</span
+                ><strong><b id="footprint-area">—</b> <small>ha</small></strong>
+                <p>Área de píxeles, no área quemada</p>
+              </div>
+            </div>
+          </section>
+          <section class="weather-section">
+            <div class="section-heading">
+              <h3>La atmósfera alrededor</h3>
+              <span id="weather-time">GFS</span>
+            </div>
+            <div class="weather-grid">
+              <div class="weather-card">
+                <svg class="metric-icon"><use href="#i-wind" /></svg
+                ><span>Viento a 10 m</span
+                ><strong><b id="wind-speed">—</b><small> km/h</small></strong>
+                <div class="wind-detail">
+                  <svg id="direction-arrow"><use href="#i-arrow" /></svg
+                  ><span id="wind-direction"></span>
+                </div>
+              </div>
+              <div class="weather-card">
+                <svg class="metric-icon"><use href="#i-temp" /></svg
+                ><span>Ambiente a 2 m</span
+                ><strong><b id="temperature">—</b><small> °C</small></strong>
+                <div>Temperatura modelizada</div>
+              </div>
+            </div>
+            <p class="weather-note" id="weather-note"></p>
+          </section>
+          <section class="thermal-section">
+            <div>
+              <span class="thermal-dot"></span
+              ><span>Lectura térmica del satélite</span>
+            </div>
+            <strong><b id="brightness">—</b><small> °C eq.</small></strong>
+            <p id="brightness-note"></p>
+            <p class="tiny">
+              Temperatura de brillo I4 del píxel; no es la temperatura de las
+              llamas. Puede saturarse.
+            </p>
+          </section>
+          <div class="detail-stats">
+            <div>
+              <span>Detecciones</span><strong id="detection-count">—</strong>
+            </div>
+            <div><span>Pasadas</span><strong id="passes">—</strong></div>
+            <div>
+              <span>FRP pico / píxel</span
+              ><strong><b id="frp">—</b> <small>MW</small></strong>
+            </div>
+          </div>
+          <button class="simulate-button" id="simulate">
+            <svg><use href="#i-play" /></svg>Explorar escenario con viento<span
+              >↗</span
+            >
+          </button>
+          <button class="focus-button" id="focus-fire">
+            <svg><use href="#i-locate" /></svg>Acercar a la huella detectada
+          </button>
+          <p class="detail-caveat" id="detail-caveat"></p>
+          <a
+            class="news-link"
+            id="news-link"
+            target="_blank"
+            rel="noopener"
+            hidden
+            >Ver noticia del caso contrastado ↗</a
+          >
+        </div>
+      </aside>
+    </main>
+    <footer class="footer">
+      <span id="last-check">Preparando fuentes públicas</span
+      ><span
+        >NASA FIRMS · NASA GIBS · NOAA GFS <i> / </i> geoBoundaries · Natural
+        Earth · Leaflet</span
+      ><button id="footer-about">Datos y metodología ↗</button>
+    </footer>
+    <dialog id="about-dialog">
+      <button
+        class="dialog-close icon-button"
+        data-close="about-dialog"
+        aria-label="Cerrar metodología"
+      >
+        <svg><use href="#i-close" /></svg></button
+      ><span class="eyebrow">OBSERVAR CON RESPONSABILIDAD</span>
+      <h2>Lo que ves.<br />Lo que sabemos.</h2>
+      <p>
+        FlareAI reúne datos reales de satélite y de atmósfera. Las zonas rojas
+        agrupan anomalías térmicas a menos de 3 km; pueden incluir industrias,
+        quemas agrícolas o incendios. No constituyen un inventario completo de
+        incendios activos.
+      </p>
+      <h3>Una huella no es un perímetro.</h3>
+      <p>
+        La superficie roja aproxima la unión de píxeles VIIRS, usando su tamaño
+        y sin conocer su orientación exacta. No confirma terreno quemado. Cuando
+        no hay un perímetro oficial, mostramos «—».
+      </p>
+      <h3>Hay un reloj para cada fuente.</h3>
+      <p>
+        FIRMS se comprueba cada 30 minutos; sus observaciones dependen de las
+        pasadas y pueden llegar con varias horas de retraso. GIBS es un mosaico
+        diario. GFS tiene pasos horarios y ciclos cada 6 horas; comprobamos el
+        modelo cada 10 minutos. Las fechas se muestran en UTC.
+      </p>
+      <h3>Temperatura y simulación.</h3>
+      <p>
+        La temperatura ambiente proviene de GFS a 2 m. VIIRS I4 mide brillo
+        térmico de un píxel mixto, no la llama. El escenario utiliza una
+        velocidad de avance elegida por ti y la dirección del viento; es una
+        ilustración geométrica, no una previsión de propagación.
+      </p>
+      <p class="source-links">
+        <a
+          href="https://firms.modaps.eosdis.nasa.gov/"
+          target="_blank"
+          rel="noopener"
+          >NASA FIRMS ↗</a
+        ><a
+          href="https://nasa-gibs.github.io/gibs-api-docs/"
+          target="_blank"
+          rel="noopener"
+          >NASA GIBS ↗</a
+        ><a
+          href="https://registry.opendata.aws/noaa-gfs-bdp-pds/"
+          target="_blank"
+          rel="noopener"
+          >NOAA GFS ↗</a
+        ><a href="https://www.geoboundaries.org/" target="_blank" rel="noopener"
+          >Cartografía ↗</a
+        >
+      </p>
+    </dialog>
+    <dialog id="image-dialog">
+      <button
+        class="dialog-close icon-button"
+        data-close="image-dialog"
+        aria-label="Cerrar imagen"
+      >
+        <svg><use href="#i-close" /></svg>
+      </button>
+      <div class="large-image-wrap">
+        <img
+          id="large-image"
+          alt="Imagen satelital NASA de la zona seleccionada"
+        /><svg
+          id="large-detections"
+          viewBox="0 0 900 600"
+          aria-hidden="true"
+        ></svg>
+      </div>
+      <h3 id="large-caption"></h3>
+      <p>
+        Imagen NASA GIBS. Los círculos rojos ubican las detecciones VIIRS del
+        periodo consultado.
+      </p>
+    </dialog>
+    <div class="error-banner" id="error-banner" role="status" hidden></div>
+  </body>
+</html>

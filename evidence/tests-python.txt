@@ -1,0 +1,28 @@
+test_actual_temperature_grib_metadata (test_integration.IntegrationTests) ... ok
+test_all_regions_have_finite_reasonable_temperature (test_integration.IntegrationTests) ... ok
+test_black_opaque_or_transparent_images_are_not_photos (test_integration.IntegrationTests) ... ok
+test_brightness_is_distinct_from_air_temperature (test_integration.IntegrationTests) ... ok
+test_clustering_is_connected_and_order_independent (test_integration.IntegrationTests) ... ok
+test_duplicate_passes_do_not_double_footprint (test_integration.IntegrationTests) ... ok
+test_empty_recent_window_is_not_an_old_fire (test_integration.IntegrationTests) ... ok
+test_every_observation_is_accounted_for (test_integration.IntegrationTests) ... ok
+test_offline_http_and_both_archived_images (test_integration.IntegrationTests) ... 127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/data HTTP/1.1" 200 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/incidents.csv HTTP/1.1" 200 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/satellite?id=cc1495c06662&mode=natural HTTP/1.1" 200 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /satellite/5c6f17f9e607015317783f3e.png HTTP/1.1" 200 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/satellite?id=cc1495c06662&mode=swir HTTP/1.1" 200 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /satellite/2e798faec97e6b59b5966ad7.png HTTP/1.1" 200 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/satellite HTTP/1.1" 400 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/satellite?id=unknown HTTP/1.1" 400 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /api/satellite?id=cc1495c06662&mode=invalid HTTP/1.1" 400 -
+127.0.0.1 - - [19/Sep/2026 06:37:44] code 404, message Not Found
+127.0.0.1 - - [19/Sep/2026 06:37:44] "GET /requirements.txt HTTP/1.1" 404 -
+ok
+test_offline_sample_is_dated_not_discarded (test_integration.IntegrationTests) ... ok
+test_temperature_units_and_wind_direction (test_integration.IntegrationTests) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 1.076s
+
+OK
+API verificada: 44 zonas, ambas imágenes, CSV y cuatro rutas inválidas. /home/ubuntu/brasa/evidence/api_offline.json

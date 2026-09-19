@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S.O.S. Crisis Engine</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root { --bg:#0b1220; --panel:#111a2b; --line:#22304a; --text:#e6edf7; --muted:#8fa0bd; --accent:#ff7a1a; --ok:#2ecc71; --warn:#f1c40f; --bad:#e74c3c; --blue:#4da3ff; }
+  * { box-sizing:border-box } body { margin:0; background:var(--bg); color:var(--text); font:14px/1.4 -apple-system,Segoe UI,Roboto,sans-serif; }
+  header { display:flex; align-items:center; gap:16px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); position:sticky; top:0; z-index:10 }
+  header h1 { font-size:16px; margin:0; letter-spacing:.5px } header h1 span { color:var(--accent) }
+  .pill { font-size:11px; padding:2px 8px; border-radius:999px; border:1px solid var(--line); color:var(--muted) }
+  .pill.cloud { border-color:var(--ok); color:var(--ok) } .pill.local { border-color:var(--warn); color:var(--warn) }
+  main { display:grid; grid-template-columns: 1.25fr 1fr; grid-template-rows: auto auto; gap:12px; padding:12px; }
+  @media (max-width:1000px){ main { grid-template-columns:1fr } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:12px; min-width:0 }
+  section h2 { margin:0 0 8px; font-size:13px; text-transform:uppercase; letter-spacing:1px; color:var(--muted); display:flex; justify-content:space-between; align-items:center }
+  #map { height:420px; border-radius:8px; background:#0a0f1a }
+  .row { display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+  button { background:#1a2740; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:6px 10px; cursor:pointer; font-size:13px }
+  button:hover { border-color:var(--blue) } button.primary { background:var(--accent); border-color:var(--accent); color:#111 } button.ok { background:#173d2b; border-color:var(--ok) }
+  button.bad { background:#3d1717; border-color:var(--bad) } button:disabled { opacity:.5; cursor:default }
+  .card { border:1px solid var(--line); border-radius:8px; padding:8px 10px; margin:6px 0; background:#0e1626 }
+  .card .t { display:flex; justify-content:space-between; gap:8px; align-items:baseline } .muted { color:var(--muted); font-size:12px }
+  .tag { font-size:11px; padding:1px 6px; border-radius:6px; background:#1a2740; color:var(--muted); margin-left:4px }
+  .tag.proposed{color:var(--warn)} .tag.ready{color:var(--blue)} .tag.executing{color:var(--accent)} .tag.done{color:var(--ok)} .tag.rejected,.tag.failed{color:var(--bad)}
+  .tag.verified,.tag.active{color:var(--bad)} .tag.candidate{color:var(--warn)} .tag.dismissed{color:var(--muted)}
+  .prio { font-weight:700 } .prio.p4{color:var(--bad)} .prio.p3{color:var(--accent)} .prio.p2{color:var(--warn)} .prio.p1{color:var(--muted)}
+  #log { height:220px; overflow:auto; font-family:ui-monospace,Menlo,monospace; font-size:12px; background:#0a0f1a; border-radius:8px; padding:8px }
+  #log div { padding:1px 0; border-bottom:1px dashed #16213a } #log .human{color:var(--blue)} #log .sim{color:var(--warn)} #log .call{color:var(--accent)} #log .run{color:var(--muted)}
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:8px } .kpi { background:#0e1626; border:1px solid var(--line); border-radius:8px; padding:8px } .kpi b { font-size:20px; display:block }
+  .callbox { border:1px solid var(--accent); border-radius:8px; padding:10px; margin-top:8px; background:#1a1208; display:none }
+  details summary { cursor:pointer; color:var(--muted); font-size:12px }
+  .cfg input { width:70px; background:#0a0f1a; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:3px 6px }
+</style>
+</head>
+<body>
+<header>
+  <h1>S.O.S. <span>Agentic Crisis Engine</span></h1>
+  <span id="mode" class="pill">…</span>
+  <span class="pill" id="clock"></span>
+  <span style="flex:1"></span>
+  <div class="row">
+    <button onclick="sim('citizen_call')">📞 Simular aviso 112</button>
+    <button onclick="sim('satellite')">🛰️ Satélite + viento O</button>
+    <button onclick="sim('wind_shift')">🌬️ Giro de viento 180°</button>
+    <button onclick="sim('weather_real')" title="Open-Meteo real en el incidente">🌦️ Meteo real</button>
+    <button class="bad" onclick="if(confirm('¿Reiniciar la simulación?')) sim('reset')">↺ Reset</button>
+  </div>
+</header>
+<main>
+  <section>
+    <h2>Mapa operativo <span class="muted" id="legend">● incidente · ▲ activos · ■ medios · cono = trayectoria del fuego (3 h)</span></h2>
+    <div id="map"></div>
+    <div class="kpis" style="margin-top:8px">
+      <div class="kpi"><span class="muted">Incidentes abiertos</span><b id="k_inc">0</b></div>
+      <div class="kpi"><span class="muted">Población en riesgo</span><b id="k_pop">0</b></div>
+      <div class="kpi"><span class="muted">Acciones pendientes</span><b id="k_pend">0</b></div>
+      <div class="kpi"><span class="muted">Llamadas listas / en curso</span><b id="k_calls">0</b></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Incidentes <span class="muted">evaluados por el Analista IA</span></h2>
+    <div id="incidents"></div>
+    <h2 style="margin-top:12px">Sala de llamadas <span class="muted">web call · el operador puede escuchar/tomar el control</span></h2>
+    <div class="row"><button class="primary" onclick="call112()">🎙️ Llamar al 112 virtual (ciudadano)</button><span class="muted" id="voicehint"></span></div>
+    <div id="calls"></div>
+    <div class="callbox" id="callbox">
+      <div class="t"><b id="callTitle">Llamada</b><button class="bad" onclick="hangup()">⏹️ Colgar</button></div>
+      <div class="muted" id="callStatus">conectando…</div>
+      <div id="callResult" style="display:none;margin-top:6px" class="row">
+        <span class="muted">Resultado:</span>
+        <button class="ok" onclick="finish('accepted')">Acepta evacuar</button>
+        <button onclick="finish('needs_help')">Necesita ayuda</button>
+        <button class="bad" onclick="finish('refused')">Se niega</button>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Acciones propuestas <span class="muted">Human-in-the-loop · 1 clic</span></h2>
+    <div id="actions"></div>
+  </section>
+
+  <section>
+    <h2>Actividad <span class="muted">runs y decisiones</span></h2>
+    <div id="log"></div>
+    <details style="margin-top:8px"><summary>Configuración en caliente (pesos y umbrales)</summary><div id="cfg" class="cfg row" style="margin-top:6px"></div></details>
+    <details style="margin-top:8px"><summary>Evidencias recientes</summary><div id="evidence"></div></details>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+const api = async (path, body) => { const r = await fetch(path, body ? {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)} : {}); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j; };
+let STATE = null, room = null, currentCall = null;
+
+// ---- mapa --------------------------------------------------------------------------------------
+const map = L.map('map', {zoomControl:true}).setView([39.69, -0.40], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {attribution:'© OpenStreetMap © CARTO', maxZoom:18}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+const KIND_ICON = {town:'🏘️', hospital:'🏥', school:'🏫', plant:'🏭', port:'⚓', forest_reserve:'🌲', brigade:'🚒', hydroplane:'✈️', foam_unit:'🧯', drone:'🛸', police:'🚓'};
+function emoji(e, size=18, cls='') { return L.divIcon({html:`<div style="font-size:${size}px;line-height:1;filter:drop-shadow(0 0 3px #000)" class="${cls}">${e}</div>`, className:'', iconSize:[size,size], iconAnchor:[size/2,size/2]}); }
+function destPoint(lat, lon, bearingDeg, km) { const R=6371, br=bearingDeg*Math.PI/180, la1=lat*Math.PI/180, lo1=lon*Math.PI/180, d=km/R;
+  const la2=Math.asin(Math.sin(la1)*Math.cos(d)+Math.cos(la1)*Math.sin(d)*Math.cos(br)); const lo2=lo1+Math.atan2(Math.sin(br)*Math.sin(d)*Math.cos(la1), Math.cos(d)-Math.sin(la1)*Math.sin(la2)); return [la2*180/Math.PI, lo2*180/Math.PI]; }
+function drawMap(s) {
+  layer.clearLayers();
+  const half = (s.config.risk && s.config.risk.cone_half_angle_deg) || 30;
+  for (const a of s.assets) L.marker([a.lat, a.lon], {icon: emoji(KIND_ICON[a.kind]||'📍', 16)}).bindTooltip(`${a.name} · ${a.kind}${a.population?' · '+a.population+' hab.':''}`).addTo(layer);
+  for (const r of s.resources) { const busy = r.status !== 'available'; L.marker([r.lat, r.lon], {icon: emoji(KIND_ICON[r.kind]||'🚒', 16, busy?'busy':'')}).bindTooltip(`${r.name} · ${r.status}`).addTo(layer); }
+  for (const e of s.evidence.slice(0, 30)) if (e.lat && e.lon) L.circleMarker([e.lat, e.lon], {radius:4, color: e.source_type==='firms'?'#f1c40f':'#4da3ff', fillOpacity:.8}).bindTooltip(`${e.source_type}: ${e.source_ref}`).addTo(layer);
+  for (const i of s.incidents) {
+    if (['closed','dismissed'].includes(i.status)) continue;
+    const col = i.priority>=4?'#e74c3c':i.priority===3?'#ff7a1a':i.priority===2?'#f1c40f':'#8fa0bd';
+    L.circle([i.lat, i.lon], {radius: 900, color: col, weight:2, fillOpacity:.15}).addTo(layer);
+    L.marker([i.lat, i.lon], {icon: emoji('🔥', 26)}).bindPopup(`<b>${i.type}</b> · ${i.status}<br>${i.summary||''}`).addTo(layer);
+    const risk = (i.ai_assessment && i.ai_assessment.risk) || {};
+    const w = i.weather; if (w && w.wind_dir_deg != null) {
+      const heading = (Number(w.wind_dir_deg)+180)%360, reach = risk.reach_km || Math.max(1.5, (Number(w.wind_speed_kmh)||0)*0.12*3);
+      const pts = [[i.lat, i.lon]]; for (let b=heading-half; b<=heading+half; b+=5) pts.push(destPoint(i.lat, i.lon, b, reach)); pts.push([i.lat, i.lon]);
+      L.polygon(pts, {color: col, weight:1, fillOpacity:.18, dashArray:'4 4'}).bindTooltip(`Trayectoria estimada: rumbo ${heading.toFixed(0)}°, ${reach.toFixed(1)} km en 3 h (viento ${w.wind_speed_kmh} km/h de ${w.wind_dir_deg}°)`).addTo(layer);
+      const tip = destPoint(i.lat, i.lon, heading, reach*0.6); L.marker(tip, {icon: emoji('➤', 18)}).setRotationAngle && 0;
+    }
+  }
+}
+
+// ---- paneles -----------------------------------------------------------------------------------
+function fmtTime(t) { return t ? t.replace('T',' ').slice(11,19) : ''; }
+function render(s) {
+  STATE = s;
+  $('mode').textContent = s.mode === 'cloud' ? 'HappyRobot · Twin' : 'local · Postgres embebido'; $('mode').className = 'pill ' + s.mode;
+  $('voicehint').textContent = s.voice_fallback ? '(sin Twin: la voz usa el agente Flare básico)' : '';
+  const open = s.incidents.filter(i => !['closed','dismissed'].includes(i.status));
+  $('k_inc').textContent = open.length;
+  $('k_pop').textContent = open.reduce((n,i)=> n + (((i.ai_assessment||{}).risk||{}).population_at_risk||0), 0).toLocaleString('es');
+  $('k_pend').textContent = s.actions.filter(a => a.status==='proposed').length;
+  $('k_calls').textContent = s.actions.filter(a => ['ready','executing'].includes(a.status) && a.kind.endsWith('_call')).length;
+  $('incidents').innerHTML = open.map(i => { const r=(i.ai_assessment||{}).risk||{}; const w=i.weather||{};
+    return `<div class="card"><div class="t"><b>🔥 ${i.type} <span class="tag ${i.status}">${i.status}</span></b><span class="prio p${i.priority}">P${i.priority} · riesgo ${Math.round(i.risk_score||0)}</span></div>
+    <div>${i.summary||'<span class=muted>sin evaluar</span>'}</div>
+    <div class="muted">confianza ${i.confidence??'-'} · ${i.evidence_count} evidencias · viento ${w.wind_speed_kmh??'?'} km/h de ${w.wind_dir_deg??'?'}° · población en riesgo ${(r.population_at_risk||0).toLocaleString('es')}</div>
+    ${i.plan?`<details><summary>Plan vigente (${fmtTime(i.plan.created_at)})</summary><div class="muted">${i.plan.summary}<br>Prioridades: ${(i.plan.priorities||[]).join(' › ')}<br>Medios: ${(i.plan.resource_plan||[]).join('; ')}<br>Aviso: ${(i.plan.notification_order||[]).join(' › ')}</div></details>`:''}
+    ${i.ai_assessment&&i.ai_assessment.rationale?`<div class="muted">🧠 ${i.ai_assessment.rationale}</div>`:''}</div>`; }).join('') || '<div class="muted">Sin incidentes. Pulsa «Simular aviso 112» o llama al 112 virtual.</div>';
+  const who = a => a.contact_name || a.resource_name || (a.payload&&(a.payload.contact_name||a.payload.resource_name)) || '';
+  const pend = s.actions.filter(a => a.status==='proposed');
+  $('actions').innerHTML = pend.map(a => `<div class="card"><div class="t"><b>${ICON[a.kind]||'•'} ${LABEL[a.kind]||a.kind} <span class="muted">→ ${who(a)}</span></b><span class="prio p${5-Math.min(4,a.priority)}">p${a.priority}</span></div>
+    <div class="muted">${a.rationale||''}</div>${a.payload&&a.payload.instructions?`<div>${a.payload.instructions}</div>`:''}
+    <div class="row" style="margin-top:6px"><button class="ok" onclick="decide('${a.id}','approve')">✔ Aprobar</button><button class="bad" onclick="decide('${a.id}','reject')">✖ Rechazar</button></div></div>`).join('')
+    + `<details style="margin-top:6px"><summary>Historial (${s.actions.length - pend.length})</summary>` + s.actions.filter(a=>a.status!=='proposed').map(a => `<div class="card"><div class="t"><span>${ICON[a.kind]||'•'} ${LABEL[a.kind]||a.kind} → ${who(a)} <span class="tag ${a.status}">${a.status}</span></span><span class="muted">${fmtTime(a.updated_at)}</span></div>${a.result?`<div class="muted">☎ ${a.result.outcome||''} — ${a.result.notes||''} ${a.result.new_info?'<br>➕ '+a.result.new_info:''}</div>`:''}</div>`).join('') + '</details>';
+  const calls = s.actions.filter(a => ['ready','executing'].includes(a.status) && a.kind.endsWith('_call'));
+  $('calls').innerHTML = calls.map(a => `<div class="card"><div class="t"><b>${ICON[a.kind]} ${who(a)} <span class="tag ${a.status}">${a.status}</span></b><span class="muted">${a.contact_role||''}</span></div>
+    <div class="muted">${a.payload&&a.payload.instructions||''}</div>
+    <div class="row" style="margin-top:6px">${a.status==='ready'?`<button class="primary" onclick="pickUp('${a.id}')">📞 Descolgar (simular al ${a.contact_role==='citizen'?'ciudadano':'mando'})</button>`:''}
+    ${a.status==='executing'&&a.session_id?`<button onclick="listen('${a.session_id}',false)">👂 Escuchar</button><button onclick="listen('${a.session_id}',true)">🎤 Tomar el control</button>`:''}
+    ${a.run_id&&s.mode==='cloud'?`<a class="muted" target="_blank" href="https://platform.eu.happyrobot.ai/hackspainteam3/workflows/${(s.workflows.outbound_voice||{}).slug}/runs?run_id=${a.run_id}">run ↗</a>`:''}</div></div>`).join('') || '<div class="muted">No hay llamadas pendientes. Aprueba una acción de llamada para verla aquí.</div>';
+  $('evidence').innerHTML = s.evidence.slice(0,20).map(e => `<div class="muted">${fmtTime(e.observed_at)} [${e.source_type}] ${e.source_ref} (${e.lat},${e.lon}) fiab ${e.reliability}</div>`).join('');
+  if (!$('cfg').children.length) { const r = s.config.risk||{}; const items = [['wind_shift_deg', s.config.wind_shift_deg], ['cluster_radius_km', s.config.cluster_radius_km]];
+    $('cfg').innerHTML = items.map(([k,v]) => `<label>${k} <input value="${v}" onchange="setCfg('${k}', Number(this.value))"></label>`).join('') + `<label>auto-aprobar <input style="width:140px" value="${(s.config.auto_approve_kinds||[]).join(',')}" onchange="setCfg('auto_approve_kinds', this.value.split(',').map(x=>x.trim()).filter(Boolean))"></label>`; }
+  drawMap(s);
+}
+const ICON = {evacuate_call:'🚨', coordination_call:'📻', dispatch:'🚒', notify:'📣'}, LABEL = {evacuate_call:'Llamada de evacuación', coordination_call:'Coordinación con mando', dispatch:'Despacho de medio', notify:'Notificación'};
+async function refresh() { try { render(await api('/api/state')); const log = await api('/api/log'); $('log').innerHTML = log.slice().reverse().map(l => `<div class="${l.kind}">${new Date(l.t*1000).toLocaleTimeString('es')} ${l.msg.replace(/</g,'&lt;')}</div>`).join(''); } catch (e) { console.error(e); } }
+async function decide(id, decision) { await api(`/api/actions/${id}/decide`, {decision, operator:'operador-1'}); refresh(); }
+async function sim(step) { try { await api(`/api/sim/${step}`, {}); } catch (e) { alert(e.message); } refresh(); }
+async function setCfg(key, value) { await api('/api/config', {key, value}); }
+setInterval(refresh, 2500); refresh(); setInterval(()=> $('clock').textContent = new Date().toLocaleTimeString('es'), 1000);
+
+// ---- voz (LiveKit) ------------------------------------------------------------------------------
+async function connect(tok, title) {
+  await hangup();
+  $('callbox').style.display='block'; $('callTitle').textContent = title; $('callStatus').textContent = 'conectando…'; $('callResult').style.display='none';
+  room = new LivekitClient.Room();
+  room.on(LivekitClient.RoomEvent.TrackSubscribed, (track) => { if (track.kind === 'audio') { const el = track.attach(); el.autoplay = true; document.body.appendChild(el); } });
+  room.on(LivekitClient.RoomEvent.Disconnected, () => { $('callStatus').textContent = 'llamada terminada'; if (currentCall && currentCall.fallback) $('callResult').style.display='flex'; });
+  await room.connect(tok.url, tok.token);
+  await room.localParticipant.setMicrophoneEnabled(true);
+  $('callStatus').textContent = 'en llamada · run ' + (tok.run_id||'').slice(0,8) + (tok.fallback ? ' (agente básico: sin Twin)' : '');
+}
+async function hangup() { if (room) { try { await room.disconnect(); } catch(e){} room = null; } }
+async function call112() { try { const tok = await api('/api/voice/token', {mode:'112'}); currentCall = {kind:'112'}; await connect(tok, '📞 112 virtual — usted es el ciudadano'); } catch (e) { alert(e.message); } }
+async function pickUp(actionId) { try { const tok = await api('/api/voice/token', {mode:'outbound', action_id: actionId}); currentCall = {kind:'outbound', action_id: actionId, fallback: !!tok.fallback}; await connect(tok, '📞 Llamada saliente — usted es la persona llamada'); if (tok.fallback) $('callResult').style.display='flex'; } catch (e) { alert(e.message); } }
+async function listen(sessionId, takeover) { try { const tok = await api('/api/voice/token', {mode:'listen', session_id: sessionId, takeover}); currentCall = {kind:'listen'}; await connect(tok, takeover ? '🎤 Has tomado el control de la llamada' : '👂 Escuchando la llamada (oculto)'); } catch (e) { alert(e.message); } }
+async function finish(outcome) { if (currentCall && currentCall.action_id) { await api('/api/voice/finished', {action_id: currentCall.action_id, outcome, notes: 'Resultado marcado por el operador desde el dashboard.'}); } await hangup(); $('callbox').style.display='none'; currentCall = null; refresh(); }
+</script>
+</body>
+</html>

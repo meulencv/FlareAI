@@ -1,0 +1,35 @@
+{
+  "analysis_at_utc": "2026-09-19T06:35:19.174224+00:00",
+  "window_hours": 24,
+  "selected_observations": 135,
+  "boundary_sha256": "27ccbe16a21a63f9e7c380fd5570aed790bd501e431be156c0ca9e062413bc25",
+  "sources": [
+    {
+      "source": "noaa20",
+      "rows_global": 74466,
+      "rows_spain_before_time_filter": 59,
+      "rows_spain_selected": 39,
+      "latest_global_observation_utc": "2026-09-19T03:21:00+00:00",
+      "age_of_latest_global_hours": 3.239,
+      "sha256": "498659856f61218be70a4e4d3a747d711762530783cf321b9309a5ac518f66e0"
+    },
+    {
+      "source": "noaa21",
+      "rows_global": 67017,
+      "rows_spain_before_time_filter": 62,
+      "rows_spain_selected": 50,
+      "latest_global_observation_utc": "2026-09-19T03:28:00+00:00",
+      "age_of_latest_global_hours": 3.122,
+      "sha256": "63ffc9b75ff8ebb1199cfe546573a9320395f5f47b957c18c4b5017c888c6faf"
+    },
+    {
+      "source": "snpp",
+      "rows_global": 71428,
+      "rows_spain_before_time_filter": 58,
+      "rows_spain_selected": 46,
+      "latest_global_observation_utc": "2026-09-19T03:47:00+00:00",
+      "age_of_latest_global_hours": 2.805,
+      "sha256": "225089120ebf7d1957af9e604c1415c146370021def7688536477be2d3c16d6e"
+    }
+  ]
+}

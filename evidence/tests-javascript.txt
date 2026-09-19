@@ -1,0 +1,26 @@
+✔ la partícula viaja hacia donde sopla el viento, no hacia su procedencia (0.849835ms)
+✔ el índice geográfico conserva huecos e islas al otro lado de una celda (1.431464ms)
+✔ el detalle del borde está acotado y los trazos nacen con dirección sin historial de pantalla (0.774345ms)
+✔ sin viento o en calma la partícula solo envejece (0.11883ms)
+✔ la velocidad visual se acota y nunca es negativa (0.100575ms)
+✔ las partículas caducan por edad o al salir de la vista (0.102448ms)
+✔ las semillas solo aparecen donde se aceptan y el presupuesto depende del área (0.214906ms)
+✔ el fuego se dibuja sobre la huella real y se inclina con el viento (0.313913ms)
+✔ el canvas usa DPR acotado y dibuja viento inmediatamente, incluso con movimiento reducido (8.682557ms)
+✔ al arrastrar se reproyectan cabeza y cola juntas, sin estelas en la posición anterior (2.814864ms)
+✔ un salto de zoom mantiene la longitud visual del viento y no espera a moveend (2.182725ms)
+✔ pausa, pestaña oculta, cambio de preferencia y reanudación controlan el bucle (2.891548ms)
+✔ los filtros y el interruptor del viento retiran sus capas (1.101825ms)
+✔ la procedencia y el desplazamiento son opuestos (0.52264ms)
+✔ el escenario avanza al este si el viento viene del oeste (0.286662ms)
+✔ sin horizonte o sin dirección no se inventa una proyección (0.838484ms)
+✔ las detecciones se sitúan en la imagen con el norte arriba (0.57901ms)
+✔ la interpolación de componentes evita saltos 0/360 (0.23695ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 58.869776
