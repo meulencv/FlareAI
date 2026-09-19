@@ -14,6 +14,7 @@ tags: [happyrobot, referencia]
 |---|---|---|---|
 | Key 1 | `...JSs0` | ❌ inválida en host global / sin permiso de creación en EU (`403 Cannot create use cases`) | No usar |
 | Key 2 ⭐ | `...UUYeg` | ✅ lectura + creación + publicación + voz + signals · ❌ `twin.manage` | En `.env` (`HAPPYROBOT_API_KEY`); también como variable oculta en cada workflow SOS |
+| Key simulador 112 | `...Z7U` | ✅ lectura + creación + publicación + tokens de voz | Solo en `happyrobot-112/.env`; rotar por haberse compartido en chat |
 
 > Recordatorio de seguridad: ambas keys pasaron por el chat de esta sesión. Si se van a usar en
 > producción de verdad, **rotarlas** desde la plataforma (Settings > Profile > API Keys) una vez
@@ -25,6 +26,7 @@ tags: [happyrobot, referencia]
 |---|---|---|
 | test (preexistente, no nuestro) | `01a0b58b-ed5a-7a09-a663-51761e874588` | `qta0phzc98ww` |
 | **FlareAI Web Voice** ⭐ | `01a0b665-2a84-725f-a714-947e427ea6d2` | `cx7sisk9if6q` |
+| **Simulador 112 · Asistente de voz** | `01a0b8bc-b078-7eb0-86fc-b91a7abb6ca8` | consultar plataforma / `workflow.json` |
 
 ## Workflows SOS (desplegados por `sos deploy` el 2026-09-19 — **BORRADOS esa misma tarde**)
 
@@ -60,4 +62,4 @@ Ver [[FlareAI Web Voice - workflow]] para versión, nodos, prompt y voz aplicado
 ## Voz aplicada
 - ID: `31hktsdrgix8` — **Ana HR** (es-ES). Ver [[Catálogo de voces]] para alternativas.
 
-Relacionado: [[Endpoints usados]]
+Relacionado: [[Endpoints usados]] · [[Simulador 112 con ficha en directo]]

@@ -5,6 +5,22 @@ import {
 
 const WIND_LIFE = 5.5, EMBER_LIFE = 3.4, MAX_EMBERS = 420;
 
+export function confirmedFire(incident, now = Date.now()) {
+  const c = incident.confirmation;
+  return c?.status === "confirmed" && Boolean(c.source_name) && /^https?:\/\//.test(c.source_url || "")
+    && new Date(c.confirmed_at).getTime() <= now && now <= new Date(c.valid_until).getTime();
+}
+
+export function fireTint(incident, r, g, b, alpha = 1) {
+  if (confirmedFire(incident)) return `rgba(${r},${g},${b},${alpha})`;
+  const gray = Math.round(r * .2126 + g * .7152 + b * .0722);
+  return `rgba(${gray},${gray},${gray},${alpha})`;
+}
+
+export function locatorSize(area) {
+  return Math.max(0, Math.min(1, (900 - area) / 600)) * 32;
+}
+
 function smooth(ctx, points) {
   ctx.beginPath();
   ctx.moveTo((points[0].x + points[points.length - 1].x) / 2, (points[0].y + points[points.length - 1].y) / 2);
@@ -97,22 +113,24 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
 
   function heat(incident, shape, holes, centre, area, time) {
     const selected = incident.id === selectedId;
+    const tint = (r, g, b, a) => fireTint(incident, r, g, b, a);
     const pulse = (flicker(incident.lat * 9, time) + 1) / 2;
     const radius = heatRadius(area, incident.observations) * (1 + pulse * .07);
     const aura = ctx.createRadialGradient(centre.x, centre.y, radius * .12, centre.x, centre.y, radius * 2.15);
-    aura.addColorStop(0, `rgba(250,120,44,${(selected ? .3 : .22) + pulse * .05})`);
-    aura.addColorStop(.45, "rgba(240,86,50,0.12)");
-    aura.addColorStop(1, "rgba(236,80,60,0)");
+    aura.addColorStop(0, tint(250, 120, 44, (selected ? .3 : .22) + pulse * .05));
+    aura.addColorStop(.45, tint(240, 86, 50, .12));
+    aura.addColorStop(1, tint(236, 80, 60, 0));
     ctx.fillStyle = aura;
     ctx.beginPath(); ctx.arc(centre.x, centre.y, radius * 2.15, 0, 2 * Math.PI); ctx.fill();
 
     const bearing = incident.weather.wind_from_degrees === null ? null : (incident.weather.wind_from_degrees + 180) % 360;
-    const amplitude = Math.max(1.3, Math.min(18, radius * .16));
+    const extent = Math.max(...shape.map(p => Math.hypot(p.x - centre.x, p.y - centre.y)), .01);
+    const amplitude = Math.max(.15, Math.min(18, extent * .15));
     const tongues = flameOutline(shape, time, bearing, amplitude);
     const body = ctx.createLinearGradient(centre.x - radius, centre.y + radius, centre.x + radius, centre.y - radius);
-    body.addColorStop(0, "rgba(198,45,32,0.62)");
-    body.addColorStop(.55, `rgba(238,84,45,${.66 + pulse * .12})`);
-    body.addColorStop(1, "rgba(252,163,66,0.72)");
+    body.addColorStop(0, tint(198, 45, 32, .62));
+    body.addColorStop(.55, tint(238, 84, 45, .66 + pulse * .12));
+    body.addColorStop(1, tint(252, 163, 66, .72));
     smooth(ctx, tongues);
     for (const hole of holes) {
       ctx.moveTo(hole[0].x, hole[0].y);
@@ -126,9 +144,9 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
 
     ctx.globalCompositeOperation = "lighter";
     const core = ctx.createRadialGradient(centre.x, centre.y, 0, centre.x, centre.y, Math.max(6, radius * .85));
-    core.addColorStop(0, `rgba(255,236,178,${.5 + pulse * .22})`);
-    core.addColorStop(.42, "rgba(255,150,60,0.34)");
-    core.addColorStop(1, "rgba(255,110,50,0)");
+    core.addColorStop(0, tint(255, 236, 178, .5 + pulse * .22));
+    core.addColorStop(.42, tint(255, 150, 60, .34));
+    core.addColorStop(1, tint(255, 110, 50, 0));
     ctx.fillStyle = core;
     smooth(ctx, towards(tongues, centre, .82)); ctx.fill();
     for (let i = 0; i < 7; i++) {
@@ -138,21 +156,21 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
       const y = centre.y + (edge.y - centre.y) * blend;
       const spread = radius * (.2 + (flicker(i + incident.lat, time) + 1) * .1);
       const pocket = ctx.createRadialGradient(x, y, 0, x, y, spread);
-      pocket.addColorStop(0, "rgba(255,235,146,0.45)");
-      pocket.addColorStop(.4, "rgba(255,166,54,0.24)");
-      pocket.addColorStop(1, "rgba(255,128,37,0)");
+      pocket.addColorStop(0, tint(255, 235, 146, .45));
+      pocket.addColorStop(.4, tint(255, 166, 54, .24));
+      pocket.addColorStop(1, tint(255, 128, 37, 0));
       ctx.fillStyle = pocket;
       ctx.beginPath(); ctx.arc(x, y, spread, 0, Math.PI * 2); ctx.fill();
     }
     const stride = Math.max(1, Math.ceil(tongues.length / 22));
     for (let i = 0; i < tongues.length; i += stride) {
       const edge = tongues[i], next = tongues[(i + 1) % tongues.length];
-      const glow = .55 + flicker(i + incident.lon, time, 1.3) * .3;
+      const glow = .55 + flicker(i / tongues.length * 9 + incident.lon, time, 1.3) * .3;
       const tongue = {
         x: edge.x * .72 + centre.x * .28,
         y: edge.y * .72 + centre.y * .28,
       };
-      ctx.fillStyle = `rgba(255,185,61,${glow * .38})`;
+      ctx.fillStyle = tint(255, 185, 61, glow * .38);
       ctx.beginPath();
       ctx.moveTo(edge.x, edge.y);
       ctx.quadraticCurveTo(next.x, next.y, tongue.x, tongue.y);
@@ -170,17 +188,18 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
         const dx = root.x - centre.x, dy = root.y - centre.y;
         const exposure = (dx * direction.x + dy * direction.y) / (Math.hypot(dx, dy) || 1);
         if (exposure < .1) continue;
-        const pulse = (flicker(i * 1.7, time, 1.2) + 1) / 2;
+        const fraction = i / shape.length;
+        const pulse = (flicker(fraction * 13, time, 1.2) + 1) / 2;
         const length = amplitude * (1.2 + pulse * 2) * exposure;
-        const sway = flicker(i, time, 1.5) * amplitude * .4;
+        const sway = flicker(fraction * 8, time, 1.5) * amplitude * .4;
         const tip = {
           x: root.x + direction.x * length - direction.y * sway,
           y: root.y + direction.y * length + direction.x * sway,
         };
         const fire = ctx.createLinearGradient(root.x, root.y, tip.x, tip.y);
-        fire.addColorStop(0, "rgba(250,125,34,0.65)");
-        fire.addColorStop(.7, "rgba(255,181,62,0.42)");
-        fire.addColorStop(1, "rgba(255,196,96,0)");
+        fire.addColorStop(0, tint(250, 125, 34, .65));
+        fire.addColorStop(.7, tint(255, 181, 62, .42));
+        fire.addColorStop(1, tint(255, 196, 96, 0));
         ctx.fillStyle = fire;
         ctx.beginPath(); ctx.moveTo(root.x, root.y);
         ctx.quadraticCurveTo(root.x + direction.x * length * .5, root.y + direction.y * length * .5, tip.x, tip.y);
@@ -188,7 +207,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
         ctx.closePath(); ctx.fill();
       }
     }
-    ctx.strokeStyle = selected ? "rgba(190,52,36,0.45)" : "rgba(205,70,48,0.3)";
+    ctx.strokeStyle = selected ? tint(190, 52, 36, .45) : tint(205, 70, 48, .3);
     ctx.lineWidth = .8;
     smooth(ctx, tongues); ctx.stroke();
   }
@@ -215,14 +234,14 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
       const lift = (flicker(live[i].seed, time, 1.4) + 1) / 2;
       const size = Math.max(.45, (1.6 - life) * scale * (.55 + lift * .5));
       ctx.globalAlpha = Math.max(0, Math.sin(Math.PI * Math.min(1, life)) * .95);
-      ctx.fillStyle = life < .45 ? "#ffd9a1" : "#f2764a";
-      ctx.shadowColor = "#ff9436"; ctx.shadowBlur = 4;
+      ctx.fillStyle = life < .45 ? fireTint(incident, 255, 217, 161) : fireTint(incident, 242, 118, 74);
+      ctx.shadowColor = fireTint(incident, 255, 148, 54); ctx.shadowBlur = 4;
       ctx.beginPath(); ctx.arc(spot.x, spot.y, size, 0, 2 * Math.PI); ctx.fill();
       if (wind?.from != null) {
         const tail = windStroke(live[i], wind, mpp, (1 - life) * 5 * scale)[0];
         if (tail) {
           const end = point(tail.lat, tail.lon);
-          ctx.strokeStyle = "#ef8543"; ctx.lineWidth = Math.max(.5, size * .65);
+          ctx.strokeStyle = fireTint(incident, 239, 133, 67); ctx.lineWidth = Math.max(.5, size * .65);
           ctx.beginPath(); ctx.moveTo(end.x, end.y); ctx.lineTo(spot.x, spot.y); ctx.stroke();
         }
       }
@@ -253,14 +272,27 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
           x: ring.reduce((sum, p) => sum + p.x, 0) / ring.length,
           y: ring.reduce((sum, p) => sum + p.y, 0) / ring.length,
         };
-        const extent = Math.max(...ring.map(p => Math.hypot(p.x - centre.x, p.y - centre.y)));
-        const factor = Math.max(1, 7 / Math.max(.01, extent));
-        const outline = detailedOutline(towards(ring, centre, factor));
+        const outline = detailedOutline(ring);
         const ringArea = polygonArea(outline);
         area += ringArea;
-        heat(incident, outline, projected.slice(1).map(hole => towards(hole, centre, factor)), centre, ringArea, time);
+        heat(incident, outline, projected.slice(1), centre, ringArea, time);
       }
       available -= sparks(incident, area, seconds, time, available);
+      const size = locatorSize(area);
+      if (size > 0) {
+        const centre = point(incident.lat, incident.lon), unit = size / 24;
+        const p = (x, y) => [centre.x + (x - 12) * unit, centre.y + (y - 13) * unit];
+        ctx.fillStyle = fireTint(incident, 224, 87, 47, .92);
+        ctx.strokeStyle = "rgba(255,255,255,.9)"; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(...p(13, 0));
+        ctx.quadraticCurveTo(...p(16, 7), ...p(10, 12));
+        ctx.quadraticCurveTo(...p(14, 13), ...p(16, 7));
+        ctx.quadraticCurveTo(...p(29, 21), ...p(13, 26));
+        ctx.quadraticCurveTo(...p(-3, 26), ...p(4, 10));
+        ctx.quadraticCurveTo(...p(4, 17), ...p(8, 16));
+        ctx.quadraticCurveTo(...p(3, 10), ...p(13, 0));
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
     }
   }
 

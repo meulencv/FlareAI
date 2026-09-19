@@ -1,6 +1,7 @@
 # Secretos — nunca subir API keys / tokens
 .env
 .env.*
+!.env.example
 *.key
 
 # Python

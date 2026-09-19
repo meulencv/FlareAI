@@ -10,7 +10,7 @@ from typing import Any, TypeGuard
 import numpy as np
 import shapely
 from shapely.affinity import scale, translate
-from shapely.geometry import shape
+from shapely.geometry import Point, mapping, shape
 
 
 ATLAS_ROOT = Path(__file__).resolve().parent / "data/Espana_Datos_y_Mapas"
@@ -60,6 +60,108 @@ def wind_state(weather: dict, now: datetime, offline: bool = False, weather_erro
             "half_angle_degrees": WIND_HALF_ANGLE, "minimum_speed_kmh": MIN_WIND_KMH}
 
 
+POTENTIAL_MODEL: dict[str, Any] = {
+    "id": "attention-potential-v1", "score_range": [0, 100],
+    "weights": {"population": 35, "vegetation": 25, "facility_high": 40, "facility_review": 20, "wind": 15},
+    "population_saturation": 1000, "proximity_at_radius": .4,
+    "bands": {"watch": 12, "elevated": 35, "priority": 60}, "smoothing_km": .7,
+    "formula": "min(100, (population + vegetation + max_facility + current_wind) * proximity)",
+    "population_transform": "min(1, log1p(residents) / log1p(1000))",
+    "vegetation_transform": "(forest + shrub + herbaceous) / 100; missing remains unknown",
+    "proximity_transform": "1 - 0.6 * distance_km / 5",
+    "wind_rule": "15 only for current valid downwind evidence; historical and stale wind excluded",
+    "interpretation": "Prioridad exploratoria de revisión, no probabilidad ni riesgo oficial. Pesos no calibrados operacionalmente.",
+}
+
+
+def potential_assessment(cells: np.ndarray, distances: np.ndarray, downwind: np.ndarray,
+                         facilities: list[dict], footprint: Any, lon: float, lat: float,
+                         xscale: float, wind: dict) -> dict:
+    weights = POTENTIAL_MODEL["weights"]
+    facilities = sorted(facilities, key=lambda poi: poi['id'])
+    samples: list[dict] = []
+    by_cell: dict[tuple, dict[str, Any]] = {}
+
+    def value(raw: Any) -> float | None:
+        return float(raw) if finite(raw) and raw >= 0 else None
+
+    for row, distance, aligned in zip(cells, distances, downwind):
+        cover = [value(row[f"pct_suelo_{name}"]) for name in ("bosque", "matorral", "herbaceas")]
+        vegetation = sum(v for v in cover if v is not None) if all(v is not None for v in cover) and row["superficie_clasificada_km2"] > 0 else None
+        sample: dict[str, Any] = {
+            "id": f"cell:{int(row['x_min_3035'])}:{int(row['y_min_3035'])}",
+            "lon": float(row["lon"]), "lat": float(row["lat"]),
+            "distance_km": round(float(distance), 3), "downwind": bool(aligned),
+            "evidence": {"population": value(row["poblacion"]), "vegetation_pct": vegetation,
+                         "children_under_15": value(row["menores_15"]), "adults_65_plus": value(row["mayores_65"]),
+                         "facility_ids": [], "high_priority_facility": False},
+        }
+        by_cell[(row["x_min_3035"], row["y_min_3035"])] = sample
+        samples.append(sample)
+    for poi in facilities:
+        key = (poi.get("grid_x"), poi.get("grid_y"))
+        if key in by_cell:
+            sample = by_cell[key]
+        else:
+            sample = {"id": poi["id"], "lon": poi["lon"], "lat": poi["lat"],
+                      "distance_km": poi["distance_km"], "downwind": poi["downwind"],
+                      "evidence": {"population": None, "vegetation_pct": None, "children_under_15": None,
+                                   "adults_65_plus": None, "facility_ids": [], "high_priority_facility": False}}
+            samples.append(sample)
+        sample["evidence"]["facility_ids"].append(poi["id"])
+        sample["evidence"]["high_priority_facility"] |= poi["priority"] == "alta_orientativa"
+    samples.sort(key=lambda sample: sample['id'])
+    for sample in samples:
+        evidence = sample["evidence"]
+        residents, vegetation = evidence["population"], evidence["vegetation_pct"]
+        components = {
+            "population": weights["population"] * min(1, math.log1p(residents) / math.log1p(POTENTIAL_MODEL["population_saturation"])) if residents is not None else 0,
+            "vegetation": weights["vegetation"] * min(100, vegetation) / 100 if vegetation is not None else 0,
+            "facility": (weights["facility_high"] if evidence["high_priority_facility"] else weights["facility_review"]) if evidence["facility_ids"] else 0,
+        }
+        components["wind"] = weights["wind"] if wind["status"] == "current" and sample["downwind"] and sum(components.values()) > 0 else 0
+        sample["contributions"] = {key: round(float(v), 3) for key, v in components.items()}
+        sample["proximity_factor"] = round(1 - (1 - POTENTIAL_MODEL["proximity_at_radius"]) * min(RADIUS_KM, sample["distance_km"]) / RADIUS_KM, 4)
+        sample["missing_inputs"] = [name for name in ("population", "vegetation_pct") if evidence[name] is None]
+        if wind["status"] != "current":
+            sample["missing_inputs"].append("current_wind")
+        unknown = residents is None and vegetation is None and not evidence["facility_ids"]
+        sample["score"] = None if unknown else round(min(100, sample["proximity_factor"] * sum(sample["contributions"].values())), 1)
+        sample["band"] = next((band for band, threshold in reversed(POTENTIAL_MODEL["bands"].items())
+                               if sample["score"] is not None and sample["score"] >= threshold), "insufficient")
+    features: list[dict] = []
+    occupied = shapely.GeometryCollection()
+    support = footprint.buffer(RADIUS_KM)
+    for band in reversed(POTENTIAL_MODEL["bands"]):
+        group = [s for s in samples if s["band"] == band]
+        if not group:
+            continue
+        centres = [Point((s["lon"] - lon) * xscale, (s["lat"] - lat) * 111.32) for s in group]
+        area = shapely.union_all([p.buffer(POTENTIAL_MODEL["smoothing_km"], quad_segs=8) for p in centres]).intersection(support)
+        exposed = area.difference(occupied)
+        occupied = occupied.union(area)
+        for part in shapely.get_parts(exposed):
+            if part.geom_type != "Polygon" or part.area < .001:
+                continue
+            contributors = [s for s, p in zip(group, centres) if part.distance(p) <= POTENTIAL_MODEL["smoothing_km"]]
+            geographic = translate(scale(part, xfact=1 / xscale, yfact=1 / 111.32, origin=(0, 0)), lon, lat)
+            features.append({"type": "Feature", "geometry": mapping(geographic), "properties": {
+                "id": f"{band}:{len(features)}", "band": band, "score_max": max(s["score"] for s in contributors),
+                "sample_ids": [s["id"] for s in contributors], "geometry_role": "smoothed_visual_support_not_hazard_perimeter",
+            }})
+    known = [s for s in samples if s["score"] is not None]
+    return {
+        "model": POTENTIAL_MODEL, "classification": "heuristic_not_fire_probability",
+        "status": "unavailable" if not known else "partial" if any(s["missing_inputs"] for s in samples) else "available",
+        "max_score": max((s["score"] for s in known), default=None),
+        "samples": samples, "facilities": facilities,
+        "zones": {"type": "FeatureCollection", "features": features},
+        "limitations": ["No identifica dónde evacuar ni dónde intervenir sin verificación humana.",
+                        "Las áreas son suavizado visual de evidencia estática, no propagación ni perímetros de peligro.",
+                        "Fuentes incompletas y de distintas fechas; ausencia de color no significa seguridad."],
+    }
+
+
 class Atlas:
     def __init__(self, grid: np.ndarray, facilities: list[dict]) -> None:
         self.grid = grid
@@ -92,6 +194,7 @@ class Atlas:
                     "reason": row["criterio"], "source_url": row["url_osm"],
                     "coordinate_method": row["metodo_coordenada"], "boundary_location": row["ubicacion_limite"],
                     "source_date": row["fecha_datos_osm"],
+                    "grid_x": float(row["x_min_3035"]), "grid_y": float(row["y_min_3035"]),
                 })
         return cls(grid, facilities)
 
@@ -181,10 +284,15 @@ class Atlas:
                            "distance_km": round(float(poi_distances[i]), 2), "downwind": bool(poi_downwind[i])})
         attention = wind["status"] == "current" and ((inhabited & cell_downwind).any() or (high & poi_downwind).any())
         return {
+            "schema_version": 2, "evaluated_at": now.isoformat(),
             "incident_id": incident["id"], "status": "ready", "radius_km": RADIUS_KM,
             "level": "attention" if attention else "nearby" if inhabited.any() or len(poi_ids) else "unverified",
             "coverage": "grid_centres_in_radius" if len(cells) else "no_grid_cells", "grid_cells": len(cells),
             "population": population, "facilities": facilities, "wind": wind,
+            "potential": potential_assessment(cells, cell_distances, cell_downwind, [
+                {**self.facilities[index], "distance_km": round(float(poi_distances[i]), 3), "downwind": bool(poi_downwind[i])}
+                for i, index in enumerate(poi_ids)
+            ], footprint, lon, lat, xscale, wind),
             "landcover": {"percentages": percentages, "classified_km2": round(float(surface[valid_soil].sum()), 2),
                           "missing_cells": int((~valid_soil).sum()), "reference_year": 2019},
             "points": points, "points_truncated": int(inhabited.sum()) + len(poi_ids) > len(points),

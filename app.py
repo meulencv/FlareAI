@@ -14,28 +14,38 @@ from socketserver import BaseServer
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
 
+import psycopg
+
 from context import ATLAS_ROOT, Atlas
+from database import Database, local_start
+from territorial import Territorial
 from gfs import DATA, ROOT, Snapshot, iso, update, utcnow
 from incidents import Collection, Incident, assemble, refresh_fires
 from satellite import picture
 
 
 class Store:
-    def __init__(self, offline: bool = False) -> None:
+    def __init__(self, offline: bool = False, database: Database | None = None) -> None:
         self.offline = offline
+        self.db = database
+        self.territorial = Territorial(database, offline) if database else None
         self.lock = threading.Lock()
         self.atlas_lock = threading.Lock()
         self.atlas: Atlas | None = None
-        self.fires = cast(Collection, json.loads((DATA / "firms/focos_espana.geojson").read_text()))
-        self.weather = cast(Snapshot, json.loads((DATA / "latest.json").read_text()))
+        self.fires = cast(Collection, database.snapshot('fires') if database else json.loads((DATA / "firms/focos_espana.geojson").read_text()))
+        self.weather = cast(Snapshot, database.snapshot('weather') if database else json.loads((DATA / "latest.json").read_text()))
         self.errors: dict[str, str] = {}
         self.incidents = assemble(self.fires, self.weather, datetime.fromisoformat(self.fires["analysis_at_utc"]) if offline else None)
+        if self.db:
+            self.db.save_incidents([dict(i) for i in self.incidents])
 
     def refresh_loop(self) -> None:
         next_fires = 0.0
         while True:
             try:
                 weather = update()
+                if self.db:
+                    self.db.save_snapshot('weather', dict(weather))
                 with self.lock:
                     self.weather = weather
                     self.errors.pop("weather", None)
@@ -45,6 +55,8 @@ class Store:
             if time.monotonic() >= next_fires:
                 try:
                     fires = refresh_fires()
+                    if self.db:
+                        self.db.save_snapshot('fires', dict(fires))
                     with self.lock:
                         self.fires = fires
                         self.errors.pop("fires", None)
@@ -52,13 +64,23 @@ class Store:
                 except Exception as error:
                     with self.lock:
                         self.errors["fires"] = str(error)
-            with self.lock:
-                self.incidents = assemble(self.fires, self.weather)
+            try:
+                with self.lock:
+                    incidents = assemble(self.fires, self.weather)
+                if self.db:
+                    self.db.save_incidents([dict(i) for i in incidents])
+                with self.lock:
+                    self.incidents = incidents
+                    self.errors.pop('database', None)
+            except Exception:
+                with self.lock:
+                    self.errors['database'] = 'No se pudo guardar la actualización local'
             threading.Event().wait(600)
 
     def payload(self) -> dict[str, object]:
+        now = utcnow()
+        confirmed = self.db.confirmations(now) if self.db and not self.offline else {}
         with self.lock:
-            now = utcnow()
             weather_age = (now - datetime.fromisoformat(self.weather["valid_at_utc"].replace("Z", "+00:00"))).total_seconds()
             fire_age = (now - datetime.fromisoformat(self.fires["analysis_at_utc"])).total_seconds()
             model_age = (now - datetime.fromisoformat(self.weather["model_run_utc"].replace("Z", "+00:00"))).total_seconds()
@@ -69,7 +91,7 @@ class Store:
                 "generated_at": iso(now),
                 "status": "offline" if self.offline else "stale" if self.errors or weather_age > 7200 or fire_age > 7200 or model_age > 43200 else "ready",
                 "errors": dict(self.errors),
-                "incidents": incidents, "wind": self.weather,
+                "incidents": [{**i, 'confirmation': confirmed.get(i['id'], {'status': 'unconfirmed', 'reason': 'FIRMS identifica anomalías térmicas; no confirma incendios forestales.'})} for i in incidents], "wind": self.weather,
                 "fires_checked_at": self.fires["analysis_at_utc"], "window_hours": 24,
                 "fire_refresh_seconds": 1800, "weather_refresh_seconds": 600,
                 "classification": "thermal_clusters_not_exhaustive_fire_inventory",
@@ -81,10 +103,13 @@ class Store:
             weather_error = "weather" in self.errors
             if incident is None or (not self.offline and (utcnow() - datetime.fromisoformat(incident["last_seen"])).total_seconds() > 86400):
                 raise KeyError("Zona no encontrada en el periodo disponible")
-        with self.atlas_lock:
-            if self.atlas is None:
-                self.atlas = Atlas.load()
-            atlas = self.atlas
+        if self.db:
+            atlas = self.db.nearby_atlas(dict(incident))
+        else:
+            with self.atlas_lock:
+                if self.atlas is None:
+                    self.atlas = Atlas.load()
+                atlas = self.atlas
         return atlas.analyze(dict(incident), now=utcnow(), offline=self.offline, weather_error=weather_error)
 
     def find(self, identifier: str) -> Incident:
@@ -138,12 +163,34 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(self.store.context(query["id"][0]))
             elif route.path == "/atlas/sources":
                 self.send_bytes((ATLAS_ROOT / "FUENTES.md").read_bytes(), "text/plain; charset=utf-8")
+            elif route.path == '/api/webcams' and self.store.db:
+                self.send_json(self.store.db.catalog())
+            elif route.path == '/api/webcam' and self.store.territorial:
+                self.send_json(self.store.territorial.webcam(query['id'][0]))
+            elif route.path == '/webcams/sources':
+                self.send_bytes((DATA / 'espana-en-directo/docs/FUENTES.md').read_bytes(), 'text/plain; charset=utf-8')
+            elif re.fullmatch(r'/roads/\d{1,2}/\d{1,5}/\d{1,5}\.png', route.path) and self.store.territorial:
+                z, x, y = map(int, route.path.removesuffix('.png').split('/')[2:])
+                body, mime = self.store.territorial.road(z, x, y)
+                self.send_bytes(body, mime)
+            elif re.fullmatch(r'/territorial/[a-f0-9]{24}\.img', route.path) and self.store.territorial:
+                body, mime = self.store.territorial.media(route.path.rsplit('/', 1)[1].split('.')[0])
+                self.send_bytes(body, mime)
             elif route.path == "/api/satellite":
-                self.send_json(picture(self.store.find(query["id"][0]), query.get("mode", ["natural"])[0], self.store.offline))
+                result = picture(self.store.find(query["id"][0]), query.get("mode", ["natural"])[0], self.store.offline)
+                if self.store.db:
+                    key = result['url'].rsplit('/', 1)[1].split('.')[0]
+                    self.store.db.asset('satellite:' + key, 'satellite', dict(result), DATA / 'satellite' / (key + '.png'))
+                self.send_json(result)
             elif re.fullmatch(r"/satellite/[a-f0-9]{24}\.png", route.path):
                 self.send_bytes((DATA / "satellite" / route.path.rsplit("/", 1)[1]).read_bytes(), "image/png")
+            elif route.path in {'/spain.geojson', '/neighbors.geojson', '/provinces.geojson', '/places.json'} and self.store.db:
+                asset = self.store.db.get_asset('map:' + route.path[1:])
+                if asset is None:
+                    raise KeyError('Cartografía no importada')
+                self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js", "/context.js",
+                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()
@@ -151,6 +198,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_error(404)
         except (KeyError, ValueError) as error:
             self.send_json({"error": str(error)}, 400)
+        except psycopg.Error:
+            self.send_json({'error': 'Base de datos no disponible'}, 503)
         except (OSError, RuntimeError) as error:
             self.send_json({"error": str(error)}, 503)
 
@@ -161,7 +210,11 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--offline", action="store_true")
     options = parser.parse_args()
-    Handler.store = Store(options.offline)
+    database = Database()
+    if not database.url:
+        local_start()
+    database.bootstrap()
+    Handler.store = Store(options.offline, database)
     if not options.offline:
         threading.Thread(target=Handler.store.refresh_loop, daemon=True).start()
     print(f"FlareAI · puerto {options.port}", flush=True)

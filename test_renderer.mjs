@@ -1,6 +1,25 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createStage } from "./static/flames.js";
+import { createStage, confirmedFire, fireTint, locatorSize } from "./static/flames.js";
+
+test("los fuegos tienen un localizador legible al alejar, sin ampliar la huella", () => {
+  assert.equal(locatorSize(.01), 32);
+  assert.equal(locatorSize(100), 32);
+  assert.equal(locatorSize(10000), 0);
+});
+
+test("ni FIRMS de alta confianza ni una noticia antigua confirman actividad actual", () => {
+  const item = { documented: true, confidence: "high" };
+  assert.equal(confirmedFire(item), false);
+  assert.match(fireTint(item, 255, 120, 30), /^rgba\((\d+),\1,\1,/);
+  const now = Date.now();
+  item.confirmation = { status: "confirmed", source_name: "Fuente contrastada", source_url: "https://example.org/fire", confirmed_at: new Date(now - 1000).toISOString(), valid_until: new Date(now + 60000).toISOString() };
+  assert.equal(confirmedFire(item, now), true);
+  assert.equal(fireTint(item, 255, 120, 30), "rgba(255,120,30,1)");
+  assert.equal(confirmedFire(item, now + 61000), false);
+  item.confirmation.status = "withdrawn";
+  assert.equal(confirmedFire(item, now), false);
+});
 
 const land = [[[-9, 36], [4, 36], [4, 44], [-9, 44], [-9, 36]]];
 const incident = {
@@ -99,6 +118,26 @@ test("un salto de zoom mantiene la longitud visual del viento y no espera a move
   f.mapEvents.get("zoom")(); f.tick(116);
   assert.ok(Math.abs(length(f.wind()) - before) < .01);
   assert.equal(f.frames.size, 0);
+});
+
+test("la huella del incendio queda anclada al terreno y no se deforma al hacer zoom", t => {
+  const f = fixture(t, true);
+  const outline = () => {
+    const scale = 256 * 2 ** f.map.zoom / 360;
+    const path = f.fills.reduce((largest, points) => (points.length > largest.length ? points : largest), []);
+    const lons = path.map(([x]) => -2 + (x - 400) / scale);
+    const lats = path.map(([, y]) => 42 - (y - 300) / scale);
+    return { west: Math.min(...lons), east: Math.max(...lons), south: Math.min(...lats), north: Math.max(...lats) };
+  };
+  f.tick(100);
+  const before = outline();
+  assert.ok(before.east - before.west > .019 && before.east - before.west < .05, "la huella dibujada parte de la geometría real");
+  f.map.zoom = 14;
+  f.mapEvents.get("zoom")(); f.tick(116);
+  const after = outline();
+  for (const edge of ["west", "east", "south", "north"]) {
+    assert.ok(Math.abs(after[edge] - before[edge]) < .002, `${edge} se mantiene al hacer zoom`);
+  }
 });
 
 test("pausa, pestaña oculta, cambio de preferencia y reanudación controlan el bucle", t => {

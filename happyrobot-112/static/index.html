@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f2ed">
+  <title>Simulador de llamada · 112</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Inicio">
+      <span class="brand-mark" aria-hidden="true">112</span>
+      <span>Simulador de llamada</span>
+    </a>
+    <span class="demo-label">DEMOSTRACIÓN</span>
+  </header>
+
+  <main>
+    <section class="call-panel" aria-labelledby="call-title">
+      <p class="eyebrow">ASISTENTE DE VOZ · HAPPYROBOT</p>
+      <h1 id="call-title">Cuéntame qué ha ocurrido.</h1>
+      <p class="intro">
+        El operador virtual preguntará por los datos esenciales y los irá ordenando a la derecha.
+      </p>
+
+      <div class="call-control">
+        <button id="call-button" class="call-button" type="button">
+          <span class="button-icon" aria-hidden="true">●</span>
+          <span id="button-label">Iniciar simulación</span>
+        </button>
+        <div class="call-meta" aria-live="polite">
+          <span id="status-dot" class="status-dot"></span>
+          <span id="status">Preparado</span>
+          <span id="timer" class="timer">00:00</span>
+        </div>
+      </div>
+
+      <aside class="warning">
+        <strong>No es el 112 real.</strong>
+        Si existe una emergencia, termina la simulación y llama al 112.
+      </aside>
+    </section>
+
+    <section class="brief-panel" aria-labelledby="brief-title">
+      <div class="brief-heading">
+        <div>
+          <p class="eyebrow">FICHA EN DIRECTO</p>
+          <h2 id="brief-title">Información recogida</h2>
+        </div>
+        <span id="sync-state" class="sync-state">Sin llamada</span>
+      </div>
+
+      <dl class="brief-list" aria-live="polite">
+        <div class="brief-item">
+          <dt><span aria-hidden="true">01</span> Ubicación</dt>
+          <dd id="summary-ubicacion">Pendiente</dd>
+        </div>
+        <div class="brief-item">
+          <dt><span aria-hidden="true">02</span> Emergencia</dt>
+          <dd id="summary-emergencia">Pendiente</dd>
+        </div>
+        <div class="brief-item">
+          <dt><span aria-hidden="true">03</span> Personas</dt>
+          <dd id="summary-personas">Pendiente</dd>
+        </div>
+        <div class="brief-item">
+          <dt><span aria-hidden="true">04</span> Riesgos inmediatos</dt>
+          <dd id="summary-riesgos">Pendiente</dd>
+        </div>
+        <div class="brief-item">
+          <dt><span aria-hidden="true">05</span> Contacto</dt>
+          <dd id="summary-contacto">Pendiente</dd>
+        </div>
+      </dl>
+
+      <p class="privacy-note">
+        La ficha procede del transcript de HappyRobot. Esta página no guarda audio ni una copia local.
+      </p>
+    </section>
+  </main>
+
+  <noscript>Activa JavaScript para iniciar la simulación de voz.</noscript>
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>

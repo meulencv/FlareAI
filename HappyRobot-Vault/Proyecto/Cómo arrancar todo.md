@@ -4,6 +4,19 @@ tags: [happyrobot, proyecto, guía]
 
 # Cómo arrancar todo (guía rápida)
 
+## Simulador 112 aislado
+
+```bash
+cd /Users/meulencv/development/projects/FlareAI/happyrobot-112
+# La key real solo en .env, que Git ignora.
+python3 setup_happyrobot.py   # primera vez o para recuperar workflow.json
+python3 server.py             # http://127.0.0.1:8112
+```
+
+Pulsa **Iniciar simulación**, permite el micrófono y habla. La ficha de ubicación, emergencia,
+personas, riesgos y contacto se actualiza desde el transcript de HappyRobot. No llama al 112 real.
+Detalles y límites en [[Simulador 112 con ficha en directo]].
+
 ## S.O.S. Crisis Engine (2026-09-19 en adelante)
 
 ```bash
@@ -47,4 +60,4 @@ El dashboard nuevo la reutiliza como agente de voz de reserva cuando no hay Twin
 https://platform.eu.happyrobot.ai/hackspainteam3/workflows → 9 workflows "SOS · …". Cada
 ejecución es un *run* con sus nodos; las llamadas tienen *session* con transcripción y audio.
 
-Relacionado: [[SOS Crisis Engine - arquitectura]] · [[Dashboard y simulador]] · [[Base de datos local embebida]] · [[Cómo desplegar - sos deploy]]
+Relacionado: [[Simulador 112 con ficha en directo]] · [[SOS Crisis Engine - arquitectura]] · [[Dashboard y simulador]] · [[Base de datos local embebida]] · [[Cómo desplegar - sos deploy]]

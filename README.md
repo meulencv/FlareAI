@@ -31,6 +31,9 @@ Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan t
 - Buscar provincias y filtrar el caso contrastado en prensa.
 - Cambiar entre Península, Baleares, Canarias y Ceuta/Melilla.
 - Ver viento, rachas, temperatura ambiente y brillo térmico.
+- Pulsar un foco para encuadrar automáticamente su entorno y ver el **mapa de calor de riesgo inmediato alrededor**, de crema a coral. Sin activar capas, listas ni marcadores adicionales.
+- Pasar el ratón por el calor para leer qué hay en ese punto: instalaciones, residentes censados, vegetación y distancia a la huella.
+- El potencial combina proximidad, población, vegetación, instalaciones y viento vigente. Es una prioridad exploratoria de revisión, no una probabilidad de incendio ni una recomendación operativa. Los datos y los motivos quedan en `/api/context?id=<id>` para análisis posterior por una IA.
 - Consultar color natural o SWIR y ampliar la imagen.
 - Acercar la huella aproximada de los píxeles.
 - Ver bordes de llama, núcleos de calor y chispas que siguen el viento local.
@@ -45,13 +48,26 @@ Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan t
 
 **No conocemos el perímetro quemado.** La cifra de huella térmica aproxima el área cubierta por los píxeles. No equivale a hectáreas quemadas. Por eso la superficie quemada confirmada aparece como «—».
 
-**Las llamas son un tratamiento visual.** El contorno parte de la huella de los píxeles y añade resplandor, ondulación y chispas. Al alejarse se amplían las formas pequeñas para poder verlas. El color, la velocidad de animación y las chispas no miden temperatura, transporte de pavesas ni avance del fuego. Para ver el detalle, selecciona **Igea → Acercar a la huella detectada**.
+**Las llamas son un tratamiento visual.** El contorno parte de la huella de los píxeles y añade resplandor, ondulación y chispas. La silueta queda anclada al terreno: al hacer zoom escala como el mapa, sin deformarse; las huellas pequeñas se reconocen por su halo, no por un contorno agrandado. El color, la velocidad de animación y las chispas no miden temperatura, transporte de pavesas ni avance del fuego. Para ver el detalle, selecciona **Igea → Acercar a la huella detectada**.
 
 **La imagen es un mosaico diario, no una cámara en directo.** La aplicación busca la fecha más reciente con suficiente cobertura y muestra su fecha.
 
 **Las dos temperaturas significan cosas distintas.** GFS proporciona temperatura ambiente modelizada a 2 m. VIIRS I4 proporciona temperatura de brillo de un píxel; no es temperatura de las llamas.
 
 **El escenario es ilustrativo.** Su velocidad de avance es un supuesto elegido en el control. Solo usa el viento para la dirección; no es un modelo de propagación ni una herramienta de emergencia.
+
+## Contexto territorial sin base de datos
+
+El atlas adjunto se conserva en `data/Espana_Datos_y_Mapas/`, con sus mapas, fuentes, scripts y datos originales. El servidor carga una sola vez el CSV comprimido de 511.226 celdas y el CSV de 44.787 elementos OSM; no instala el pipeline GIS del atlas ni vuelve a descargar sus fuentes. Si esos archivos faltan, el panel avisa de contexto no disponible y el resto del observatorio sigue funcionando.
+
+- **Población:** INE / Eurostat, censo 2021; centros de celdas de 1 km², no ubicaciones de viviendas ni núcleos con nombre. Las edades publicadas pueden no sumar el total por protección estadística.
+- **Suelo:** Copernicus CGLS-LC100 2019; porcentajes ponderados por superficie clasificada, conservando ausencia de cobertura.
+- **Instalaciones:** OSM / Geofabrik, 18/09/2026; prioridad orientativa por actividad, no riesgo oficial. Puede haber omisiones o varios elementos de un mismo complejo.
+- **Viento:** sector de ±30° hacia donde sopla, desde la huella, con un mínimo de 3 km/h. Se desactiva con datos ausentes, errores meteorológicos, validez alejada más de 2 h o ciclo de más de 12 h. En modo offline solo se muestra orientación histórica.
+
+`potential` conserva todas las muestras, instalaciones cercanas, geometrías visuales, factores, puntuación 0–100 y versión del modelo. La escala no es un porcentaje de riesgo: los pesos son heurísticos, aún no calibrados operacionalmente. El suavizado de las áreas no delimita zonas de peligro y la ausencia de color no garantiza seguridad. Las actualizaciones refrescan la capa sin cambiar el encuadre elegido por el usuario.
+
+No se estima población afectada, tiempo de llegada ni evacuaciones. Se conservan los demás campos del atlas, pero sexo, lugar de nacimiento y movilidad no se utilizan para asignar riesgo de incendio. Fuentes y condiciones de reutilización: `data/Espana_Datos_y_Mapas/FUENTES.md` (también en `/atlas/sources`). Las condiciones de GISCO requieren revisión antes de uso comercial.
 
 ## Actualización y consumo
 
@@ -74,6 +90,7 @@ Los visitantes comparten una descarga meteorológica y una caché de focos. No s
 - `static/`: interfaz y Leaflet local.
 - `static/flow.js`: geometría, partículas, índice geográfico y presupuestos de dibujo.
 - `static/flames.js`: renderizador Canvas 2D de fuego y corrientes, sin dependencia de WebGL.
+- `static/heat.js`: mapa de calor del entorno (paleta, densidad acumulada y rótulo al pasar el ratón).
 - `data/`: datos activos y evidencias originales de las descargas.
 - `examples/`: muestra congelada para reproducir pruebas.
 - `evidence/`: verificación HTTP y captura de pantalla completa.

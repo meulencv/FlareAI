@@ -1,8 +1,9 @@
 import { sample, cardinal } from "./wind.js";
 import { destination, scenario, imagePoints } from "./simulation.js";
-import { createStage } from "./flames.js";
+import { createStage, confirmedFire } from "./flames.js";
 import { rings } from "./flow.js";
 import { createContextView } from "./context.js";
+import { createInfrastructure } from "./infrastructure.js";
 
 const $ = id => document.getElementById(id);
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -25,6 +26,7 @@ L.control.scale({ imperial: false, maxWidth: 110, position: "bottomleft" }).addT
 map.createPane("footprints"); map.getPane("footprints").style.zIndex = 430;
 map.createPane("scenario"); map.getPane("scenario").style.zIndex = 440;
 const shapeLayer = L.layerGroup().addTo(map), scenarioLayer = L.layerGroup().addTo(map);
+map.getPane("mapPane").appendChild($("heat"));
 map.getPane("mapPane").appendChild($("flow"));
 const stage = createStage({
   map, canvas: $("flow"),
@@ -34,7 +36,8 @@ let data, country, selected, currentPicture, imageMode = "natural", imageRequest
 let windVisible = true, simulationOpen = false, playTimer, refreshing = false, animationPaused = false;
 let zoomTarget = null, zoomFrame = 0;
 const cachedPictures = new Map();
-const contextView = createContextView({ map, L, document, fetch, onFocus: () => {
+const infrastructure = createInfrastructure({ map, L, document, fetch });
+const contextView = createContextView({ map, document, fetch, canvas: $("heat"), onContext: infrastructure.setContext, onFocus: () => {
   cancelZoom(); $("details").classList.remove("open");
 } });
 const views = {
@@ -76,7 +79,7 @@ function renderList() {
   }
   for (const i of incidents) {
     const button = document.createElement("button");
-    button.className = `incident ${i.id === selected?.id ? "selected" : ""}`;
+    button.className = `incident ${i.id === selected?.id ? "selected" : ""} ${confirmedFire(i) ? "confirmed" : "unconfirmed"}`;
     button.setAttribute("aria-pressed", String(i.id === selected?.id));
     button.innerHTML = `<span class="incident-dot ${i.low_confidence === i.observations ? "low" : ""}"></span><span class="incident-body"><span class="incident-title"><strong>${escapeHtml(i.name)}</strong><span>${age(i.last_seen)}</span></span><span class="incident-subtitle">${i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · sin confirmar`}</span><span class="incident-meta"><span>${i.observations} detecciones</span><span>${svg("wind")} ${number(i.weather.wind_speed_kmh)} km/h</span></span></span>${selected?.id === i.id ? '<span class="incident-arrow">↗</span>' : ""}`;
     button.addEventListener("click", () => selectIncident(i, true));
@@ -98,7 +101,7 @@ function renderFires(incidents) {
     }).on("click", () => selectIncident(i, true)).addTo(shapeLayer);
     if (i.id === selected?.id) {
       target.bindTooltip(`${escapeHtml(i.name)} · ${i.observations} detecciones`,
-        { permanent: true, direction: "right", offset: [14, 0], className: "fire-label" }).openTooltip();
+        { permanent: true, direction: "right", offset: [14, 0], className: `fire-label ${confirmedFire(i) ? "confirmed" : "unconfirmed"}` }).openTooltip();
     }
   }
   stage.update(incidents, selected?.id || null);
@@ -108,12 +111,14 @@ function renderFires(incidents) {
 function selectIncident(incident, focus = false) {
   stopPlay(); $("horizon").value = "0";
   selected = incident;
-  $("details").classList.add("open");
+  $("details").classList.toggle("open", !matchMedia("(max-width:650px)").matches);
   $("sidebar").classList.remove("open");
   $("detail-content").hidden = false;
   $("detail-name").textContent = incident.name;
   $("detail-location").textContent = `${incident.province} · ${incident.lat.toFixed(3)}° N, ${Math.abs(incident.lon).toFixed(3)}° ${incident.lon < 0 ? "O" : "E"}`;
-  $("detection-tag").textContent = incident.documented ? "Caso documentado · 18 sept" : "Anomalía térmica · sin confirmar";
+  const confirmed = confirmedFire(incident);
+  $("detection-tag").classList.toggle("unconfirmed", !confirmed);
+  $("detection-tag").textContent = confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
   $("seen-age").textContent = `Última detección ${age(incident.last_seen)}`;
   $("footprint-area").textContent = number(incident.footprint_ha);
   const w = incident.weather, to = destination(w.wind_from_degrees);
@@ -130,20 +135,20 @@ function selectIncident(incident, focus = false) {
   $("passes").textContent = incident.passes;
   $("frp").textContent = number(incident.frp_peak_mw);
   $("detail-caveat").textContent = `${incident.satellites.join(" · ")}. Última detección: ${date(incident.last_seen, true)}. ${incident.low_confidence} de baja confianza. ${incident.documented ? "Caso contrastado en prensa; no confirma que continúe activo." : "La detección de calor no confirma un incendio forestal."}`;
-  $("news-link").hidden = !incident.documentation_url;
-  if (incident.documentation_url) $("news-link").href = incident.documentation_url;
+  $("news-link").hidden = !confirmed && !incident.documentation_url;
+  if (confirmed) {
+    $("news-link").href = incident.confirmation.source_url;
+    $("news-link").textContent = `Confirmación: ${incident.confirmation.source_name} · ${date(incident.confirmation.confirmed_at, true)} ↗`;
+  } else if (incident.documentation_url) {
+    $("news-link").href = incident.documentation_url;
+    $("news-link").textContent = "Noticia histórica · no confirma actividad actual ↗";
+  }
   $("scenario-direction").textContent = to === null ? "Sin dirección de viento" : `Orientación hacia ${cardinal(to)}`;
   $("simulate").disabled = to === null;
   $("scenario-shortcut").disabled = to === null;
   renderList(); renderScenario();
-  if (focus) {
-    cancelZoom();
-    const bounds = map.getBounds().pad(-.1);
-    if (!bounds.contains([incident.lat, incident.lon])) map.setView([incident.lat, incident.lon], 7, { animate: false });
-    else map.panTo([incident.lat, incident.lon], { animate: false });
-  }
   loadPicture();
-  contextView.load(incident);
+  contextView.load(incident, { focus });
 }
 
 async function loadPicture() {
@@ -255,7 +260,7 @@ async function start() {
     document.querySelector(".map-label .eyebrow").textContent = map.getZoom() > 9 ? "DETALLE TERRITORIAL" : "PANORAMA NACIONAL";
   });
   new ResizeObserver(() => map.invalidateSize()).observe($("map"));
-  setRegion("peninsula"); await refresh(); setInterval(refresh, 60000);
+  setRegion("peninsula"); infrastructure.load(); await refresh(); setInterval(refresh, 60000);
 }
 
 document.querySelectorAll("[data-region]").forEach(b => b.addEventListener("click", () => { closeSimulation(); setRegion(b.dataset.region); }));

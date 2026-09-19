@@ -34,6 +34,79 @@ Añadir `?download=1` solicita un archivo adjunto JSON.
 
 Una fila por grupo: coordenadas, observaciones, fechas, estado contrastado, FRP máximo, brillo I4, huella aproximada, temperatura ambiente, viento y rachas. `burned_area_ha` queda vacío porque no disponemos de perímetros quemados confirmados. Las detecciones individuales y las geometrías se conservan en JSON.
 
+### `GET /api/context?id=<id>`
+
+Contexto de la zona seleccionada, calculado por `context.Atlas`. Lee una vez los CSV del atlas
+local (511.226 celdas, 44.787 elementos OSM) en memoria; no requiere base de datos, GeoPandas,
+Rasterio, Osmium ni conexión externa. La carga se sincroniza entre peticiones y no bloquea
+`/api/data`. Un atlas ausente devuelve 503 sin impedir consultar los focos.
+
+La respuesta contiene `population`, `facilities`, `landcover`, `wind`, `points`, `coverage`,
+`level`, `method` y `sources`. Se seleccionan centros de celdas y puntos OSM a ≤5 km de cualquier
+componente de la huella térmica. Se usa una proyección local aproximada en kilómetros,
+`x = Δlon × 111,32 × cos(lat)` e `y = Δlat × 111,32`, y distancia mínima a la geometría con
+Shapely. No es un buffer geodésico exacto ni una medición desde perímetros de instalaciones.
+
+Población: suma por celda, nunca por instalación; no se distribuyen habitantes en píxeles.
+Suelo: media ponderada por `superficie_clasificada_km2`; nulos conservados, no convertidos a cero.
+`coverage=no_grid_cells` no equivale a territorio vacío. Los conteos OSM son elementos, no
+establecimientos únicos. Las coordenadas censales son representativas, no poblaciones con nombre.
+
+Dirección: `(wind_from_degrees + 180) % 360`, comparada con el rumbo desde el punto más cercano
+de la huella hasta cada centro/punto. Sector ±30°, viento ≥3 km/h; puntos dentro de la huella
+no reciben una dirección arbitraria. Solo se emite `level=attention` con viento válido actual y
+población o instalaciones de prioridad alta orientativa en ese sector. Validez meteorológica
+±2 h, ciclo ≤12 h, sin error de fuente; offline usa `historical`, nunca alerta actual.
+No es un modelo de propagación ni de humo y no interviene en el escenario ilustrativo.
+
+La interfaz no presenta tablas ni puntos de contexto: al pulsar un foco se encuadra automáticamente
+su huella +5 km y `static/heat.js` pinta un **mapa de calor continuo** con las muestras de
+`potential.samples`. Solo una leyenda discreta; no hay botón de activación. Las actualizaciones
+periódicas no reencuadran el mapa. El calor se retira al cerrar o filtrar la selección y ante
+fallos; las respuestas tardías no sustituyen la selección actual.
+
+El renderizado sigue la técnica habitual de mapas de calor: por cada muestra se acumula un
+degradado radial en escala de opacidad (`sampleAlpha`, tope 0,55 y gamma 0,75) con radio de unos
+1,6 km de terreno acotado a 18–190 px, y después se traduce la densidad acumulada a color con una
+paleta de 256 pasos (`heatPalette`, crema → ámbar → coral). El canvas se dibuja al 60 % de la
+resolución con desenfoque CSS, se compone en `multiply` bajo el fuego y se repinta una vez por
+fotograma mediante `requestAnimationFrame`, sin peticiones de red al mover o hacer zoom.
+
+El puntero informa del contenido: `nearestSample` busca la muestra más próxima en coordenadas de
+contenedor, dentro de un radio ligado al del calor, y `hoverSummary` describe lo que hay
+(instalaciones por nombre, residentes censados, porcentaje de vegetación, dirección del viento
+cuando es actual y distancia a la huella). El rótulo no aparece sin datos, al arrastrar, al iniciar
+zoom o al salir del mapa. Es una lectura del atlas estático, no una medición en tiempo real.
+
+Contrato v2: `schema_version`, `evaluated_at` y `potential` para consumo por agentes. `potential`
+contiene `model` versionado (`attention-potential-v1`), todas las `samples` e instalaciones cercanas,
+`zones` GeoJSON y limitaciones. Cada muestra tiene evidencia original, contribuciones, factor de
+proximidad, datos ausentes, puntuación y banda. Los 12 `points` originales se conservan solo por
+compatibilidad; no se usan para calcular ni dibujar el potencial.
+
+`POTENTIAL_MODEL` centraliza los parámetros, de carácter exploratorio y **no calibrados**:
+
+- Población: hasta 35 puntos, `min(1, log1p(población)/log1p(1000))`.
+- Vegetación: hasta 25 puntos por porcentaje de bosque + matorral + herbáceas. No mide humedad,
+  combustible disponible ni continuidad forestal. Sin cobertura se conserva el dato ausente.
+- Instalaciones en la celda: máximo de 40 (alta orientativa) o 20 (revisar), no suma de elementos
+  OSM, para no inflar por duplicados de un mismo complejo. Se conservan todos sus IDs y fuentes.
+  Instalaciones sin celda consultada generan una muestra independiente con población/suelo ausentes.
+- Viento: +15 solo con evidencia positiva, alineación y viento **actual** válido. Offline no aumenta
+  el índice, aunque el contexto general conserve la dirección histórica.
+- Proximidad: multiplica por `1 - 0,6 × distancia/5`. Puntuación limitada a 100, nunca un porcentaje
+  de probabilidad. Bandas visuales desde 12, 35 y 60; cobertura desconocida sin evidencia = `null`.
+- Zonas: unión de soportes circulares de 0,7 km por banda, recortada al radio consultado. Se resta
+  el área de bandas superiores para evitar contar intensidad dos veces. Son **soportes visuales**,
+  no polígonos de afectación, ni límites de evacuación. `sample_ids` enlaza geometría con evidencia.
+
+La política futura de una IA puede consultar estos factores, pero debe verificar condiciones y
+fuentes antes de tomar decisiones. Este modelo no produce órdenes de intervención.
+
+Población 2021, suelo 2019 y OSM 18/09/2026 no son datos simultáneos. `/atlas/sources` sirve
+el documento original de atribución/licencias. Los campos de sexo, origen y movilidad permanecen
+en el atlas, pero no se utilizan para clasificar riesgo.
+
 ### `GET /api/satellite?id=<id>&mode=natural`
 
 `mode` admite `natural` o `swir`. Devuelve URL local, fecha del mosaico, bounding box `[oeste,sur,este,norte]`, capa, URL original y hora de comprobación. No acepta URLs arbitrarias.
@@ -76,7 +149,7 @@ Cada píxel se aproxima por un rectángulo local alineado con este/norte, con di
 
 Es una aproximación: no se conoce la orientación exacta de cada píxel, se combinan pasadas distintas y hay errores de geolocalización. El resultado **no es un límite de fuego ni terreno quemado**. `burned_area_ha` se mantiene a `null`.
 
-La capa de fuego dibuja cada componente de la geometría aproximada. En la vista nacional amplía las componentes menores de unos 14 píxeles por legibilidad; esa ampliación y el halo no usan una escala de hectáreas.
+La capa de fuego dibuja cada componente de la geometría aproximada sin escalarla por zoom: la silueta queda anclada al terreno y solo cambia con la proyección, de modo que acercarse o alejarse no la deforma. La ondulación se indexa por posición relativa en el contorno, no por número de vértices, para que el remuestreo al cambiar de escala no altere el patrón; su amplitud es proporcional a la extensión dibujada. Las huellas pequeñas se localizan por el halo, cuyo radio mínimo es de unos 9 píxeles y no usa una escala de hectáreas.
 
 ### Motor visual de fuego y viento
 

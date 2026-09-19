@@ -40,6 +40,7 @@ y dashboard con aprobación humana.
 - [[Escenario demo - giro de viento]]
 - [[Cómo desplegar - sos deploy]]
 - [[Cómo arrancar todo]]
+- [[Simulador 112 con ficha en directo]] (web call aislada + resumen visual)
 - Legacy 2026-09-18: [[FlareAI Web Voice - workflow]] · [[Web app - server y frontend]]
 
 ### Referencia
@@ -50,9 +51,24 @@ y dashboard con aprobación humana.
 
 ### Bitácora
 - [[2026-09-18]] — agente de voz web + vault
-- [[2026-09-19]] — S.O.S. Crisis Engine completo (plan, laboratorio de formatos, deploy, local, simulador, dashboard)
+- [[2026-09-19]] — S.O.S. Crisis Engine; después FlareAI actual y contexto territorial del atlas sin base de datos
 
 ## Estado actual (resumen rápido, 2026-09-19)
+
+- **Activo: FlareAI**, observatorio Python + Leaflet en la raíz, servidor online en :8090.
+  La implementación S.O.S. descrita en las notas anteriores vive en `versión-anterior/`.
+- **Simulador 112 aislado:** `happyrobot-112/`, workflow propio publicado, voz Ana HR en español
+  y ficha en directo desde el transcript. Servidor local en :8112; no conecta con el 112 real.
+- **Atlas integrado sin base de datos:** población 2021, suelo 2019 y 44.787 elementos OSM de
+  18/09/2026. Contexto a 5 km de la huella y avisos orientativos según viento, sin sustituir
+  riesgo oficial. **Mapa de calor automático al seleccionar un foco**, con rótulo al pasar el ratón,
+  sin panel ni puntos; API v2 con factores y evidencia para agentes. La huella del incendio queda
+  anclada al terreno y no se deforma al hacer zoom. Véase [[2026-09-19]].
+- **Verificación del proyecto activo:** 29 tests Python, 34 JavaScript y prueba en navegador de
+  escritorio/móvil. Arquitectura y comandos actuales en `README.md`, `docs/IMPLEMENTACION.md`
+  y `AGENTS.md` de la raíz.
+
+### Estado histórico de HappyRobot (implementación apartada)
 - 🧹 **Plataforma vaciada (2026-09-19, tarde)**: los 9 workflows SOS se **borraron** de HappyRobot a
   petición del usuario (sin Twin no servían). Siguen definidos como código: `python -m sos deploy`
   los vuelve a crear en una pasada cuando haya Twin. En la org solo quedan `FlareAI Web Voice`
@@ -66,3 +82,5 @@ y dashboard con aprobación humana.
   hasta que haya Twin).
 - ✅ 12 tests (`.venv/bin/python -m pytest -q tests`). Commit `be1bb86` + docs.
 - 🔑 Secretos solo en `.env` / variables de workflow; nunca en repo ni vault.
+
+Relacionado: [[2026-09-19]] · [[Cómo arrancar todo]] · [[SOS Crisis Engine - arquitectura]]

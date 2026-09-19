@@ -144,7 +144,8 @@ def assemble(collection: Collection, weather: Snapshot, at: datetime | None = No
                 if documented else None
             ),
             burned_area_ha=None, footprint_ha=area, footprint=geom,
-            detections=[{"lon": o["geometry"]["coordinates"][0], "lat": o["geometry"]["coordinates"][1],
+            detections=[{"id": o['id'], "source": o['properties']['source'], "satellite": o['properties']['satellite'],
+                         "lon": o["geometry"]["coordinates"][0], "lat": o["geometry"]["coordinates"][1],
                          "at": o["properties"]["acquired_at_utc"], "confidence": o["properties"]["confidence"]}
                         for o in group],
             weather=point(weather, lat, lon),

@@ -122,6 +122,53 @@ class ContextTests(unittest.TestCase):
         self.assertEqual(result["facilities"]["count"], 20)
         self.assertTrue(result["points_truncated"])
 
+    def test_potential_has_explainable_scores_and_area_geometries(self):
+        result = atlas([grid_row(-2.98, population=1000)], [facility(-2.98)]).analyze(incident(), now=NOW)
+        potential = result["potential"]
+        self.assertEqual(potential["model"]["id"], "attention-potential-v1")
+        self.assertEqual(potential["classification"], "heuristic_not_fire_probability")
+        self.assertTrue(potential["zones"]["features"])
+        for sample in potential["samples"]:
+            self.assertLessEqual(sample["score"], 100)
+            self.assertGreaterEqual(sample["score"], 0)
+            self.assertEqual(sample["score"], round(min(100, sample["proximity_factor"] * sum(sample["contributions"].values())), 1))
+        for zone in potential["zones"]["features"]:
+            self.assertEqual(zone["geometry"]["type"], "Polygon")
+            self.assertTrue(zone["properties"]["sample_ids"])
+        json.dumps(potential, allow_nan=False)
+
+    def test_potential_uses_all_cells_not_the_twelve_preview_points(self):
+        result = atlas([grid_row(-2.98 + i * .0001) for i in range(20)]).analyze(incident(), now=NOW)
+        self.assertEqual(len(result["potential"]["samples"]), 20)
+        self.assertLessEqual(len(result["points"]), 12)
+
+    def test_potential_does_not_turn_missing_coverage_into_low_risk(self):
+        result = atlas([grid_row(-2.98, population=math.nan, forest=math.nan, surface=0)]).analyze(incident(), now=NOW)
+        self.assertIsNone(result["potential"]["samples"][0]["score"])
+        self.assertEqual(result["potential"]["zones"]["features"], [])
+        self.assertEqual(result["potential"]["status"], "unavailable")
+
+    def test_potential_uses_proximity_and_only_current_wind(self):
+        model = atlas([grid_row(-2.98, population=500, forest=80), grid_row(-2.95, population=500, forest=80)])
+        current = model.analyze(incident(), now=NOW)["potential"]["samples"]
+        stale = model.analyze(incident(), now=NOW + timedelta(hours=3))["potential"]["samples"]
+        historical = model.analyze(incident(), now=NOW, offline=True)["potential"]["samples"]
+        nearest, farther = sorted(current, key=lambda sample: sample['distance_km'])
+        self.assertGreater(nearest['score'], farther['score'])
+        self.assertGreater(current[0]["score"], stale[0]["score"])
+        self.assertEqual(stale[0]["contributions"]["wind"], 0)
+        self.assertEqual(historical[0]["contributions"]["wind"], 0)
+        self.assertIn("current_wind", stale[0]["missing_inputs"])
+
+    def test_repeated_osm_elements_do_not_amplify_a_cell_score(self):
+        row = grid_row(-2.98)
+        poi = facility(-2.98)
+        poi.update(grid_x=-298000, grid_y=4000000)
+        one = atlas([row], [poi]).analyze(incident(), now=NOW)["potential"]
+        many = atlas([row], [poi, {**poi, "id": "way:2"}]).analyze(incident(), now=NOW)["potential"]
+        self.assertEqual(one["samples"][0]["score"], many["samples"][0]["score"])
+        self.assertEqual(len(many["samples"][0]["evidence"]["facility_ids"]), 2)
+
     def test_missing_atlas_fails_explicitly(self):
         with tempfile.TemporaryDirectory() as folder:
             with self.assertRaises(OSError):

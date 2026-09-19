@@ -43,6 +43,64 @@ Sin claves ni secretos: FlareAI no requiere API key para NASA/NOAA. Si en el fut
 falta alguna, solo en `.env` (nunca en el repo/vault). Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Contexto territorial del atlas
+
+- `database.py` + `schema.sql`: PostgreSQL 17 local en `.local/pg`, socket privado (puerto interno
+  54330, sin TCP); psycopg en `.venv`. `python database.py start` y `python database.py import`.
+  El arranque normal lo prepara automáticamente. No toca la base SOS de `versión-anterior/`.
+- El servidor usa SQL para atlas, cámaras, instantáneas FIRMS/GFS, instalaciones y metadatos de
+  cartografía/imágenes. `nearby_atlas()` hace un filtro indexado por caja antes del cálculo Shapely.
+  `Atlas.load()` permanece como importador/referencia para pruebas, no para consultas del servidor.
+- Tipos compatibles con Twin (`text`, `float8`, `int8`, `timestamp`, `jsonb`), PK/FK e índices,
+  sin PostGIS. Prefijo `flare_` evita colisiones con el legado. Timestamps SQL en UTC.
+  `FLAREAI_DATABASE_URL` permite otro Postgres. Nunca conectar/escribir automáticamente en Twin.
+- Exportación local: `python database.py export --directory .local/export-NUEVO` genera esquema
+  y JSONL con cursor, en una instantánea consistente. No es todavía un importador remoto de Twin.
+  Las imágenes/GRIB permanecen en disco; SQL conserva datos procesados y referencias de medios.
+- `GET /api/context?id=<id>` calcula el entorno bajo demanda, independiente de `/api/data`.
+  `static/context.js` presenta el resultado; `/atlas/sources` conserva las atribuciones/licencias.
+- Radio de 5 km desde la huella térmica aproximada (no desde su centro). Se seleccionan centros
+  de celdas de 1 km² y puntos OSM, no viviendas ni perímetros industriales. Población 2021,
+  suelo 2019, OSM 18/09/2026. No etiquetar estos datos como población afectada o riesgo oficial.
+- Viento hacia `(procedencia + 180) % 360`, sector ±30°, mínimo 3 km/h; sin aviso direccional
+  con viento ausente/desactualizado. Offline muestra contexto histórico, nunca alerta actual.
+- Preferencia actual: heatmap automático al pulsar un foco, sin botón de activación, con iconos
+  de instalaciones y ficha al pulsar (`static/infrastructure.js`). Cámaras públicas con icono,
+  agrupadas al alejar y separadas en detalle; agrupaciones coincidentes permiten elegir un elemento.
+  Las actualizaciones no deben mover la cámara. El canvas del calor no captura clics.
+- El calor acumula degradados radiales y traduce densidad a una paleta de 256 pasos; se dibuja
+  al 60 % de resolución, en `multiply`, bajo el fuego, y se repinta una vez por fotograma.
+- Carreteras IGN: WMS nacional `TN.RoadTransportNetwork.RoadLink`, siempre visible, teselas
+  solicitadas por viewport vía `/roads/z/x/y.png`, caché y metadatos SQL; no es un grafo viario
+  descargado completo ni contiene cortes/tráfico. No descargar masivamente teselas.
+- Webcams: 2.926 registros del catálogo Faro importados en SQL; no inventario exhaustivo ni
+  sincronización automática de catálogos. Capturas solo al abrir, con intervalos del proveedor;
+  reproductores públicos tras clic explícito, enlaces originales si no integrables. Allowlists
+  de hosts/rutas y redirecciones, límites de bytes, concurrencia y tiempo en `territorial.py`.
+- Detecciones sin confirmar en gris. `flare_confirmations` requiere fuente, fecha y caducidad;
+  alta confianza FIRMS o noticia histórica no confirma actividad actual. Offline conserva gris.
+  Localizador de llama de hasta 32 px al alejarse, distinto de la huella real anclada al terreno.
+- La huella del incendio está **anclada al terreno**: no escalar componentes pequeñas según el zoom
+  (causaba deformación al acercar). La ondulación se indexa por posición relativa del contorno, no
+  por índice de vértice, y su amplitud es proporcional a la extensión dibujada.
+- API v2: `potential` contiene `model`, `samples`, `zones` GeoJSON, `facilities`, `status` y
+  limitaciones. `POTENTIAL_MODEL` centraliza pesos/umbrales versionados; cada muestra incluye
+  evidencia, contribuciones, proximidad y datos ausentes. Se usan todas las celdas y los puntos OSM
+  del radio, no los 12 puntos de compatibilidad del endpoint. No sumar población desde instalaciones.
+- Potencial es prioridad exploratoria de revisión, **no probabilidad ni plan de actuación**. El viento
+  histórico/desactualizado no aumenta la puntuación; los polígonos suavizados no son perímetros de
+  peligro. No colorear cobertura totalmente desconocida como si fuera riesgo bajo.
+- Pruebas: `FLAREAI_TEST_DATABASE=1 .venv/bin/python -m unittest -v` incluye regresiones con
+  PostgreSQL importado; sin esa variable se omiten únicamente las pruebas SQL.
+  Lint: `.venv/bin/ruff check *.py`,
+  `.venv/bin/python -m mypy --ignore-missing-imports --cache-dir .local/mypy-cache *.py`.
+  Node local: `.local/node-v22.19.0-darwin-arm64/bin/node --test test_*.mjs`.
+- Herramientas instaladas únicamente dentro del proyecto: Python en `.venv/`, Node y cachés
+  en `.local/`. No instalar herramientas globales. Playwright de comprobación usa
+  `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers"`.
+- El servidor habitual se ejecuta **online**, sin `--offline`; el atlas siempre es una instantánea
+  estática. La actualización online puede modificar cachés y evidencias bajo `data/`.
+
 ## Documentar en el vault de Obsidian (`HappyRobot-Vault/`)
 
 Cuando el usuario pida **documentar**, **añadir al vault**, **apuntar esto en Obsidian**, o al

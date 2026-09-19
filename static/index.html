@@ -126,7 +126,9 @@
         aria-label="Mapa de actividad térmica en España"
       >
         <div id="map"></div>
+        <canvas class="heat-canvas" id="heat" aria-hidden="true"></canvas>
         <canvas class="flow-canvas" id="flow" aria-hidden="true"></canvas>
+        <div class="heat-tip" id="heat-tip" role="status" hidden></div>
         <div class="map-toolbar">
           <button class="mobile-list" id="show-list">Zonas</button>
           <div class="regions">
@@ -140,6 +142,11 @@
           <span class="eyebrow">PANORAMA NACIONAL</span>
           <h2>España, bajo observación.</h2>
           <p id="map-date">Cargando datos de satélite</p>
+          <div class="potential-key" id="potential-key" hidden>
+            <span class="potential-scale" aria-hidden="true"></span>
+            <span id="potential-status" role="status">Potencial de atención</span>
+            <span class="potential-caption">orientativo</span>
+          </div>
         </div>
         <div class="map-tools">
           <button id="zoom-in" aria-label="Acercar mapa">
@@ -159,12 +166,13 @@
           </button>
         </div>
         <div class="map-toast" id="map-toast" role="status" hidden></div>
+        <p class="infrastructure-status" id="infrastructure-status" role="status" hidden></p>
         <div class="map-bottom">
           <div class="map-legend">
-            <span><i class="legend-heat"></i>Huella térmica</span
-            ><span><i class="legend-flow"></i>Viento animado</span
+            <span><i class="legend-unconfirmed"></i>Sin confirmar</span
+            ><span><i class="legend-heat"></i>Incendio confirmado</span
             ><small
-              >Llamas y chispas ilustrativas · detalle ampliado al alejar</small
+              >Símbolos ampliados al alejar · no son perímetros</small
             >
           </div>
           <div class="map-toggles">
@@ -247,33 +255,6 @@
             <span class="status-tag" id="detection-tag">Señal térmica</span
             ><span id="seen-age"></span>
           </div>
-          <section class="context-section" aria-labelledby="context-title">
-            <div class="section-heading">
-              <h3 id="context-title">A tener en cuenta</h3><span>Entorno de 5 km</span>
-            </div>
-            <p id="context-summary" class="context-summary" role="status">Selecciona una zona.</p>
-            <button id="context-retry" class="context-link" hidden>Reintentar contexto</button>
-            <div id="context-data" hidden>
-              <p id="context-population"></p>
-              <p id="context-facilities"></p>
-              <p id="context-wind" class="context-wind"></p>
-              <p id="context-land"></p>
-              <div class="context-actions">
-                <button id="context-focus" class="context-link" disabled>Ver entorno en el mapa</button>
-                <label><input id="context-toggle" type="checkbox" checked disabled /> Puntos</label>
-              </div>
-              <details class="context-more">
-                <summary>Puntos, fechas y límites</summary>
-                <ul id="context-points"></ul>
-                <p id="context-demographics"></p>
-                <p id="context-soils"></p>
-                <p id="context-limits"></p>
-                <p id="context-sources"></p>
-                <a href="/atlas/sources" target="_blank" rel="noopener">Fuentes y licencias del atlas</a>
-              </details>
-              <p class="context-dates">Censo 2021 · Suelo 2019 · OSM 18/09/2026.<br />Contexto orientativo, no personas afectadas ni riesgo oficial. Puntos visibles al acercar el mapa.</p>
-            </div>
-          </section>
           <section class="satellite-section">
             <div class="section-heading">
               <h3>Una mirada desde arriba</h3>
@@ -410,14 +391,15 @@
       ><span class="eyebrow">OBSERVAR CON RESPONSABILIDAD</span>
       <h2>Lo que ves.<br />Lo que sabemos.</h2>
       <p>
-        FlareAI reúne datos reales de satélite y de atmósfera. Las zonas rojas
-        agrupan anomalías térmicas a menos de 3 km; pueden incluir industrias,
-        quemas agrícolas o incendios. No constituyen un inventario completo de
-        incendios activos.
+        FlareAI reúne datos de satélite y de atmósfera. Las zonas grises agrupan
+        anomalías térmicas a menos de 3 km: pueden ser industrias, quemas agrícolas
+        o incendios. La confianza alta de NASA FIRMS no confirma un incendio forestal.
+        El color fuego se reserva para una confirmación con fuente, fecha y vigencia.
+        Una noticia histórica no confirma actividad actual.
       </p>
       <h3>Una huella no es un perímetro.</h3>
       <p>
-        La superficie roja aproxima la unión de píxeles VIIRS, usando su tamaño
+        La superficie dibujada aproxima la unión de píxeles VIIRS, usando su tamaño
         y sin conocer su orientación exacta. No confirma terreno quemado. Cuando
         no hay un perímetro oficial, mostramos «—».
       </p>
@@ -438,10 +420,15 @@
         © EuroGeographics for the administrative boundaries.
       </p>
       <p>
-        A favor del viento significa un sector de ±30° con viento de al menos
-        3 km/h; se desactiva con meteorología desactualizada. No predice fuego
-        ni humo, no estima población afectada y no sustituye avisos oficiales.
-        Los puntos aparecen solo en el entorno seleccionado al acercar el mapa.
+        Al seleccionar un foco se dibuja un mapa de calor del entorno: de crema a
+        coral según la intensidad orientativa de revisión. Combina proximidad,
+        población censada, vegetación e instalaciones. El viento vigente añade
+        contexto direccional (±30°, mínimo 3 km/h), pero no determina por sí solo el
+        resultado. Pasa el ratón por encima para leer qué hay en cada punto. Los
+        pesos son exploratorios, no están calibrados para intervención. El
+        difuminado no delimita zonas de peligro ni predice propagación, humo,
+        población afectada o evacuaciones. Sin color no significa seguridad. Los
+        datos completos, factores y limitaciones se conservan en la API.
         <a href="/atlas/sources" target="_blank" rel="noopener">Fuentes, fechas y licencias del atlas</a>.
       </p>
       <h3>Temperatura y simulación.</h3>
