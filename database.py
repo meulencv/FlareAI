@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent
 PG = ROOT / '.local/pg'
 CATALOG = ROOT / 'data/espana-en-directo/data/catalog.json'
 TABLES = ('sources', 'imports', 'grid', 'facilities', 'cameras', 'snapshots', 'incidents',
-          'observations', 'confirmations', 'assets', 'settings', 'camera_checks')
+          'observations', 'confirmations', 'assets', 'settings', 'camera_checks', 'demo_sessions', 'demo_calls')
 
 
 def local_start() -> None:
@@ -210,6 +210,14 @@ class Database:
                     identifier = detection.get('id') or hashlib.sha256(json.dumps(detection, sort_keys=True).encode()).hexdigest()
                     conn.execute('INSERT INTO flare_observations VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET incident_id=EXCLUDED.incident_id',
                                  (identifier, item['id'], detection['lat'], detection['lon'], utc(detection['at']), Jsonb(detection)))
+
+    def start_demo(self, identifier: str) -> None:
+        with self.connect() as conn:
+            conn.execute("INSERT INTO flare_demo_sessions VALUES (%s,now() AT TIME ZONE 'UTC')", (identifier,))
+
+    def save_demo_call(self, session_id: str, run_id: str, data: dict) -> None:
+        with self.connect() as conn:
+            conn.execute("INSERT INTO flare_demo_calls VALUES (%s,%s,now() AT TIME ZONE 'UTC',%s) ON CONFLICT (id) DO UPDATE SET updated_at=EXCLUDED.updated_at,data=EXCLUDED.data WHERE flare_demo_calls.session_id=EXCLUDED.session_id", (run_id, session_id, Jsonb(data)))
 
     def confirmations(self, at: datetime) -> dict[str, dict]:
         moment = at.astimezone(timezone.utc).replace(tzinfo=None)

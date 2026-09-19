@@ -2,6 +2,9 @@
   "use strict";
 
   const { Room, RoomEvent, Track } = window.LivekitClient || {};
+  const integrated = window.location.pathname.startsWith('/112/');
+  const apiBase = integrated ? '/112' : '';
+  const post = (path, body = {}) => fetch(`${apiBase}/api/${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const dialerScreen = document.querySelector("#dialer-screen");
   const callScreen = document.querySelector("#call-screen");
   const dialNumberElement = document.querySelector("#dial-number");
@@ -129,16 +132,16 @@
     if (!targetRunId || polling) return;
     polling = true;
     try {
-      const response = await fetch(`/api/brief?run_id=${encodeURIComponent(targetRunId)}`, {
+      const response = await fetch(`${apiBase}/api/brief?run_id=${encodeURIComponent(targetRunId)}`, {
         cache: "no-store",
       });
       if (!response.ok) throw new Error("No se pudo actualizar la ficha");
       const data = await response.json();
       if (!final && targetRunId !== runId) return;
       updateSummary(data.summary);
-      syncState.textContent = final
-        ? "Ficha final"
-        : (data.status === "waiting" ? "Esperando datos…" : "Actualizando en directo");
+      syncState.textContent = data.map_status === 'located' ? 'Aviso enviado al mapa · demo'
+        : data.map_status === 'needs_location' ? 'Indica municipio y ubicación más precisa'
+        : final ? "Ficha final" : (data.status === "waiting" ? "Esperando datos…" : "Actualizando en directo");
     } catch (error) {
       if (final || targetRunId === runId) syncState.textContent = "Reintentando…";
     } finally {
@@ -174,7 +177,7 @@
     syncState.textContent = "Conectando con HappyRobot";
     timer.textContent = "00:00";
 
-    const response = await fetch("/api/call", { method: "POST" });
+    const response = await post('call');
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || "No se pudo iniciar la llamada");
 
@@ -229,6 +232,7 @@
     stopping = false;
 
     if (finishedRun) {
+      if (integrated) void post('stop', { run_id: finishedRun });
       window.setTimeout(() => void refreshBrief(finishedRun, true), 1200);
     }
   }
@@ -243,6 +247,7 @@
       timerHandle = null;
       stopping = true;
       const failedRoom = room;
+      if (integrated && runId) void post('stop', { run_id: runId });
       room = null;
       runId = null;
       if (failedRoom) failedRoom.disconnect();
@@ -275,8 +280,25 @@
     if (event.key === "Escape" && !detailsPanel.hidden) toggleDetails(false);
   });
 
+  async function prepareDemo() {
+    if (!integrated) return;
+    callButton.disabled = true;
+    if (window.location.hash) window.history.replaceState(null, '', window.location.pathname);
+    try {
+      const response = await fetch(`${apiBase}/api/status`);
+      const result = await response.json();
+      if (!result.configured) throw new Error('HappyRobot no está configurado en el ordenador.');
+      if (!result.browser_ready) {
+        const session = await post('session');
+        if (!session.ok) throw new Error('No se pudo preparar la demo. Recarga para reintentar.');
+      }
+      callButton.disabled = false;
+      dialStatus.textContent = 'Marca 112. El mapa se actualizará automáticamente.';
+    } catch (error) { dialStatus.textContent = error.message; }
+  }
   updateClock();
   window.setInterval(updateClock, 30000);
   renderNumber();
   updateSummary({});
+  void prepareDemo();
 })();

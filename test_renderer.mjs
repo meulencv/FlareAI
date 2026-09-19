@@ -17,6 +17,12 @@ test("ni FIRMS de alta confianza ni una noticia antigua confirman actividad actu
   assert.equal(confirmedFire(item, now), true);
   assert.equal(fireTint(item, 255, 120, 30), "rgba(255,120,30,1)");
   assert.equal(confirmedFire(item, now + 61000), false);
+  item.confirmation.source_url = '/api/demo/report/00000000-0000-4000-8000-000000000001';
+  assert.equal(confirmedFire(item, now), false, 'una ruta local solo es válida para confirmaciones de demo');
+  item.confirmation.demo = true;
+  assert.equal(confirmedFire(item, now), true);
+  item.confirmation.source_url = 'javascript:alert(1)';
+  assert.equal(confirmedFire(item, now), false);
   item.confirmation.status = "withdrawn";
   assert.equal(confirmedFire(item, now), false);
 });

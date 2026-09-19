@@ -56,3 +56,10 @@ CREATE TABLE IF NOT EXISTS flare_camera_checks (
 );
 CREATE INDEX IF NOT EXISTS flare_camera_checks_due ON flare_camera_checks (valid_until);
 INSERT INTO flare_migrations(version) VALUES (2) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS flare_demo_sessions (id text PRIMARY KEY, started_at timestamp NOT NULL);
+CREATE TABLE IF NOT EXISTS flare_demo_calls (
+    id text PRIMARY KEY, session_id text NOT NULL REFERENCES flare_demo_sessions(id),
+    updated_at timestamp NOT NULL, data jsonb NOT NULL
+);
+CREATE INDEX IF NOT EXISTS flare_demo_calls_session ON flare_demo_calls (session_id);
+INSERT INTO flare_migrations(version) VALUES (3) ON CONFLICT DO NOTHING;

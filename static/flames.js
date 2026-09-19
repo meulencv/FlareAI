@@ -7,7 +7,8 @@ const WIND_LIFE = 5.5, EMBER_LIFE = 3.4, MAX_EMBERS = 420;
 
 export function confirmedFire(incident, now = Date.now()) {
   const c = incident.confirmation;
-  return c?.status === "confirmed" && Boolean(c.source_name) && /^https?:\/\//.test(c.source_url || "")
+  const source = /^https?:\/\//.test(c?.source_url || "") || (c?.demo === true && /^\/api\/demo\/report\/[a-f0-9-]{36}$/.test(c.source_url || ""));
+  return c?.status === "confirmed" && Boolean(c.source_name) && source
     && new Date(c.confirmed_at).getTime() <= now && now <= new Date(c.valid_until).getTime();
 }
 

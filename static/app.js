@@ -7,7 +7,7 @@ import { createInfrastructure } from "./infrastructure.js";
 
 const $ = id => document.getElementById(id);
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
-const number = (n, digits = 1) => Number(n).toLocaleString("es-ES", { maximumFractionDigits: digits });
+const number = (n, digits = 1) => n == null || !Number.isFinite(Number(n)) ? "—" : Number(n).toLocaleString("es-ES", { maximumFractionDigits: digits });
 const date = (value, day = false) => new Intl.DateTimeFormat("es-ES", {
   timeZone: "UTC", hour: "2-digit", minute: "2-digit", ...(day ? { day: "2-digit", month: "short" } : {}),
 }).format(new Date(value)) + " UTC";
@@ -34,7 +34,7 @@ const stage = createStage({
 });
 let data, country, selected, currentPicture, imageMode = "natural", imageRequest = 0, filter = "all", region = "peninsula";
 let windVisible = true, simulationOpen = false, playTimer, refreshing = false, animationPaused = false;
-let zoomTarget = null, zoomFrame = 0;
+let zoomTarget = null, zoomFrame = 0, demoVersion = 0, demoSession = null, lastListRender = 0;
 const cachedPictures = new Map();
 const infrastructure = createInfrastructure({ map, L, document, fetch });
 const contextView = createContextView({ map, document, fetch, canvas: $("heat"), onContext: infrastructure.setContext, onFocus: () => {
@@ -69,6 +69,7 @@ function visibleIncidents() {
 }
 
 function renderList() {
+  lastListRender = Date.now();
   const incidents = visibleIncidents();
   $("list-count").textContent = `${incidents.length}`;
   const list = $("incident-list"); list.replaceChildren();
@@ -81,7 +82,9 @@ function renderList() {
     const button = document.createElement("button");
     button.className = `incident ${i.id === selected?.id ? "selected" : ""} ${confirmedFire(i) ? "confirmed" : "unconfirmed"}`;
     button.setAttribute("aria-pressed", String(i.id === selected?.id));
-    button.innerHTML = `<span class="incident-dot ${i.low_confidence === i.observations ? "low" : ""}"></span><span class="incident-body"><span class="incident-title"><strong>${escapeHtml(i.name)}</strong><span>${age(i.last_seen)}</span></span><span class="incident-subtitle">${i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · sin confirmar`}</span><span class="incident-meta"><span>${i.observations} detecciones</span><span>${svg("wind")} ${number(i.weather.wind_speed_kmh)} km/h</span></span></span>${selected?.id === i.id ? '<span class="incident-arrow">↗</span>' : ""}`;
+    const subtitle = i.demo_report ? "Confirmado por llamada · demo" : i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · ${confirmedFire(i) ? "confirmado" : "sin confirmar"}`;
+    const observations = i.source_kind === "call" ? "Aviso webcall" : `${i.observations} detecciones`;
+    button.innerHTML = `<span class="incident-dot ${i.observations > 0 && i.low_confidence === i.observations ? "low" : ""}"></span><span class="incident-body"><span class="incident-title"><strong>${escapeHtml(i.name)}</strong><span>${age(i.last_seen)}</span></span><span class="incident-subtitle">${escapeHtml(subtitle)}</span><span class="incident-meta"><span>${observations}</span><span>${svg("wind")} ${number(i.weather.wind_speed_kmh)} km/h</span></span></span>${selected?.id === i.id ? '<span class="incident-arrow">↗</span>' : ""}`;
     button.addEventListener("click", () => selectIncident(i, true));
     list.append(button);
   }
@@ -100,7 +103,7 @@ function renderFires(incidents) {
       style: { color: "#00000000", weight: 12, fillColor: "#00000000", fillOpacity: 0 },
     }).on("click", () => selectIncident(i, true)).addTo(shapeLayer);
     if (i.id === selected?.id) {
-      target.bindTooltip(`${escapeHtml(i.name)} · ${i.observations} detecciones`,
+      target.bindTooltip(`${escapeHtml(i.name)} · ${i.source_kind === "call" ? "aviso webcall · demo" : `${i.observations} detecciones`}`,
         { permanent: true, direction: "right", offset: [14, 0], className: `fire-label ${confirmedFire(i) ? "confirmed" : "unconfirmed"}` }).openTooltip();
     }
   }
@@ -118,8 +121,8 @@ function selectIncident(incident, focus = false) {
   $("detail-location").textContent = `${incident.province} · ${incident.lat.toFixed(3)}° N, ${Math.abs(incident.lon).toFixed(3)}° ${incident.lon < 0 ? "O" : "E"}`;
   const confirmed = confirmedFire(incident);
   $("detection-tag").classList.toggle("unconfirmed", !confirmed);
-  $("detection-tag").textContent = confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
-  $("seen-age").textContent = `Última detección ${age(incident.last_seen)}`;
+  $("detection-tag").textContent = incident.demo_report ? "Confirmado por llamada · demo" : confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
+  $("seen-age").textContent = `${incident.source_kind === "call" ? "Aviso recibido" : "Última detección"} ${age(incident.last_seen)}`;
   $("footprint-area").textContent = number(incident.footprint_ha);
   const w = incident.weather, to = destination(w.wind_from_degrees);
   $("wind-speed").textContent = number(w.wind_speed_kmh);
@@ -130,11 +133,13 @@ function selectIncident(incident, focus = false) {
   $("weather-time").textContent = date(w.valid_at_utc);
   $("weather-note").textContent = `Rachas ${number(w.wind_gust_kmh)} km/h · GFS 0,25° · ${date(w.valid_at_utc, true)}. Modelo iniciado ${date(w.model_run_utc, true)}.`;
   $("brightness").textContent = number(incident.brightness_i4_c);
-  $("brightness-note").textContent = `${number(incident.brightness_i4_k)} K · máximo del grupo · ${date(incident.brightness_at_utc, true)}`;
+  $("brightness-note").textContent = incident.source_kind === "call" ? "Sin medición térmica. Posición comunicada en la llamada." : `${number(incident.brightness_i4_k)} K · máximo del grupo · ${date(incident.brightness_at_utc, true)}`;
   $("detection-count").textContent = incident.observations;
   $("passes").textContent = incident.passes;
   $("frp").textContent = number(incident.frp_peak_mw);
-  $("detail-caveat").textContent = `${incident.satellites.join(" · ")}. Última detección: ${date(incident.last_seen, true)}. ${incident.low_confidence} de baja confianza. ${incident.documented ? "Caso contrastado en prensa; no confirma que continúe activo." : "La detección de calor no confirma un incendio forestal."}`;
+  $("detail-caveat").textContent = incident.demo_report
+    ? `Aviso de demostración por webcall: ${incident.demo_report.location.label}. ${incident.demo_report.location.precision === "locality" ? "Ubicación aproximada de localidad, no del punto exacto." : "Ubicación comunicada por el llamante."} No es una confirmación oficial de NASA. ${incident.source_kind === "call" ? "El contorno es un símbolo, no una huella térmica medida." : "Se ha asociado al foco térmico cercano."}`
+    : `${incident.satellites.join(" · ")}. Última detección: ${date(incident.last_seen, true)}. ${incident.low_confidence} de baja confianza. ${incident.documented ? "Caso contrastado en prensa; no confirma que continúe activo." : "La detección de calor no confirma un incendio forestal."}`;
   $("news-link").hidden = !confirmed && !incident.documentation_url;
   if (confirmed) {
     $("news-link").href = incident.confirmation.source_url;
@@ -144,8 +149,8 @@ function selectIncident(incident, focus = false) {
     $("news-link").textContent = "Noticia histórica · no confirma actividad actual ↗";
   }
   $("scenario-direction").textContent = to === null ? "Sin dirección de viento" : `Orientación hacia ${cardinal(to)}`;
-  $("simulate").disabled = to === null;
-  $("scenario-shortcut").disabled = to === null;
+  $("simulate").disabled = to === null || incident.source_kind === "call";
+  $("scenario-shortcut").disabled = $("simulate").disabled;
   renderList(); renderScenario();
   loadPicture();
   contextView.load(incident, { focus });
@@ -211,7 +216,15 @@ async function refresh() {
   try {
     const response = await fetch("/api/data");
     if (!response.ok) throw new Error("No se pudieron actualizar los datos");
+    const previousData = data;
     data = await response.json();
+    if (data.demo?.session_id !== demoSession) { demoVersion = 0; demoSession = data.demo?.session_id; }
+    const reported = data.demo && data.demo.version > demoVersion ? data.incidents.find(i => i.id === data.demo.latest_id) : null;
+    demoVersion = data.demo?.version || 0;
+    const focusReport = reported && (!selected?.demo_report || selected.id !== reported.id || JSON.stringify(reported.demo_report?.location) !== JSON.stringify(selected.demo_report?.location));
+    const latestCall = data.demo?.calls.at(-1);
+    $("demo-notice").hidden = !latestCall;
+    $("demo-notice").textContent = latestCall?.error || (latestCall?.state === "located" ? "Llamada recibida · aviso marcado en el mapa · DEMO" : latestCall?.state === "needs_location" ? "Webcall · pendiente de ubicación suficiente" : latestCall?.state === "not_fire" ? "Webcall · no se ha confirmado un incendio" : latestCall?.ended ? "Webcall finalizada · sin ubicación suficiente" : "Webcall iniciada · recogiendo datos");
     $("zone-count").textContent = data.incidents.length;
     $("tab-count").textContent = data.incidents.length;
     $("obs-count").textContent = data.incidents.reduce((sum, i) => sum + i.observations, 0);
@@ -221,14 +234,21 @@ async function refresh() {
     $("feed-state").innerHTML = `<i></i>${data.status === "ready" ? "Fuentes conectadas" : data.status === "offline" ? "Muestra guardada" : "Datos sin actualizar"}`;
     $("error-banner").hidden = data.status === "ready";
     $("error-banner").textContent = data.status === "offline" ? "Modo sin conexión. Consulta las fechas de la muestra guardada." : "Alguna fuente no está actualizada. Conservamos los últimos datos con su fecha.";
-    const next = data.incidents.find(i => i.id === selected?.id) || data.incidents[0];
-    if (!selected || next?.id !== selected.id) {
+    const next = focusReport ? reported : data.incidents.find(i => i.id === selected?.id) || data.incidents[0];
+    if (focusReport) {
+      selectIncident(next, true);
+    } else if (!selected || next?.id !== selected.id) {
       if (next) selectIncident(next);
       else { selected = null; contextView.clear(); $("scenario-shortcut").disabled = true; $("detail-content").hidden = true; $("detail-name").textContent = "Sin detecciones"; closeSimulation(); imageRequest++; renderList(); }
     } else {
       const changed = data.wind.valid_at_utc !== selected.weather.valid_at_utc || next.observations !== selected.observations
-        || JSON.stringify(next.confirmation) !== JSON.stringify(selected.confirmation);
-      if (changed) selectIncident(next); else { selected = next; $("seen-age").textContent = `Última detección ${age(next.last_seen)}`; renderList(); contextView.load(next); }
+        || JSON.stringify(next.confirmation) !== JSON.stringify(selected.confirmation)
+        || JSON.stringify(next.demo_report) !== JSON.stringify(selected.demo_report);
+      if (changed) selectIncident(next);
+      else {
+        selected = next;
+        if (data.fires_checked_at !== previousData?.fires_checked_at || Date.now() - lastListRender > 60000) renderList();
+      }
     }
   } catch (error) {
     contextView.clear();
@@ -261,7 +281,7 @@ async function start() {
     document.querySelector(".map-label .eyebrow").textContent = map.getZoom() > 9 ? "DETALLE TERRITORIAL" : "PANORAMA NACIONAL";
   });
   new ResizeObserver(() => map.invalidateSize()).observe($("map"));
-  setRegion("peninsula"); infrastructure.load(); await refresh(); setInterval(refresh, 60000);
+  setRegion("peninsula"); infrastructure.load(); await refresh(); setInterval(refresh, 2500);
 }
 
 document.querySelectorAll("[data-region]").forEach(b => b.addEventListener("click", () => { closeSimulation(); setRegion(b.dataset.region); }));
@@ -366,5 +386,9 @@ $("enlarge-image").onclick = () => {
   $("large-caption").textContent = `${selected.name} · ${day(currentPicture.date)} · ${imageMode === "natural" ? "color natural" : "infrarrojo SWIR"}`;
   $("image-dialog").showModal();
 };
+fetch('/api/demo/setup').then(response => response.ok ? response.json() : null).then(setup => {
+  $("demo-link").hidden = !setup?.ready;
+  if (setup?.public_url) $("demo-link").href = `${setup.public_url}/112/`;
+}).catch(() => { $("demo-link").hidden = true; });
 document.addEventListener("visibilitychange", () => { if (document.hidden) stopPlay(); });
 start().catch(error => { $("error-banner").hidden = false; $("error-banner").textContent = error.message; });
