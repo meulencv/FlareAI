@@ -28,8 +28,9 @@ from satellite import picture
 
 
 class Store:
-    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False) -> None:
+    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False, hackathon: bool = False) -> None:
         self.offline = offline
+        self.hackathon = hackathon
         self.db = database
         self.territorial = Territorial(database, offline) if database else None
         self.lock = threading.Lock()
@@ -103,9 +104,15 @@ class Store:
                 "fire_refresh_seconds": 1800, "weather_refresh_seconds": 600,
                 "classification": "thermal_clusters_not_exhaustive_fire_inventory",
             }
+        if self.director and self.director.scene:
+            with self.director.lock:
+                payload = self.director.scene.overlay(payload)
         if self.demo:
             payload['incidents'] = self.demo.overlay(cast(list[dict], payload['incidents']), dict(self.weather), now)
             payload['demo'] = self.demo.public_state()
+        if self.director and self.director.scene:
+            with self.director.lock:
+                payload = self.director.scene.overlay(payload)
         return payload
 
     def context(self, identifier: str) -> dict:
@@ -162,6 +169,30 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path in {'/api/scenario', '/api/director/cancel-alert'}:
+            if self.mobile_only or self.client_address[0] not in {'127.0.0.1', '::1'}:
+                self.send_error(404)
+                return
+            try:
+                control_origin = urlsplit(self.headers.get('Origin', ''))
+                if control_origin.netloc != self.headers.get('Host') or control_origin.scheme not in {'http', 'https'}:
+                    raise PermissionError('Se requiere una orden local del mismo origen')
+                director = self.store.director
+                if not director or not director.scene:
+                    raise ValueError('Arranca con --hackathon para activar el escenario')
+                body = self.read_body()
+                with director.lock:
+                    if path.endswith('cancel-alert'):
+                        director.cancel_alert(str(body.get('id', '')))
+                    else:
+                        director.scene.command(body)
+                        director.save()
+                self.send_json({'ok': True})
+            except PermissionError as error:
+                self.send_json({'error': str(error)}, 403)
+            except (ValueError, KeyError, RuntimeError) as error:
+                self.send_json({'error': str(error)}, 400)
+            return
         if path not in {'/112/api/session', '/112/api/call', '/112/api/stop'} or not self.store.demo:
             self.send_error(404)
             return
@@ -196,14 +227,16 @@ class Handler(SimpleHTTPRequestHandler):
                 if number == '123':
                     incident = cast(dict, dict(self.store.find(str(body.get('incident_id', '')))))
                     report = incident.get('demo_report')
-                    if not report or report.get('cancelled'):
+                    sensor = incident.get('sensor_report') or incident.get('scene_report')
+                    if not (report or sensor) or (report or {}).get('cancelled') or incident.get('scenario', {}).get('phase') in {'releasing', 'closed'}:
                         raise ValueError('Aviso no disponible')
                     resource_id = body.get('resource_id')
                     if resource_id:
                         assignment = self.store.director.public_state()['assignments'].get(resource_id) if self.store.director else None
                         if not assignment or assignment['incident_id'] != incident['id'] or assignment['status'] == 'returning':
                             raise ValueError('Recurso no asignado al aviso')
-                    binding = {**report['location'], 'run_id': report['run_id'], 'incident_id': incident['id'], 'resource_id': resource_id}
+                    binding = ({**report['location'], 'run_id': report['run_id']} if report else
+                               {'sensor_id': incident['id'], 'lat': incident['lat'], 'lon': incident['lon'], 'label': incident['name']}) | {'incident_id': incident['id'], 'resource_id': resource_id}
                 self.send_json(demo.create_call(owner, 'firefighter' if number == '123' else 'citizen', binding))
             else:
                 demo.stop(str(body.get('run_id', '')), self.browser_token())
@@ -275,9 +308,10 @@ class Handler(SimpleHTTPRequestHandler):
                     self.send_json(self.store.director.alert_feed(after) if self.store.director else {'session_id': self.store.demo.session_id, 'sequence': 0, 'events': [], 'mode': 'simulation_only'})
                 else:
                     assignments = self.store.director.public_state()['assignments'] if self.store.director else {}
-                    self.send_json({'incidents': [{'id': i['id'], 'label': i['demo_report']['location']['label'],
-                        'precision': i['demo_report']['location']['precision'], 'resources': [a['resource'] | {'status': a['status']} for a in assignments.values() if a['incident_id'] == i['id'] and a['status'] != 'returning']}
-                        for i in cast(list[dict], self.store.payload()['incidents']) if i.get('demo_report') and not i['demo_report'].get('cancelled')]})
+                    self.send_json({'incidents': [{'id': i['id'], 'label': i.get('demo_report', {}).get('location', {}).get('label', i['name']),
+                        'precision': i.get('demo_report', {}).get('location', {}).get('precision', 'area'), 'resources': [a['resource'] | {'status': a['status']} for a in assignments.values() if a['incident_id'] == i['id'] and a['status'] != 'returning']}
+                        for i in cast(list[dict], self.store.payload()['incidents']) if (i.get('demo_report') or i.get('sensor_report') or i.get('scene_report'))
+                        and not i.get('demo_report', {}).get('cancelled') and i.get('scenario', {}).get('phase') not in {'closed', 'releasing'}]})
             elif route.path == '/112/api/brief' and self.store.demo:
                 self.send_json(self.store.demo.brief(query.get('run_id', [''])[0], self.browser_token()))
             elif route.path == '/api/demo/setup' and self.store.demo:
@@ -293,6 +327,14 @@ class Handler(SimpleHTTPRequestHandler):
                     call = self.store.demo.calls[run_id]
                     self.send_json({'source': 'Parte de bomberos de demostración' if call.get('role') == 'firefighter' else 'Llamada web de demostración, no confirmación oficial',
                                     'summary': call['summary'], 'location': call['location'], 'part': call.get('part', {})})
+            elif route.path == '/api/scenario/roads' and self.store.director and self.store.director.scene:
+                from local_routes import in_demo
+                bounds = [float(v) for v in query.get('bbox', [''])[0].split(',')]
+                if len(bounds) != 4 or not in_demo(bounds[:2]) or not in_demo(bounds[2:]) or not bounds[0] < bounds[2] or not bounds[1] < bounds[3]:
+                    raise ValueError('Caja fuera del área precargada')
+                self.send_json({'roads': self.store.director.router.demo_roads(bounds), 'attribution': '© OpenStreetMap contributors · ODbL'})
+            elif route.path == '/api/director/history' and self.store.director and self.store.db:
+                self.send_json(self.store.db.director_history(self.store.director.session_id))
             elif route.path == '/api/director':
                 self.send_json(self.store.director.public_state() if self.store.director else {'status': 'disabled', 'events': [], 'assignments': {}, 'alerts': {}})
             elif route.path == "/api/data":
@@ -338,7 +380,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise KeyError('Cartografía no importada')
                 self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js",
+                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()
@@ -364,12 +406,13 @@ if __name__ == "__main__":
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument('--mobile-port', type=int, default=8112)
+    parser.add_argument('--hackathon', action='store_true', help='Activa el escenario de sala Barcelona; requiere red precargada')
     options = parser.parse_args()
     database = Database()
     if not database.url:
         local_start()
     database.bootstrap()
-    Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True)
+    Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True, hackathon=options.hackathon)
     if Handler.store.director:
         threading.Thread(target=Handler.store.director.loop, daemon=True).start()
     if Handler.store.demo:

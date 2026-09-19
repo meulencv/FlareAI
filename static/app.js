@@ -5,6 +5,7 @@ import { rings } from "./flow.js";
 import { createContextView } from "./context.js";
 import { createInfrastructure } from "./infrastructure.js";
 import { createDirectorView } from "./director.js";
+import { priorityLine } from './scene.js';
 
 const $ = id => document.getElementById(id);
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -93,7 +94,7 @@ function renderList() {
     const button = document.createElement("button");
     button.className = `incident ${i.id === selected?.id ? "selected" : ""} ${confirmedFire(i) ? "confirmed" : "unconfirmed"}`;
     button.setAttribute("aria-pressed", String(i.id === selected?.id));
-    const subtitle = i.demo_report?.cancelled ? 'Aviso retirado por bomberos · demo' : i.demo_report ? (i.responder_report?.fields.incendio === 'confirmado' ? 'Confirmado por bomberos · demo' : 'Confirmado por llamada · demo') : i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · ${confirmedFire(i) ? "confirmado" : "sin confirmar"}`;
+    const subtitle = i.scenario ? `${i.source_kind === 'sensor' ? 'Aviso sensor FIRMS' : 'Escenario de sala'} · ${priorityLine(i.scenario)}` : i.demo_report?.cancelled ? 'Aviso retirado por bomberos · demo' : i.demo_report ? (i.responder_report?.fields.incendio === 'confirmado' ? 'Confirmado por bomberos · demo' : 'Confirmado por llamada · demo') : i.documented ? "La Rioja · caso documentado" : `${i.lat.toFixed(3)}° N · ${Math.abs(i.lon).toFixed(3)}° ${i.lon < 0 ? "O" : "E"} · ${confirmedFire(i) ? "confirmado" : "sin confirmar"}`;
     const observations = i.source_kind === "call" ? "Aviso webcall" : `${i.observations} detecciones`;
     button.innerHTML = `<span class="incident-dot ${i.observations > 0 && i.low_confidence === i.observations ? "low" : ""}"></span><span class="incident-body"><span class="incident-title"><strong>${escapeHtml(i.name)}</strong><span>${age(i.last_seen)}</span></span><span class="incident-subtitle">${escapeHtml(subtitle)}</span><span class="incident-meta"><span>${observations}</span><span>${svg("wind")} ${number(i.weather.wind_speed_kmh)} km/h</span></span></span>${selected?.id === i.id ? '<span class="incident-arrow">↗</span>' : ""}`;
     button.addEventListener("click", () => selectIncident(i, true));
@@ -118,7 +119,7 @@ function renderFires(incidents) {
         { permanent: true, direction: "right", offset: [14, 0], className: `fire-label ${confirmedFire(i) ? "confirmed" : "unconfirmed"}` }).openTooltip();
     }
   }
-  stage.update(incidents, selected?.id || null);
+  stage.update(incidents.filter(i => i.scenario?.phase !== 'closed' || i.observations > 0), selected?.id || null);
   infrastructure.setIncidents(incidents);
   contextView.setVisible(incidents.some(i => i.id === selected?.id));
 }
@@ -134,7 +135,8 @@ function selectIncident(incident, focus = false, details = false) {
   $("detail-location").textContent = `${incident.province} · ${incident.lat.toFixed(3)}° N, ${Math.abs(incident.lon).toFixed(3)}° ${incident.lon < 0 ? "O" : "E"}`;
   const confirmed = confirmedFire(incident);
   $("detection-tag").classList.toggle("unconfirmed", !confirmed);
-  $("detection-tag").textContent = incident.demo_report?.cancelled ? 'Aviso retirado por bomberos · demo' : incident.demo_report ? (incident.responder_report?.fields.incendio === 'confirmado' ? 'Confirmado por bomberos · demo' : 'Confirmado por llamada · demo') : confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
+  $('detail-priority').textContent = priorityLine(incident.scenario);
+  $("detection-tag").textContent = incident.scenario ? `${incident.scenario.label} · ${incident.source_kind === 'sensor' ? 'sensor FIRMS' : 'simulación'}` : incident.demo_report?.cancelled ? 'Aviso retirado por bomberos · demo' : incident.demo_report ? (incident.responder_report?.fields.incendio === 'confirmado' ? 'Confirmado por bomberos · demo' : 'Confirmado por llamada · demo') : confirmed ? `Confirmado · ${day(incident.confirmation.confirmed_at)}` : "Anomalía térmica · sin confirmar";
   $("seen-age").textContent = `${incident.source_kind === "call" ? "Aviso recibido" : "Última detección"} ${age(incident.last_seen)}`;
   $("footprint-area").textContent = number(incident.footprint_ha);
   const w = incident.weather, to = destination(w.wind_from_degrees);
@@ -146,7 +148,7 @@ function selectIncident(incident, focus = false, details = false) {
   $("weather-time").textContent = date(w.valid_at_utc);
   $("weather-note").textContent = `Rachas ${number(w.wind_gust_kmh)} km/h · GFS 0,25° · ${date(w.valid_at_utc, true)}. Modelo iniciado ${date(w.model_run_utc, true)}.`;
   $("brightness").textContent = number(incident.brightness_i4_c);
-  $("brightness-note").textContent = incident.source_kind === "call" ? "Sin medición térmica. Posición comunicada en la llamada." : `${number(incident.brightness_i4_k)} K · máximo del grupo · ${date(incident.brightness_at_utc, true)}`;
+  $("brightness-note").textContent = !incident.observations ? "Sin medición térmica. Posición comunicada en la llamada." : `${number(incident.brightness_i4_k)} K · máximo del grupo · ${date(incident.brightness_at_utc, true)}`;
   $("detection-count").textContent = incident.observations;
   $("passes").textContent = incident.passes;
   $("frp").textContent = number(incident.frp_peak_mw);
@@ -248,6 +250,12 @@ async function refresh() {
     $("feed-state").innerHTML = `<i></i>${data.status === "ready" ? "Fuentes conectadas" : data.status === "offline" ? "Muestra guardada" : "Datos sin actualizar"}`;
     $("error-banner").hidden = data.status === "ready";
     $("error-banner").textContent = data.status === "offline" ? "Modo sin conexión. Consulta las fechas de la muestra guardada." : "Alguna fuente no está actualizada. Conservamos los últimos datos con su fecha.";
+    if (data.scenario_revision !== undefined) {
+      renderFires(visibleIncidents());
+      const record = data.incidents.find(i => i.id === selected?.id)?.scenario;
+      $('detail-priority').textContent = priorityLine(record);
+      if (record) $('detection-tag').textContent = `${record.label} · simulación de sala`;
+    }
     const next = focusReport ? reported : data.incidents.find(i => i.id === selected?.id);
     if (focusReport) {
       directorView.report(next); renderList();

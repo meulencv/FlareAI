@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { routePosition, freshEvents, cinematicFrame, nearbyEvidence, patrolTargets, createCameraTour, createEvidenceView } from "./static/director.js";
+import { routePosition, freshEvents, directorWarning, cinematicFrame, nearbyEvidence, patrolTargets, createCameraTour, createEvidenceView } from "./static/director.js";
 
 import { notificationBatch } from './happyrobot-112/static/alerts.js';
 import { preferredSpeaker, createSpeakerOutput } from './happyrobot-112/static/audio.js';
@@ -47,6 +47,12 @@ test('la voz usa una sola salida mezclada, selecciona altavoz y libera audio sin
   output.close();
   assert.equal(closed, 1); assert.equal(stopped, 1); assert.equal(disconnected, 1);
   assert.ok(elements.every(e => e.removed));
+});
+
+test('los bloqueos del director tienen explicación persistente y no aparentan despacho', () => {
+  for (const status of ['error', 'auth_required', 'unconfigured', 'standby', 'disconnected']) assert.ok(directorWarning(status));
+  for (const status of ['idle', 'thinking', 'watching', 'disabled']) assert.equal(directorWarning(status), '');
+  assert.match(directorWarning('error'), /Sin nuevos despachos/);
 });
 
 const point = (x, y) => ({ x, y });

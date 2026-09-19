@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, facilitiesVisible, fireExclusionBoxes, obscuresFire } from "./static/infrastructure.js";
+import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, facilitiesVisible, fireExclusionBoxes, obscuresFire, relevantFacilities, WASTE_LIMIT } from "./static/infrastructure.js";
 
 test("las instalaciones solo aparecen de cerca y nunca encima de una huella ampliada", () => {
   assert.equal(facilitiesVisible(12.99), false);
@@ -51,6 +51,20 @@ test("la ficha distingue prioridad orientativa, distancia y viento histórico", 
   assert.match(facilityDetails(poi, { status: "stale" }).wind, /Sin viento actual/);
   assert.match(current.priority, /orientativa/);
   assert.match(facilityDetails({ category: "unknown" }, {}).distance, /no disponible/);
+});
+
+test("los puntos de residuos salen del mapa salvo los pocos con prioridad alta", () => {
+  const facilities = [
+    { id: "n:1", category: "gestion_residuos", priority: "revisar", distance_km: .2 },
+    { id: "n:2", category: "vertedero", priority: "alta_orientativa", distance_km: 3 },
+    { id: "n:3", category: "vertedero", priority: "alta_orientativa", distance_km: 1 },
+    { id: "n:4", category: "gestion_residuos", priority: "alta_orientativa", distance_km: 2 },
+    { id: "n:5", category: "gasolinera", priority: "revisar", distance_km: 4 },
+  ];
+  assert.equal(WASTE_LIMIT, 2);
+  assert.deepEqual(relevantFacilities(facilities).map(poi => poi.id), ["n:3", "n:4", "n:5"]);
+  assert.deepEqual(relevantFacilities([facilities[0]]), []);
+  assert.deepEqual(relevantFacilities([facilities[4]]), [facilities[4]]);
 });
 
 test("enlaces rechazan scripts, credenciales y protocolos no web", () => {

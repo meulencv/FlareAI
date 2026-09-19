@@ -1,6 +1,7 @@
 import { selectionBounds } from "./context.js";
 import { imagePoints } from "./simulation.js";
 import { safeLink } from "./infrastructure.js";
+import { createSceneView, priorityLine } from './scene.js';
 
 const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
 
@@ -63,7 +64,7 @@ export function nearbyEvidence(incident, incidents, cameras) {
 }
 
 export function patrolTargets(incidents, assignments) {
-  return [...incidents.filter(i => i.demo_report && !i.demo_report.cancelled).map(i => ({ key: `incident:${i.id}`, incident: i })),
+  return [...incidents.filter(i => (i.demo_report && !i.demo_report.cancelled || i.sensor_report || i.scene_report) && i.scenario?.phase !== 'closed' && !i.scenario?.linked_call_id).map(i => ({ key: `incident:${i.id}`, incident: i })),
     ...Object.values(assignments).filter(a => ["enroute", "returning"].includes(a.status))
       .map(a => ({ key: `vehicle:${a.resource.id}`, assignment: a }))];
 }
@@ -81,8 +82,23 @@ export function routePosition(route, progress) {
   return points[low].map((value, axis) => points[low - 1][axis] + (value - points[low - 1][axis]) * fraction);
 }
 
+export function engagedStations(stations, assignments) {
+  const engaged = new Set(Object.values(assignments || {}).map(a => `${a.resource?.station_id}:${a.resource?.kind}`));
+  return (stations || []).filter(station => engaged.has(`${station.station_id}:${station.kind}`));
+}
+
 export function freshEvents(events, sequence, now) {
   return events.filter(event => event.sequence > sequence && now - event.at < 90);
+}
+
+export function directorWarning(status) {
+  return {
+    error: 'Director temporalmente no disponible · reintento automático. Sin nuevos despachos hasta recuperar la conexión.',
+    auth_required: 'Director sin autenticación · revisa la conexión con HappyRobot. No se están generando nuevos despachos.',
+    unconfigured: 'Director no configurado · las llamadas no pueden movilizar recursos.',
+    standby: 'Director detenido en esta sesión · otro servidor tiene el control. Usa una sola instancia.',
+    disconnected: 'Sin conexión con el servidor · el mapa conserva el último estado recibido.',
+  }[status] || '';
 }
 
 export function createEvidenceView({ document, fetch, getData, getCameras, openCamera }) {
@@ -195,6 +211,8 @@ export function createEvidenceView({ document, fetch, getData, getCameras, openC
 
 const VEHICLE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h12v12H2zM14 11h4l4 4v3h-8M5 3h7M5 9h6m-6 3h6"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>';
 
+const AMBULANCE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 7h13l6 6v5H2zM7 9v6m-3-3h6M15 8v5h5"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>';
+
 const HELICOPTER = '<svg viewBox="0 0 32 28" aria-hidden="true"><path class="rotor" d="M3 4h26"/><path d="M16 4v5M12 9h8l7 7v4H9l-5-7H1M9 16h17M12 20v4m10-4v4M8 25h19M18 10v6"/></svg>';
 
 export function createDirectorView({ map, L, document, fetch, focus, clearContext, findIncident, getData, getCameras, openCamera, beforeMove }) {
@@ -210,6 +228,8 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   const cameraTour = createCameraTour({ map, L });
   const evidence = createEvidenceView({ document, fetch, getData, getCameras, openCamera: item => { manual(); openCamera(item); } });
   let following = true, armed = false, nextVisit = 0, lastTarget = "", lastEvidence = "", evidenceAt = 0;
+  const sceneView = createSceneView({ map, L, document, fetch, focus: id => { const incident = findIncident(id); if (incident) { manual(); focus(incident); map.setView([incident.lat, incident.lon], 13, { animate: false }); } } });
+  map.on('zoom', () => { if (!state?.scenario || map.getZoom() >= 11) stations.addTo(map); else stations.remove(); });
 
   function followControl() {
     $("follow-toggle").textContent = following ? "Seguimiento IA · activo" : "Reanudar seguimiento IA";
@@ -231,7 +251,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     if (overview) cameraTour.bounds(assignment.route.coordinates.map(([lon, lat]) => [lat, lon]), 13.5, reduced.matches);
     else {
       const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((Date.now() + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
-      const [lon, lat] = routePosition(assignment.route, progress);
+      const [lon, lat] = assignment.held_position || routePosition(assignment.route, progress);
       cameraTour.go([lat, lon], assignment.resource.kind === 'helicopter' ? 12 : 14, reduced.matches);
     }
     lastTarget = `vehicle:${assignment.resource.id}`;
@@ -245,6 +265,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     $("agent-message").textContent = event.message;
     $("agent-reason").textContent = event.reason || "";
     const incident = findIncident(event.incident_id);
+    $('agent-priority').textContent = priorityLine(incident?.scenario);
     if (incident || event.resource_id) armed = true;
     if (!following || paused) return;
     if (incident && ["report", "focus", "context", "watch", "arrived", "field_report"].includes(event.kind)) visit(incident, ["report", "context", "watch"].includes(event.kind));
@@ -257,7 +278,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     const targets = patrolTargets(getData()?.incidents || [], state?.assignments || {});
     if (!targets.length) { armed = false; return; }
     const target = targets[(targets.findIndex(t => t.key === lastTarget) + 1) % targets.length];
-    if (target.incident) show({ kind: "watch", visual: true, incident_id: target.incident.id, message: `Revisando ${target.incident.demo_report.location.label}`, reason: "Seguimiento del aviso y consulta de fuentes disponibles; no es una nueva decisión del agente." });
+    if (target.incident) show({ kind: "watch", visual: true, incident_id: target.incident.id, message: `Revisando ${(target.incident.demo_report?.location?.label || target.incident.name)}`, reason: "Seguimiento del aviso y consulta de fuentes disponibles; no es una nueva decisión del agente." });
     else show({ kind: "vehicle", visual: true, resource_id: target.assignment.resource.id, message: "Seguimiento de recursos en movimiento", reason: `${target.assignment.resource.name} · trayecto de demostración, tiempo acelerado` });
   }
   $("follow-toggle").onclick = () => {
@@ -270,33 +291,34 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
 
   function renderAssignments() {
     const assignments = Object.values(state.assignments || {});
-    const key = JSON.stringify([assignments.map(a => [a.id, a.status]), state.stations]);
+    const key = JSON.stringify([assignments.map(a => [a.id, a.status, a.route_revision]), state.stations]);
     if (key === routeKey) return;
     routeKey = key; routes.clearLayers(); stations.clearLayers();
     const active = new Set(assignments.map(a => a.resource.id));
     for (const [id, vehicle] of vehicles) if (!active.has(id)) { vehicle.marker.remove(); vehicles.delete(id); }
     const bases = new Map();
     for (const assignment of assignments) {
-      const resource = assignment.resource, police = resource.kind === "police", helicopter = resource.kind === 'helicopter';
+      const resource = assignment.resource, police = resource.kind === "police", helicopter = resource.kind === 'helicopter', ambulance = resource.kind === 'ambulance';
+      if (assignment.previous_route) L.polyline(assignment.previous_route.coordinates.map(([lon, lat]) => [lat, lon]), { pane: 'response-routes', color: '#a9aeb8', weight: 3, opacity: .45, dashArray: '3 7', interactive: false }).addTo(routes);
       const route = L.polyline(assignment.route.coordinates.map(([lon, lat]) => [lat, lon]), {
-        pane: "response-routes", color: helicopter ? "#7b78c9" : police ? "#789bc5" : "#e88578", weight: 3, opacity: assignment.status === "onscene" ? .25 : .75, interactive: false,
-        dashArray: helicopter ? "3 9" : assignment.status === "returning" ? "5 7" : null,
+        pane: "response-routes", color: assignment.status === 'blocked' ? '#a9aeb8' : helicopter ? "#7b78c9" : police ? "#789bc5" : ambulance ? '#4b9e80' : "#e88578", weight: 3, opacity: assignment.status === 'blocked' ? .2 : assignment.status === "onscene" ? .25 : .75, interactive: false,
+        dashArray: assignment.status === 'blocked' ? '2 8' : helicopter ? "3 9" : assignment.status === "returning" ? "5 7" : null,
       }).addTo(routes);
       const base = bases.get(resource.station_id) || { resource, count: 0 }; base.count++; bases.set(resource.station_id, base);
       if (!vehicles.has(resource.id)) {
         const marker = L.marker([resource.lat, resource.lon], { pane: "response-vehicles", title: resource.name,
-          icon: L.divIcon({ className: `response-vehicle ${helicopter ? "helicopter" : police ? "police" : "fire-engine"}`, html: helicopter ? HELICOPTER : VEHICLE, iconSize: [30, 28], iconAnchor: [15, 14] }) }).addTo(map);
+          icon: L.divIcon({ className: `response-vehicle ${helicopter ? "helicopter" : police ? "police" : ambulance ? 'ambulance' : "fire-engine"}`, html: helicopter ? HELICOPTER : ambulance ? AMBULANCE : VEHICLE, iconSize: [30, 28], iconAnchor: [15, 14] }) }).addTo(map);
         vehicles.set(resource.id, { marker, assignment, route });
       } else Object.assign(vehicles.get(resource.id), { assignment, route });
       const label = document.createElement("span");
-      label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : "Camión"} · ${resource.name} · ${assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km · tiempo visual acelerado`;
+      label.textContent = `${helicopter ? "Helicóptero · vuelo ilustrativo" : police ? "Patrulla" : ambulance ? 'Ambulancia' : "Camión"} · ${resource.name} · ${assignment.status === 'blocked' ? 'detenido · vía cortada' : assignment.status === 'transporting' ? 'traslado a hospital' : assignment.status === "onscene" ? "en el punto de encuentro" : assignment.status === "returning" ? "regresando" : "en camino"} · ${assignment.route.distance_km.toFixed(1)} km · tiempo visual acelerado`;
       vehicles.get(resource.id).marker.unbindTooltip().bindTooltip(label);
     }
-    const inventory = state.stations || [...bases.values()].map(({ resource, count }) => ({ ...resource, available: 0, total: count, busy: count }));
+    const inventory = engagedStations(state.stations || [...bases.values()].map(({ resource, count }) => ({ ...resource, available: 0, total: count, busy: count })), state.assignments);
     for (const station of inventory) {
       const marker = L.marker([station.lat, station.lon], { pane: "response-vehicles",
-        icon: L.divIcon({ className: "response-station", html: `${station.available}/${station.total}`, iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(stations);
-      const label = document.createElement("span"); label.textContent = `${station.name} · ${station.available} disponibles / ${station.busy} ocupados / ${station.total} total · flota simulada`;
+        icon: L.divIcon({ className: `response-station ${station.kind}`, html: `${{ fire_engine: 'B', ambulance: 'A', police: 'P', helicopter: 'H' }[station.kind] || ''} ${station.available}/${station.total}`, iconSize: [34, 24], iconAnchor: [17, 12] }) }).addTo(stations);
+      const label = document.createElement("span"); label.textContent = `${station.name} · sede de origen de una unidad movilizada · ${station.available} disponibles / ${station.busy} ocupados / ${station.total} total · flota simulada`;
       marker.bindTooltip(label).bindPopup(label.cloneNode(true));
     }
   }
@@ -323,12 +345,12 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       else if (now - (event.queuedAt || event.at * 1000 - offset || now) > 15000) queue.shift();
     }
     if (connected && following && armed && !paused && !current && !queue.length && !cameraTour.moving() && now > nextVisit) patrol();
-    evidence.tick(now);
+    evidence.tick(now); sceneView.tick();
     if (contextUntil && now > contextUntil) { contextUntil = 0; clearContext(); }
     $("agent-aura").hidden = !connected || !(state?.status === "thinking" || current && !["error", "blocked"].includes(current.kind));
     if (connected && !paused) for (const { marker, assignment } of vehicles.values()) {
       const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((now + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
-      const [lon, lat] = routePosition(assignment.route, progress);
+      const [lon, lat] = assignment.held_position || routePosition(assignment.route, progress);
       marker.setLatLng([lat, lon]);
     }
     frame = requestAnimationFrame(tick);
@@ -352,8 +374,12 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       queue.push(...freshEvents(next.events || [], sequence, (Date.now() + offset) / 1000));
       queue = queue.slice(-16);
       sequence = next.sequence || 0; state = next; lastContact = Date.now();
-      renderAssignments(); renderAlerts();
+      renderAssignments(); renderAlerts(); sceneView.update(next);
+      $('director-warning').textContent = directorWarning(next.status);
+      $('director-warning').hidden = !directorWarning(next.status);
     } catch {
+      $('director-warning').textContent = directorWarning('disconnected');
+      $('director-warning').hidden = false;
       $("agent-aura").hidden = true;
       if (state && state.status !== "disconnected") {
         state.status = "disconnected"; queue = []; cameraTour.cancel(); evidence.hide();
@@ -366,7 +392,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cameraTour.cancel(); evidence.hide(); queue = []; current = null; $("agent-card").hidden = true; }
     else { refresh(); if (!frame) frame = requestAnimationFrame(tick); }
   });
-  refresh(); setInterval(refresh, 2000); frame = requestAnimationFrame(tick);
+  refresh(); setInterval(refresh, 500); frame = requestAnimationFrame(tick);
   return {
     report(incident) {
       armed = true; current = null; lastEvidence = ""; cameraTour.cancel(); evidence.hide();
@@ -377,7 +403,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       if (!call || call.state === "located" || call.state === 'field_report') return;
       queue.push({ kind: call.error ? "error" : "call", message: call.error || (call.state === "needs_location" ? "Precisando la ubicación del aviso" : call.state === "not_fire" ? "Aviso revisado · incendio no confirmado" : call.ended ? "Llamada finalizada" : "Llamada entrante · recogiendo datos"), reason: "" });
     },
-    setPaused(value) { paused = value; if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },
+    setPaused(value) { paused = value; sceneView.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },
     manual,
   };
 }

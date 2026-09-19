@@ -9,6 +9,20 @@ def way(identifier, nodes, coordinates, **tags):
 
 
 class LocalRouteTests(unittest.TestCase):
+    def test_closure_changes_geometry_and_congestion_changes_time(self):
+        graph = RoadGraph({'elements': [
+            way(1, [1, 2, 3], [(2.1, 41.4), (2.101, 41.4), (2.102, 41.4)]),
+            way(2, [1, 4, 3], [(2.1, 41.4), (2.101, 41.401), (2.102, 41.4)]),
+        ]})
+        direct = graph.route([2.1, 41.4], [2.102, 41.4])
+        detour = graph.route([2.1, 41.4], [2.102, 41.4], blocked={'1:2'})
+        self.assertNotEqual(direct['coordinates'], detour['coordinates'])
+        self.assertNotIn('1:2', detour['edge_ids'])
+        delayed = graph.route([2.1, 41.4], [2.102, 41.4], congestion={'1:2': 5})
+        self.assertGreater(delayed['duration_seconds'], direct['duration_seconds'])
+        with self.assertRaises(ValueError):
+            graph.route([2.1, 41.4], [2.102, 41.4], blocked={'1:2', '1:4'})
+
     def test_connected_route_and_oneway(self):
         graph = RoadGraph({'elements': [way(1, [1, 2, 3], [(1, 41), (1.001, 41), (1.002, 41)], oneway='yes')]})
         route = graph.route([1, 41], [1.002, 41])

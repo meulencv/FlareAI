@@ -49,6 +49,46 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Macro simulador de sala (revisión posterior del 19/09/2026)
+
+- Activar con `.venv/bin/python app.py --hackathon --host 127.0.0.1 --port 8090`. No recorta España.
+  Preparación: `.venv/bin/python local_routes.py --prepare-demo`, 16 teselas reanudables en SQL,
+  caja `[41.28, 2.00, 41.54, 2.32]` (sur/oeste/norte/este). Red verificada: 69.882 vías, 370.215 nodos.
+  `barcelona-demo-road-v1` se publica solo al terminar todas las teselas; un único escritor. Las
+  teselas marinas vacías son válidas; `remark` parcial no. No descargar teselas IGN masivamente.
+- `scene.py` conserva el escenario separado de las observaciones; `static/scene.js` presenta historial,
+  prioridad, hospitales, veto ES-Alert y controles; `static/traffic.js` dibuja coches sobre segmentos OSM.
+  No conecta Traffic Lab. `--hackathon` requiere grafo precargado y director online; no es fallback LLM.
+- FIRMS fuerte (FRP ≥15 MW, confianza alta, edad ≤24 h, zona preparada) persiste 8 s y entra como
+  sensor sin llamada. No confirma oficialmente un incendio. Contraste por detección individual a ≤10 km;
+  sin coincidencia, texto explícito «Contraste satelital simulado». Barco exclusivamente por ficha 112
+  que lo comunique en Barcelona; punto marítimo ilustrativo, helicóptero al mar y tierra al encuentro costero.
+- Atlas en solo lectura: se añaden dos ambulancias ficticias por hospital/base y ocho plazas ficticias
+  por hospital; no representan camas disponibles. Traslado reserva plaza, llegada no da alta. El 123
+  admite sensores sin inventar un run ciudadano; los controles de sala admiten partes de tres cuerpos.
+- A* del escenario elimina tramos cortados, pondera congestión, conserva ruta anterior y recalcula
+  desde posición interpolada. Sin alternativa se detiene (`blocked`, `held_position`). Coches de frontend
+  comparten ID de tramo y se acumulan antes de la barrera. No recurrir a OSRM ignorando un corte.
+- Crecimiento/contención ilustrativos separados de `footprint`, radio máximo 1,2 km (barco 150 m).
+  Dos camiones o un helicóptero trabajando 45 s permiten contención; 25 s hasta vigilancia, otros
+  45 s antes de retirada. Cierre solo después del regreso; no atribuir esas transiciones a NASA.
+- En sala cualquier propuesta de alerta usa temporizador servidor de 3 s y veto por UUID; serializar
+  envío/cancelación y mantener idempotencia/cooldown. Solo receptor web simulado, sin servicios públicos.
+  Historial completo de sesión en `/api/director/history`, SQL conservado al reiniciar; refrescar navegador
+  no pierde memoria. Controles POST solo puerto principal loopback, JSON acotado y Origin del mismo host.
+- Director publicado con autorización: versión `01a0ba14-3e0f-700f-a77b-ebb32de57dbf`, mismo workflow.
+  Voz 112/123 intacta. HappyRobot normaliza `{{grupo.data.context_json}}` a `{{ index . "grupo.data.context_json" }}`;
+  `canonical_prompt` admite solo esa equivalencia, nunca ignorar otras diferencias. La publicación puede
+  responder antes de reflejar `is_live`: verificar por GET antes de reintentar una sustitución.
+- Run real `324cdb41-bf27-4073-9773-733c72f363f4`: dos camiones, dos ambulancias, policía y propuesta
+  ES-Alert, sin bloqueos de ruta. Entrada 112 fixture, NO nueva prueba de voz humana.
+- Verificación: `python -m unittest test_scene test_director test_local_routes test_demo -v`, Node
+  `--test test_scene.mjs`, y `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_scene.py`.
+  `verify_scene.py --cloud` consume cuota y necesita autorización. Capturas `.local/scene-barcelona.png`
+  y `.local/scene-mobile.png`; datos/planes fixture, SQL/grafo/interfaz reales. Esperar zoom inicial antes
+  de `getBounds()` del tráfico, como con el calor. La prueba SQL de satélite usa Igea congelada, no el primer
+  foco de la descarga mutable. La suite completa reescribe `evidence/api_offline.json` (solo fecha/puerto).
+
 ## Director HappyRobot y rutas locales (19/09/2026)
 
 - `director.py` conecta avisos de DemoBridge con un Reasoning Agent independiente; no hay planner
@@ -67,7 +107,8 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   `Database.export` elimina `hook_key`. API de cuenta y clave de hook son distintas.
 - Migración 4: estado y eventos en `flare_director_state`/`flare_director_events`. Nueva sesión en cada
   arranque, histórico conservado. Un worker con advisory lock, revisión por cambios/cada 180 s,
-  hasta 30 runs/hora, ocho incidentes por contexto (exceso declarado), ocho acciones por plan.
+  sin tope local de runs/hora por petición expresa para la hackathon; ocho incidentes por contexto
+  (exceso declarado), ocho acciones por plan. Mantener un solo run pendiente y validación de revisión/rutas.
   Validar revisiones antes/después de calcular rutas; sin ruta no hay despacho. Flota ficticia,
   sedes reales del SQLite en solo lectura. Llegar no libera el vehículo ni confirma extinción.
 - `local_routes.py`: A* local sobre geometrías OSM descargadas por zona vía Overpass, caché SQL.
@@ -184,6 +225,28 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   Regresiones `test_local_routes`/`test_director`: proveedor caído, geometría/endpoint inválido,
   alternativa libre, reservas de otras acciones, inventario y reintento. No garantiza cualquier
   ubicación fuera de carretera; siguen vigentes 60 km entre extremos y anclaje a ≤750 m de una vía.
+
+## Revisión de estabilidad de la demo (19/09/2026)
+
+- Retirado por petición expresa el tope local de 30 runs/hora: dejaba el director en `limited`
+  sin despachar nuevos avisos. No reinstaurar límites de gasto para esta hackathon. Se conservan
+  un run pendiente, validación de planes/rutas y backoff de errores. El máximo de ocho acciones
+  por plan no se ha cambiado, ni los workflows publicados.
+- Regresión en `test_director`: despacho después de 30/100 runs y ausencia de inicios duplicados.
+  `test_demo` HTTP usa `examples/` congelado, no detecciones NASA mutables. Mypy global pasa tras
+  precisar el tipo de servidor en `sms_demo.py`; no se ejecutó ningún envío SMS.
+- `static/director.js` muestra un aviso persistente ante desconexión, falta de configuración,
+  autenticación o worker en standby, incluso con historial cerrado.
+- Verificados 181 tests Python con SQL, 6 del marcador, 63 JS, Ruff/mypy/ESLint, atlas y suites UI
+  `verify_scene.py` / `verify_director_ui.py`. Voz y planes de las suites UI son fixtures.
+- Cloud Barcelona: `eec094b7-5e2b-483c-9b35-9167bb491dbf` movilizó dos camiones, dos ambulancias,
+  policía y propuesta ES-Alert. `d6eb9d7b-c742-4e78-a9ff-a4c59a742970` recibió parte crítico pero
+  eligió medios terrestres sin helicóptero: `verify_scene.py --cloud --response` falla expresamente
+  en ese caso. No garantizar apoyo aéreo ni confundir estas fichas fixture con audio real.
+- Para demo fiable usar «Sagrada Familia, Barcelona» o «Plaça de Catalunya, Barcelona»: resolución
+  y ruta local verificadas. Ejercicio Collserola `[2.115,41.425]` también tiene ruta. «Tibidabo,
+  Barcelona» devolvió un punto IGN cuyo nodo próximo está aislado: no recomendar ese caso sin
+  precisar el acceso. No inventar conexión viaria para hacer pasar la demo.
 
 ## Traffic Lab de Lucía (aislado)
 

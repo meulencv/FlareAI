@@ -90,10 +90,18 @@ class Database:
             row = conn.execute("SELECT data FROM flare_settings WHERE id='firefighter-workflow'").fetchone()
             return row['data'] if row else {}
 
+    def director_history(self, session_id: str) -> dict:
+        with self.connect() as conn:
+            rows = conn.execute('SELECT data FROM flare_director_events WHERE session_id=%s ORDER BY sequence', (session_id,))
+            return {'session_id': session_id, 'events': [row['data'] for row in rows]}
+
     def save_director(self, session_id: str, state: dict) -> None:
         with self.connect() as conn:
             conn.execute("INSERT INTO flare_director_state(session_id,data) VALUES (%s,%s) ON CONFLICT(session_id) DO UPDATE SET data=EXCLUDED.data,updated_at=(now() AT TIME ZONE 'UTC')", (session_id, Jsonb(state)))
+            last = conn.execute('SELECT COALESCE(MAX(sequence),0) AS sequence FROM flare_director_events WHERE session_id=%s', (session_id,)).fetchone()['sequence']
             for event in state['events']:
+                if event['sequence'] <= last:
+                    continue
                 conn.execute('INSERT INTO flare_director_events VALUES (%s,%s,%s) ON CONFLICT DO NOTHING', (session_id, event['sequence'], Jsonb(event)))
 
     def source(self, conn: Any, identifier: str, data: dict) -> None:

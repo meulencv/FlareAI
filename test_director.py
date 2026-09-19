@@ -124,6 +124,35 @@ class DirectorTests(unittest.TestCase):
         self.assertTrue(all(s['simulated_capacity'] for s in stations))
         self.assertTrue(all('phone' not in s for s in stations))
 
+    def test_transport_hospitals_require_emergency_ward_and_drop_other_centres(self):
+        hospitals = EmergencyAtlas().hospitals(41.41, 2.15)
+        self.assertTrue(hospitals)
+        names = [(h['name'] or '').lower() for h in hospitals]
+        self.assertTrue(any('sant pau' in name for name in names))
+        self.assertTrue(any("vall d'hebron" in name for name in names))
+        for rejected in ('atenció primària', 'salut mental', 'residència', 'sociosanitari'):
+            self.assertFalse([name for name in names if rejected in name], rejected)
+        self.assertTrue(all(h['emergency_ward'] in {'own', 'nearby'} for h in hospitals))
+        self.assertTrue(all(h['capacity'] == 8 and h['occupied'] == 0 and h['simulated_capacity'] for h in hospitals))
+        self.assertTrue(all('phone' not in h for h in hospitals))
+
+    def test_hospitals_on_the_same_site_are_unified_without_merging_neighbours(self):
+        from director import same_site
+        campus = {'name': "HOSPITAL UNIVERSITARI VALL D'HEBRON", 'lat': 41.42803, 'lon': 2.14077}
+        pavilion = {'name': "1- Hospital General Vall d'Hebron", 'lat': 41.42770, 'lon': 2.14175}
+        neighbour = {'name': 'FUNDACIO PUIGVERT - IUNA', 'lat': 41.41293, 'lon': 2.17278}
+        sant_pau = {'name': 'HOSPITAL DE LA SANTA CREU I SANT PAU', 'lat': 41.41398, 'lon': 2.17422}
+        duplicate = {'name': None, 'lat': 41.42805, 'lon': 2.14079}
+        self.assertTrue(same_site(campus, pavilion))
+        self.assertTrue(same_site(campus, duplicate))
+        self.assertFalse(same_site(sant_pau, neighbour))
+        self.assertFalse(same_site(campus, sant_pau))
+        hospitals = EmergencyAtlas().hospitals(41.41, 2.15)
+        merged = next(h for h in hospitals if "vall d'hebron" in (h['name'] or '').lower())
+        self.assertTrue(merged['merged_ids'])
+        self.assertEqual(len({h['id'] for h in hospitals}), len(hospitals))
+        self.assertFalse({m for h in hospitals for m in h['merged_ids']} & {h['id'] for h in hospitals})
+
 
 class ExecutionTests(unittest.TestCase):
     def setUp(self):
@@ -214,6 +243,29 @@ class ExecutionTests(unittest.TestCase):
             self.planner.start.return_value = 'retry-run'
             self.director.step()
         self.planner.start.assert_called_once()
+
+    def test_new_call_dispatches_after_thirty_or_more_runs_without_reset(self):
+        for count in (30, 100):
+            with self.subTest(count=count):
+                self.setUp()
+                self.director.state['pending'] = None
+                self.director.state['runs'] = [time.time() - 5] * count
+                with patch.object(self.director, 'context', return_value=self.context):
+                    self.planner.start.return_value = 'new-run'
+                    self.director.step()
+                self.planner.start.assert_called_once()
+                self.assertEqual(self.director.public_state()['status'], 'thinking')
+                self.director.step()
+                self.assertIn('truck', self.director.state['assignments'])
+                self.assertEqual(self.director.public_state()['status'], 'watching')
+
+    def test_pending_run_prevents_duplicate_starts(self):
+        self.planner.poll.return_value = None
+        for _ in range(5):
+            self.director.step()
+        self.planner.start.assert_not_called()
+        self.assertEqual(self.director.state['pending']['run_id'], 'run')
+        self.assertFalse(self.director.state['assignments'])
 
     def test_arrival_is_not_availability_and_return_frees_only_on_arrival(self):
         self.director.step()

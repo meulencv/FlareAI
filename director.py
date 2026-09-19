@@ -8,6 +8,7 @@ import re
 import sqlite3
 import threading
 import time
+import unicodedata
 import uuid
 from contextlib import closing
 from copy import deepcopy
@@ -28,11 +29,12 @@ def digest(value: Any) -> str:
 
 
 def reported(payload: dict) -> list[dict]:
-    return sorted((i for i in payload.get('incidents', []) if i.get('demo_report') and not i['demo_report'].get('cancelled')), key=lambda i: i['id'])
+    return sorted((i for i in payload.get('incidents', []) if (i.get('demo_report') and not i['demo_report'].get('cancelled') or i.get('sensor_report') or i.get('scene_report'))
+                   and i.get('scenario', {}).get('phase') != 'closed' and not i.get('scenario', {}).get('linked_call_id')), key=lambda i: -(i.get('scenario', {}).get('priority') or 0))
 
 
 def fingerprint(payload: dict) -> str:
-    return digest({'status': payload.get('status'), 'field_reports': payload.get('demo', {}).get('field_reports', {}), 'incidents': [
+    return digest({'scenario_revision': payload.get('scenario_revision'), 'status': payload.get('status'), 'field_reports': payload.get('demo', {}).get('field_reports', {}), 'incidents': [
         {k: i.get(k) for k in ('id', 'lat', 'lon', 'demo_report', 'responder_report', 'weather', 'footprint')} for i in reported(payload)]})
 
 
@@ -96,19 +98,99 @@ def validate_plan(plan: dict, context: dict) -> dict:
     return deepcopy(plan)
 
 
+EMERGENCY_WARD_METRES = 300
+HOSPITAL_MERGE_METRES = 250
+HOSPITAL_SAME_POINT_METRES = 60
+HOSPITAL_MIN_BEDS = 40
+HOSPITAL_TYPES_ACCEPTED = ('generales', 'especializados', 'hospital')
+HOSPITAL_TYPES_REJECTED = ('larga estancia', 'salud mental', 'toxicoman', 'otros centros')
+HOSPITAL_NAMES_REJECTED = ('atencio primaria', 'atencion primaria', 'salut mental', 'salud mental', 'residencia',
+                           'consultori', 'sociosanitari', 'llarga estada', 'larga estancia', 'geriatric',
+                           'salut laboral', 'salud laboral', 'oftalmolog')
+HOSPITAL_NAME_NOISE = {'hospital', 'hospitals', 'clinica', 'clinic', 'universitari', 'universitario', 'universitaria',
+                       'general', 'generales', 'fundacio', 'fundacion', 'centre', 'centro', 'complex', 'consorci',
+                       'de', 'del', 'la', 'el', 'los', 'las', 'i', 'y', 'sa', 'sl', 'urgencies', 'urgencias', 'seu'}
+
+
+def plain(value: str | None) -> str:
+    text = unicodedata.normalize('NFKD', (value or '').lower())
+    return re.sub(r'[^a-z0-9 ]+', ' ', ''.join(c for c in text if not unicodedata.combining(c)))
+
+
+def name_tokens(value: str | None) -> set[str]:
+    return {word for word in plain(value).split() if len(word) > 2 and word not in HOSPITAL_NAME_NOISE}
+
+
+def same_site(a: dict, b: dict) -> bool:
+    metres = km([a['lon'], a['lat']], [b['lon'], b['lat']]) * 1000
+    if metres <= HOSPITAL_SAME_POINT_METRES:
+        return True
+    return metres <= HOSPITAL_MERGE_METRES and bool(name_tokens(a['name']) & name_tokens(b['name']))
+
+
 class EmergencyAtlas:
     def nearby(self, lat: float, lon: float) -> list[dict]:
         with closing(sqlite3.connect(f'file:{ROOT / "emergencias_espana.db"}?mode=ro', uri=True)) as db:
             stations = []
-            for category, kind, count in [('fire_station', 'fire_engine', 2), ('police', 'police', 1), ('helipad', 'helicopter', 1)]:
-                for row in proximity(db, lat, lon, 60, category, 6 if kind == 'fire_engine' else 3):
+            sources: list[tuple[list[dict], str, int]] = [
+                (self.hospitals(lat, lon, 60, 3), 'ambulance', 2),
+            ]
+            for category, kind, count in [('fire_station', 'fire_engine', 2), ('police', 'police', 1), ('helipad', 'helicopter', 1), ('ambulance_station', 'ambulance', 2)]:
+                sources.append((proximity(db, lat, lon, 60, category, 6 if kind == 'fire_engine' else 3), kind, count))
+            for rows, kind, count in sources:
+                for row in rows:
                     for index in range(count):
                         stations.append({'id': f'{row["id"]}:{kind}:{index + 1}', 'station_id': row['id'],
-                                         'name': row['name'] or {'fire_engine': 'Parque de bomberos', 'police': 'Policía', 'helicopter': 'Helipuerto · sede para recurso simulado'}[kind],
+                                         'name': row['name'] or {'fire_engine': 'Parque de bomberos', 'police': 'Policía', 'ambulance': 'Base sanitaria del atlas', 'helicopter': 'Helipuerto · sede para recurso simulado'}[kind],
                                          'lat': row['lat'], 'lon': row['lon'], 'kind': kind,
                                          'distance_km': round(row['distance_km'], 2), 'simulated_capacity': True,
                                          'coordinate_method': row['coordinate_method']})
-            return stations
+            return list({r['id']: r for r in stations}.values())
+
+    def registry(self, db: sqlite3.Connection, facility_id: str) -> dict | None:
+        for row in db.execute("SELECT raw_json FROM source_records WHERE facility_id=? AND source_id IN ('sanidad_hospitals','dera_hospitals')", (facility_id,)):
+            raw = json.loads(row[0])
+            beds = str(raw.get('Camas', ''))
+            return {'type': plain(raw.get('dependenciaTipoCentro') or raw.get('tipo')),
+                    'beds': int(beds) if beds.isdigit() else None}
+        return None
+
+    def transport_ready(self, db: sqlite3.Connection, row: dict, wards: list[dict]) -> dict | None:
+        """Hospital del atlas que puede recibir un traslado: urgencias publicadas y tipo asistencial
+        compatible. Heurística documental sobre datos estáticos; no acredita urgencias abiertas ni
+        ambulancias disponibles."""
+        if not row['name'] or any(bad in plain(row['name']) for bad in HOSPITAL_NAMES_REJECTED):
+            return None
+        categories = {value for value, in db.execute('SELECT category_id FROM facility_categories WHERE facility_id=?', (row['id'],))}
+        ward = ('own' if 'emergency_department' in categories else
+                'nearby' if any(km([row['lon'], row['lat']], [w['lon'], w['lat']]) * 1000 <= EMERGENCY_WARD_METRES for w in wards) else None)
+        if ward is None:
+            return None
+        registry = self.registry(db, row['id'])
+        if registry and (any(bad in registry['type'] for bad in HOSPITAL_TYPES_REJECTED)
+                         or not any(good in registry['type'] for good in HOSPITAL_TYPES_ACCEPTED)
+                         or (registry['beds'] is not None and registry['beds'] < HOSPITAL_MIN_BEDS)):
+            return None
+        return {'emergency_ward': ward, 'official_registry': bool(registry),
+                'registered_beds': (registry or {}).get('beds')}
+
+    def hospitals(self, lat: float, lon: float, radius_km: float = 22, limit: int = 30) -> list[dict]:
+        with closing(sqlite3.connect(f'file:{ROOT / "emergencias_espana.db"}?mode=ro', uri=True)) as db:
+            wards = [row for row in proximity(db, lat, lon, radius_km + 2, 'emergency_department', 600)
+                     if not db.execute("SELECT 1 FROM facility_categories WHERE facility_id=? AND category_id='health_centre'", (row['id'],)).fetchone()]
+            candidates = []
+            for row in proximity(db, lat, lon, radius_km, 'hospital', max(limit * 6, 60)):
+                evidence = self.transport_ready(db, row, wards)
+                if evidence:
+                    candidates.append({k: row[k] for k in ('id', 'name', 'lat', 'lon', 'coordinate_method', 'distance_km')} | evidence)
+        merged: list[dict] = []
+        for row in sorted(candidates, key=lambda r: (not r['official_registry'], -(r['registered_beds'] or 0), r['distance_km'])):
+            twin = next((m for m in merged if same_site(m, row)), None)
+            if twin:
+                twin['merged_ids'].append(row['id'])
+                continue
+            merged.append(row | {'capacity': 8, 'occupied': 0, 'simulated_capacity': True, 'merged_ids': []})
+        return sorted(merged, key=lambda r: r['distance_km'])[:limit]
 
 
 def route_position(route: dict, progress: float) -> list[float]:
@@ -174,11 +256,25 @@ class Director:
                                       'field_revisions': {}, 'field_actions': {}, 'alert_requests': {}, 'notifications': [], 'delivery_sequence': 0}
         self.retry_at = 0.0
         self.failure_count = 0
+        self.scene = None
+        self.scene_saved_at = 0.0
+        if getattr(store, 'hackathon', False) is True:
+            from scene import Scene
+            from local_routes import in_demo
+            graph = self.router.demo_graph()
+            self.scene = Scene(self)
+            self.scene.data['network'] = {'nodes': len(graph.points), 'bounds': [41.28, 2.00, 41.54, 2.32], 'source': 'OpenStreetMap · red precargada local'}
+            self.scene.data['hospitals'] = [h for h in self.atlas.hospitals(41.41, 2.15) if in_demo([h['lon'], h['lat']])]
+            for lat, lon in [(41.39, 2.17), (41.44, 2.10), (41.40, 2.23)]:
+                for resource in self.atlas.nearby(lat, lon):
+                    if in_demo([resource['lon'], resource['lat']]):
+                        self.state['resources'][resource['id']] = resource
+            self.event('watch', 'Vigilancia de Barcelona, Collserola y costa', 'FIRMS, 112, NOAA y atlas reales; evolución, tráfico y recursos simulados. España permanece completa.')
 
     def station_inventory(self) -> list[dict]:
         stations: dict[str, dict] = {}
         for resource in self.state['resources'].values():
-            station = stations.setdefault(resource['station_id'], {k: resource[k] for k in ('station_id', 'name', 'lat', 'lon', 'kind')} | {
+            station = stations.setdefault(resource['station_id'] + ':' + resource['kind'], {k: resource[k] for k in ('station_id', 'name', 'lat', 'lon', 'kind')} | {
                 'total': 0, 'available': 0, 'busy': 0, 'simulated_capacity': True})
             station['total'] += 1
             station['busy' if resource['id'] in self.state['assignments'] else 'available'] += 1
@@ -186,7 +282,8 @@ class Director:
 
     def public_state(self) -> dict:
         with self.lock:
-            return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time(), 'stations': self.station_inventory()}
+            return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time(), 'stations': self.station_inventory(),
+                'scenario': deepcopy(self.scene.data) if self.scene else None, 'pending_alerts': deepcopy(self.state.get('pending_alerts', {}))}
 
     def alert_feed(self, after: int | None = None) -> dict:
         with self.lock:
@@ -204,7 +301,45 @@ class Director:
             self.state['alerts'][incident_id] = {**notification, 'mode': 'mobile_simulation'}
         else:
             self.state['alerts'].pop(incident_id, None)
+            self.state.get('pending_alerts', {}).pop(incident_id, None)
         self.event('alert' if kind == 'alert' else 'cancelled', 'ES-Alert enviado al simulador móvil' if kind == 'alert' else 'Aviso retirado por bomberos · demo', message, incident_id=incident_id)
+
+    def propose_alert(self, incident_id: str, message: str, source: str) -> None:
+        if not self.scene:
+            self.notify(incident_id, message, source)
+            return
+        pending = self.state.setdefault('pending_alerts', {})
+        if incident_id in pending or self.state.get('alert_cooldowns', {}).get(incident_id, 0) > time.time():
+            return
+        pending[incident_id] = {'id': str(uuid.uuid4()), 'incident_id': incident_id, 'message': message[:240],
+                                'source': source, 'due_at': time.time() + 3, 'mode': 'simulation_only'}
+        self.event('alert_proposed', 'ES-Alert propuesto · envío automático en 3 s', message, incident_id=incident_id)
+        timer = threading.Timer(3, self.deliver_alert, args=(incident_id, pending[incident_id]['id']))
+        timer.daemon = True
+        timer.start()
+
+    def deliver_alert(self, incident_id: str, proposal_id: str) -> None:
+        with self.lock:
+            proposal = self.state.get('pending_alerts', {}).get(incident_id)
+            if not proposal or proposal['id'] != proposal_id:
+                return
+            self.notify(incident_id, proposal['message'], proposal['source'])
+            self.state['pending_alerts'].pop(incident_id)
+            self.state.setdefault('alert_cooldowns', {})[incident_id] = time.time() + 120
+            self.save()
+
+    def cancel_alert(self, identifier: str) -> None:
+        with self.lock:
+            key = next((k for k, a in self.state.get('pending_alerts', {}).items() if a['id'] == identifier), None)
+            if key is None:
+                raise ValueError('La propuesta ya no está pendiente')
+            if self.state['pending_alerts'][key]['due_at'] <= time.time():
+                self.deliver_alert(key, identifier)
+                raise ValueError('El plazo de cancelación ha terminado')
+            self.state['pending_alerts'].pop(key)
+            self.state.setdefault('alert_cooldowns', {})[key] = time.time() + 120
+            self.event('alert_cancelled', 'ES-Alert cancelado por el operador', 'El freno humano evitó el envío al simulador.', incident_id=key)
+            self.save()
 
     def ingest_field_reports(self, payload: dict) -> bool:
         changed = False
@@ -216,7 +351,8 @@ class Director:
             fields = report['fields']
             previous_versions = self.state['field_actions'].get(identifier, {})
             self.state['field_actions'][identifier] = dict(report['field_versions'])
-            self.event('field_report', 'Parte de bomberos recibido', fields.get('detalle', fields.get('incendio', 'Actualización de situación')), incident_id=identifier)
+            team = {'ambulance': 'sanitarios', 'police': 'policía'}.get(self.state['resources'].get(report.get('resource_id'), {}).get('kind'), 'bomberos')
+            self.event('field_report', f'Parte de {team} recibido', fields.get('detalle', fields.get('incendio', 'Actualización de situación')), incident_id=identifier)
             arrival_resource = report.get('field_sources', {}).get('llegada', {}).get('resource_id', report.get('resource_id'))
             assignment = self.state['assignments'].get(arrival_resource)
             if report['field_versions'].get('llegada', 0) > previous_versions.get('llegada', 0) and fields.get('llegada') == 'confirmada' and assignment and assignment['incident_id'] == identifier and assignment['status'] != 'returning':
@@ -229,14 +365,14 @@ class Director:
             request_id = report['field_versions'].get('es_alert', 0)
             if fields.get('es_alert') == 'solicitado' and self.state['alert_requests'].get(identifier) != request_id:
                 self.state['alert_requests'][identifier] = request_id
-                self.notify(identifier, fields.get('detalle') or 'Solicitud expresa de bomberos. Aviso de emergencia simulado; no es una alerta real.', 'firefighter_request')
+                self.propose_alert(identifier, fields.get('detalle') or 'Solicitud expresa de bomberos. Aviso de emergencia simulado; no es una alerta real.', 'firefighter_request')
         return changed
 
     def event(self, kind: str, message: str, reason: str = '', **data) -> None:
         self.state['sequence'] += 1
         self.state['events'].append({'sequence': self.state['sequence'], 'kind': kind, 'message': message,
                                      'reason': reason, 'at': time.time(), **data})
-        self.state['events'] = self.state['events'][-100:]
+        self.state['events'] = self.state['events'][-2000:]
 
     def save(self) -> None:
         self.db.save_director(self.session_id, self.state)
@@ -249,8 +385,10 @@ class Director:
                 self.state['resources'].setdefault(resource['id'], resource)
                 relevant.add(resource['id'])
             environment = self.store.context(incident['id'])
+            if self.scene:
+                self.scene.enrich(incident, environment)
             samples = sorted(environment['potential']['samples'], key=lambda s: s.get('score') or 0, reverse=True)
-            incidents.append({k: incident.get(k) for k in ('id', 'name', 'lat', 'lon', 'weather', 'demo_report', 'source_kind', 'responder_report')} | {
+            incidents.append({k: incident.get(k) for k in ('id', 'name', 'lat', 'lon', 'weather', 'demo_report', 'source_kind', 'sensor_report', 'scene_report', 'scenario', 'responder_report')} | {
                 'environment': {k: environment.get(k) for k in ('population', 'landcover', 'wind', 'coverage', 'method')},
                 'attention_samples': samples[:6], 'attention_model': environment['potential'].get('model'),
                 'facilities': environment['potential'].get('facilities', [])[:12]})
@@ -269,6 +407,12 @@ class Director:
                                     'reinforcements': 'Solicitudes de bomberos en responder_report.fields.refuerzos; valorar recursos libres y reassign entre incidentes con motivo y cobertura restante.'},
                    'omitted_incidents': max(0, len(reported(payload)) - 8),
                    'limits': 'Capacidades ficticias. Atlas no exhaustivo. Sin tráfico ni rutas de emergencia. Potencial no es probabilidad. No confirmar extinción por llegada de vehículos.'}
+        if self.scene:
+            context['scenario'] = deepcopy(self.scene.data)
+            context['capabilities'].update(ambulance='Ambulancias ficticias desde hospitales/bases del atlas. Riesgo vital, humo sobre barrio o población amenazada requieren valorar sanitario y policía, no solo camiones.',
+                alert='Toda propuesta se envía al receptor de simulación tras 3 segundos salvo cancelación humana. Nunca ES-Alert real.',
+                helicopter='Apoyo aéreo ilustrativo admisible en aviso marítimo por llamada o riesgo alto del escenario.',
+                lifecycle='active → contained → watching → releasing → closed. Contener requiere trabajo sostenido, no solo llegada. En releasing se ejecuta retirada; no movilices recursos nuevos.')
         context['revision'] = digest(context)
         return context
 
@@ -276,7 +420,7 @@ class Director:
         assignment = self.state['assignments'].get(resource['id'])
         if not assignment:
             return [resource['lon'], resource['lat']]
-        return route_position(assignment['route'], (time.time() - assignment['started_at']) / assignment['travel_seconds'])
+        return assignment.get('held_position') or route_position(assignment['route'], (time.time() - assignment['started_at']) / assignment['travel_seconds'])
 
     def prepare(self, plan: dict, context: dict) -> list[dict]:
         plan = validate_plan(plan, context)
@@ -293,11 +437,20 @@ class Director:
                     raise ValueError('Disponibilidad incompatible con el plan')
                 resource = self.state['resources'][rid]
                 destination = resource if kind == 'return' else incidents[item['incident_id']]
+                scene = destination.get('scenario') or {}
+                if self.scene and kind != 'return' and scene.get('phase') in {'releasing', 'closed'}:
+                    item.update(route_error=True, blocked_reason='Aviso en retirada; no admite nuevas movilizaciones.')
+                    prepared.append(item)
+                    continue
                 item['target'] = [destination['lon'], destination['lat']]
-                if kind == 'reassign' and current['incident_id'] == item['incident_id'] and current.get('target') == item['target']:
+                if scene.get('maritime') and resource['kind'] != 'helicopter':
+                    from scene import SHORE
+                    item['target'] = list(SHORE)
+                    item['reason'] += ' Apoyo terrestre en punto de encuentro costero; no circula por el mar.'
+                if kind == 'reassign' and current['status'] != 'blocked' and current['incident_id'] == item['incident_id'] and current.get('target') == item['target']:
                     raise ValueError('El recurso ya está asignado a ese destino')
                 fields = (incidents.get(item.get('incident_id'), {}).get('responder_report') or {}).get('fields', {})
-                if resource['kind'] == 'helicopter' and kind != 'return' and not (fields.get('helicoptero') == 'solicitado' or fields.get('incendio') == 'confirmado' and fields.get('evolucion') in {'empeora', 'critico'}):
+                if resource['kind'] == 'helicopter' and kind != 'return' and not (self.scene and (scene.get('maritime') or scene.get('medical') or scene.get('priority', 0) >= 7) or fields.get('helicoptero') == 'solicitado' or fields.get('incendio') == 'confirmado' and fields.get('evolucion') in {'empeora', 'critico'}):
                     item['route_error'] = True
                     item['blocked_reason'] = 'Apoyo aéreo pendiente de solicitud explícita o empeoramiento confirmado en un parte de bomberos.'
                     prepared.append(item)
@@ -315,7 +468,8 @@ class Director:
                     if kind == 'dispatch' and failure_key in failed_stations:
                         continue
                     try:
-                        item['route'] = air_route(self.vehicle_origin(candidate), item['target']) if candidate['kind'] == 'helicopter' else self.router.route(self.vehicle_origin(candidate), item['target'])
+                        routing = self.scene.route if self.scene else self.router.route
+                        item['route'] = air_route(self.vehicle_origin(candidate), item['target']) if candidate['kind'] == 'helicopter' else routing(self.vehicle_origin(candidate), item['target'])
                         if candidate['id'] != rid:
                             item.update(resource_id=candidate['id'], requested_resource_id=rid)
                             reserved.add(candidate['id'])
@@ -332,13 +486,18 @@ class Director:
                 population = incident.get('environment', {}).get('population', {}).get('residents') or 0
                 urban_pct = incident.get('environment', {}).get('landcover', {}).get('percentages', {}).get('urbano') or 0
                 urban = fields.get('zona_urbana') == 'si' or fields.get('zona_urbana') != 'no' and population > 0 and urban_pct >= 5
-                item['mobile_alert'] = fields.get('incendio') not in {'descartado', 'extinguido'} and (fields.get('es_alert') == 'solicitado' or fields.get('incendio') == 'confirmado' and urban)
+                item['mobile_alert'] = fields.get('incendio') not in {'descartado', 'extinguido'} and (bool(self.scene) or fields.get('es_alert') == 'solicitado' or fields.get('incendio') == 'confirmado' and urban)
             prepared.append(item)
         return prepared
 
     def apply(self, plan: dict, actions: list[dict], run_id: str) -> None:
         blocked = any(action.get('route_error') for action in actions)
         self.event('decision', 'Plan con rutas pendientes; revisando alternativas' if blocked else plan['summary'], plan['summary'] if blocked else '', run_id=run_id)
+        if self.scene:
+            assumption = str(plan.get('assumption') or 'Accesos transitables, viento estable y capacidad ficticia disponible.')[:240]
+            self.event('assumption', 'Supuesto clave del plan', assumption, run_id=run_id)
+            for record in self.scene.data['incidents'].values():
+                record['assumption'] = assumption
         departures: dict[str, int] = {}
         for action in actions:
             kind, incident_id = action['type'], action.get('incident_id')
@@ -349,6 +508,9 @@ class Director:
             if kind in {'dispatch', 'reassign', 'return'}:
                 rid = action['resource_id']
                 resource = self.state['resources'][rid]
+                if kind == 'return' and self.scene:
+                    incident_id = self.state['assignments'][rid]['incident_id']
+                    data['incident_id'] = incident_id
                 if action.get('requested_resource_id'):
                     self.event('alternative', 'Recurso alternativo disponible · ' + resource['name'], 'Sustituye una unidad sin ruta utilizable; mismo tipo y sin retirar recursos de otros avisos.', resource_id=rid, requested_resource_id=action['requested_resource_id'], **data)
                 route = action['route']
@@ -357,7 +519,7 @@ class Director:
                 self.state['assignments'][rid] = {'id': f'{run_id}:{rid}', 'resource': resource, 'incident_id': incident_id,
                     'route': route, 'target': action['target'], 'started_at': time.time() + delay, 'travel_seconds': max(45, min(150, route['duration_seconds'] / 30)),
                     'status': 'returning' if kind == 'return' else 'enroute', 'time_scale': 'accelerated_demo', 'reason': action['reason']}
-                noun = {'fire_engine': 'camión de bomberos', 'police': 'patrulla', 'helicopter': 'helicóptero de demo'}[resource['kind']]
+                noun = {'fire_engine': 'camión de bomberos', 'police': 'patrulla', 'ambulance': 'ambulancia', 'helicopter': 'helicóptero de demo'}[resource['kind']]
                 message = f'{"Regresa" if kind == "return" else "Reasignando" if kind == "reassign" else "Movilizando"} 1 {noun} · {resource["name"]}'
                 self.event(kind, message, action['reason'], resource_id=rid, **data)
             elif kind == 'alert':
@@ -365,7 +527,7 @@ class Director:
                 if current_alert.get('mode') == 'mobile_simulation' and current_alert.get('expires_at', 0) > time.time():
                     continue
                 if action.get('mobile_alert'):
-                    self.notify(str(incident_id), action['reason'], 'director_decision')
+                    self.propose_alert(str(incident_id), action['reason'], 'director_decision')
                 else:
                     self.state['alerts'][incident_id] = {'message': action['reason'], 'at': time.time(), 'expires_at': time.time() + 120, 'mode': 'preview_only'}
                     self.event('alert', 'Preparando ES-Alert · vista previa, sin parte habilitante', action['reason'], **data)
@@ -378,15 +540,24 @@ class Director:
     def advance(self) -> bool:
         changed = False
         for rid, assignment in list(self.state['assignments'].items()):
-            if assignment['status'] == 'onscene' or time.time() < assignment['started_at'] + assignment['travel_seconds']:
+            if assignment['status'] in {'onscene', 'blocked'} or time.time() < assignment['started_at'] + assignment['travel_seconds']:
                 continue
             if assignment['status'] == 'returning':
                 del self.state['assignments'][rid]
                 self.event('available', 'Recurso de nuevo disponible', assignment['resource']['name'])
             else:
-                assignment['status'] = 'onscene'
-                self.event('arrived', 'Recurso en el punto de encuentro', assignment['resource']['name'], incident_id=assignment['incident_id'])
+                transported = assignment['status'] == 'transporting'
+                assignment.update(status='onscene', arrived_at=time.time())
+                if transported:
+                    assignment['patient_delivered'] = True
+                self.event('hospital' if transported else 'arrived', 'Paciente ficticio recibido en hospital' if transported else 'Recurso en el punto de encuentro', 'No implica alta médica ni extinción. ' + assignment['resource']['name'], incident_id=assignment['incident_id'])
             changed = True
+        for identifier, proposal in list(self.state.get('pending_alerts', {}).items()):
+            if time.time() >= proposal['due_at']:
+                self.notify(identifier, proposal['message'], proposal['source'])
+                del self.state['pending_alerts'][identifier]
+                self.state.setdefault('alert_cooldowns', {})[identifier] = time.time() + 120
+                changed = True
         for identifier, alert in list(self.state['alerts'].items()):
             if time.time() >= alert['expires_at']:
                 del self.state['alerts'][identifier]
@@ -398,6 +569,14 @@ class Director:
         with self.lock:
             previous = deepcopy(self.state)
             try:
+                if self.scene:
+                    sequence = self.state['sequence']
+                    self.scene.observe(payload)
+                    self.scene.evolve()
+                    self.scene.maintenance()
+                    if sequence != self.state['sequence'] or time.monotonic() - self.scene_saved_at >= 5:
+                        self.save()
+                        self.scene_saved_at = time.monotonic()
                 if self.ingest_field_reports(payload):
                     self.save()
             except Exception:
@@ -456,9 +635,6 @@ class Director:
             if current == self.state['last_fingerprint'] and time.time() - self.state['last_review'] < 180 and not moved and not retry_route:
                 return
             self.state['runs'] = [at for at in self.state['runs'] if time.time() - at < 3600]
-            if len(self.state['runs']) >= 30:
-                self.state['status'] = 'limited'
-                return
             self.state['status'] = 'thinking'
             self.event('thinking', 'Analizando cambios y recursos disponibles')
             self.save()
@@ -491,4 +667,4 @@ class Director:
                             self.save()
                         except Exception:
                             pass
-                threading.Event().wait(2)
+                threading.Event().wait(.5 if self.scene else 2)

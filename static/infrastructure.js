@@ -37,6 +37,15 @@ const PATHS = {
   waste: '<path d="M5 7h14M9 7V4h6v3M7 7l1 14h8l1-14M10 10v7m4-7v7"/>',
 };
 const icon = name => `<svg viewBox="0 0 24 24" aria-hidden="true">${PATHS[name] || PATHS.factory}</svg>`;
+const WASTE_CATEGORIES = new Set(["vertedero", "gestion_residuos"]);
+export const WASTE_LIMIT = 2;
+
+export function relevantFacilities(facilities) {
+  const kept = new Set(facilities.filter(poi => WASTE_CATEGORIES.has(poi.category) && poi.priority === "alta_orientativa")
+    .sort((a, b) => (Number.isFinite(a.distance_km) ? a.distance_km : Infinity) - (Number.isFinite(b.distance_km) ? b.distance_km : Infinity))
+    .slice(0, WASTE_LIMIT).map(poi => poi.id));
+  return facilities.filter(poi => !WASTE_CATEGORIES.has(poi.category) || kept.has(poi.id));
+}
 const number = value => Number(value).toLocaleString("es-ES", { maximumFractionDigits: 2 });
 
 export function roadEvents(events) {
@@ -237,7 +246,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
       cameras.clearLayers();
       if (active?.type === "camera") map.closePopup(active.popup);
     }
-    draw(context?.potential.facilities || [], facilities, "facility");
+    draw(relevantFacilities(context?.potential.facilities || []), facilities, "facility");
   }
   map.createPane("infrastructure"); map.getPane("infrastructure").style.zIndex = 470;
   map.on("zoom", () => {
@@ -288,7 +297,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
       context = value;
       if (active?.type === "facility") map.closePopup(active.popup);
       facilities.clearLayers();
-      if (context) draw(context.potential.facilities, facilities, "facility");
+      if (context) draw(relevantFacilities(context.potential.facilities), facilities, "facility");
     },
     cameras: () => Date.now() - catalogAt < 70000 ? catalog?.cameras || [] : [],
     openCamera: camera,

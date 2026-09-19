@@ -1694,9 +1694,15 @@ body:not(.map-only) .quiet-controls { top: 76px; left: auto; right: 20px; }
 .map-only .map-tools { top: auto; bottom: 65px; right: 22px; opacity: .7; }
 .map-only .infrastructure-status { bottom: 37px; left: 24px; max-width: 60%; }
 .map-only .error-banner { bottom: 0; font-size: 10px; padding: 4px 12px; background: #fffaf0e6; pointer-events: none; }
-#agent-aura { position: fixed; inset: 0; z-index: 2100; pointer-events: none; padding: 5px; border-radius: 18px; background: conic-gradient(from 0deg, #639eff, #bc82ef, #ef809e, #ffc17b, #79d8c5, #639eff); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; animation: agent-glow 3s ease-in-out infinite; }
-@keyframes agent-glow { 0%, 100% { opacity: .55; filter: hue-rotate(0deg); } 50% { opacity: 1; filter: hue-rotate(70deg); } }
+@property --aura-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+#agent-aura { position: fixed; inset: 0; z-index: 2100; pointer-events: none; overflow: hidden; }
+#agent-aura::before, #agent-aura::after { content: ""; position: absolute; background: conic-gradient(from var(--aura-angle), #639eff, #bc82ef, #ef809e, #ffc17b, #79d8c5, #7fd0f2, #639eff); mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0); mask-composite: exclude; animation: aura-drift 18s linear infinite, agent-glow 7s ease-in-out infinite; }
+#agent-aura::before { inset: -24px; padding: 54px; border-radius: 46px; filter: blur(30px) saturate(1.25); }
+#agent-aura::after { inset: -8px; padding: 17px; border-radius: 26px; filter: blur(8px) saturate(1.1); }
+@keyframes aura-drift { to { --aura-angle: 360deg; } }
+@keyframes agent-glow { 0%, 100% { opacity: .5; } 50% { opacity: .92; } }
 #agent-card { position: fixed; bottom: 52px; left: 50%; transform: translateX(-50%); width: min(470px, calc(100% - 110px)); z-index: 1100; border: 1px solid #e6e8ed; border-radius: 20px; background: #ffffffed; backdrop-filter: blur(16px); box-shadow: 0 12px 48px #2a324315; padding: 16px 20px; pointer-events: none; }
+#director-warning { position: fixed; top: 118px; left: 16px; z-index: 1200; width: min(360px, calc(100vw - 32px)); padding: 12px 16px; border: 1px solid #d7ae72; border-radius: 12px; background: #fff7e9f5; color: #825d28; font-size: 12px; line-height: 1.5; }
 #agent-label { display: block; font-size: 10px; color: #8c83b0; margin-bottom: 7px; letter-spacing: .7px; }
 #agent-message { display: block; font-size: 15px; font-weight: 550; }
 #agent-reason { font-size: 12px; line-height: 1.5; color: #858b95; margin: 6px 0 0; }
@@ -1707,7 +1713,7 @@ body:not(.map-only) .quiet-controls { top: 76px; left: auto; right: 20px; }
 @keyframes rotor-pulse { to { transform: scaleX(.25); } }
 .motion-paused .helicopter .rotor { animation: none; }
 .response-station { background: white; border: 1px solid #bdc5d0; border-radius: 50%; text-align: center; color: #6d7888; font-size: 11px; line-height: 24px; }
-body.motion-paused #agent-aura { animation: none; }
+body.motion-paused #agent-aura::before, body.motion-paused #agent-aura::after { animation: none; }
 .quiet-controls #follow-toggle { font-size: 11px; font-weight: 500; letter-spacing: 0; color: #716b8d; border: 1px solid #e9e5f1; }
 #follow-toggle[aria-pressed="false"] { color: #697381; background: #fff; }
 #agent-evidence { position: fixed; top: 84px; right: 24px; z-index: 1090; width: min(390px, calc(100% - 48px)); max-height: calc(100svh - 250px); overflow: auto; background: #fffffff2; backdrop-filter: blur(18px); border: 1px solid #e7e5ed; border-radius: 20px; box-shadow: 0 12px 48px #2a324319; padding: 18px; }
@@ -1730,6 +1736,66 @@ body.motion-paused #agent-aura { animation: none; }
   .quiet-controls #follow-toggle { max-width: 145px; font-size: 10px; }
   #agent-evidence { top: 76px; right: 12px; width: calc(100% - 24px); max-height: min(34svh, calc(100svh - 280px)); padding: 14px; }
   .evidence-image img { max-height: 150px; }
+}
+.traffic-canvas { position: absolute; top: 0; left: 0; z-index: 421; pointer-events: none; transition: opacity .55s; }
+#history-toggle { position: fixed; top: 24px; right: 24px; z-index: 1105; padding: 12px 17px; border: 1px solid #dadfe7; border-radius: 13px; background: #fffef5f0; color: #33445b; font-size: 12px; box-shadow: 0 4px 22px #22304a12; }
+#decision-panel { position: fixed; top: 80px; bottom: 35px; right: 20px; width: 400px; max-width: calc(100vw - 24px); z-index: 1110; display: flex; flex-direction: column; padding: 22px; background: #fffffff5; backdrop-filter: blur(20px); border: 1px solid #e3e6ed; border-radius: 20px; box-shadow: 0 16px 60px #20334b22; }
+#decision-panel[hidden], #alert-countdown[hidden], #plan-invalidated[hidden] { display: none; }
+#decision-panel header { display: flex; justify-content: space-between; gap: 10px; }
+#decision-title { font-size: 22px; margin: 7px 0; font-weight: 550; letter-spacing: -.6px; }
+#history-close { align-self: flex-start; padding: 5px 9px; font-size: 23px; }
+#scene-status, #history-count { font-size: 11px; color: #708092; margin: 8px 0; }
+.cycle-key { font-size: 10px; color: #887e9c; padding: 10px 0; border-bottom: 1px solid #edf0f5; }
+#scene-controls { flex-shrink: 0; max-height: 240px; overflow: auto; font-size: 11px; padding: 12px 0; border-bottom: 1px solid #edf0f5; }
+#scene-controls summary { cursor: pointer; font-weight: 650; color: #50627a; }
+#scene-controls p { line-height: 1.5; color: #788493; }
+#scene-controls button { border: 1px solid #e0e5ee; border-radius: 7px; padding: 7px; background: #f8fafc; font-size: 11px; }
+.scene-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 8px; }
+#scene-controls label { display: grid; gap: 4px; font-size: 10px; margin: 7px 0; }
+#scene-controls select { max-width: 100%; min-width: 0; border: 1px solid #e0e5ee; padding: 5px; border-radius: 5px; background: white; }
+.field-form { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+.field-form button { grid-column: 1 / -1; }
+#scene-summary { max-height: 145px; overflow: auto; flex-shrink: 0; }
+.scene-incident-card { display: grid; gap: 5px; width: 100%; text-align: left; border-left: 3px solid #e5a076; padding: 10px; margin: 8px 0; background: #fbf6f0; border-radius: 6px; font-size: 12px; }
+.scene-incident-card span { color: #a9513f; font-weight: 600; }
+.scene-incident-card small { font-size: 10px; color: #7a8391; }
+#decision-history { list-style: none; padding: 0 4px 0 15px; margin: 0; min-height: 90px; flex: 1; overflow: auto; }
+.history-event { border-left: 1px solid #dee4ed; padding: 0 0 18px 16px; position: relative; }
+.history-event::before { content: ''; width: 7px; height: 7px; border-radius: 50%; position: absolute; left: -4px; top: 6px; background: #a5b3c7; }
+.history-event time { display: block; font-size: 9px; color: #a0a8b3; margin-bottom: 5px; }
+.history-event strong { display: block; font-size: 12px; font-weight: 600; color: #40516a; }
+.history-event p { font-size: 11px; color: #7b8492; line-height: 1.5; margin: 5px 0; }
+.history-event button { font-size: 10px; color: #8b7ab1; padding: 2px 0; }
+.history-event.invalidated::before, .history-event.blocked::before { background: #dc705b; }
+.history-event.closed::before, .history-event.contained::before { background: #65a691; }
+#decision-panel footer { font-size: 9px; line-height: 1.5; color: #929aa5; border-top: 1px solid #edf0f5; padding-top: 10px; }
+#plan-invalidated { position: fixed; z-index: 1200; top: 82px; left: 50%; transform: translateX(-50%); width: min(550px, calc(100% - 40px)); padding: 15px 20px; color: #984c31; background: #fff4dfef; border: 1px solid #e9c596; border-radius: 12px; font-size: 13px; box-shadow: 0 6px 30px #9b74371a; pointer-events: none; }
+#agent-priority { margin: 10px 0 0; font-size: 12px; font-weight: 650; color: #aa6349; }
+#agent-priority:empty { display: none; }
+#alert-countdown { position: fixed; z-index: 2200; bottom: 60px; left: 50%; transform: translateX(-50%); width: min(450px, calc(100vw - 40px)); border-radius: 18px; padding: 22px; background: #fff7ed; border: 2px solid #da8354; box-shadow: 0 8px 80px #943d3328; animation: alert-breathe 1s ease-in-out infinite alternate; }
+#alert-countdown > span { display: block; font-size: 10px; letter-spacing: 1px; color: #ac643f; }
+#alert-countdown strong { display: block; font-size: 24px; margin-top: 8px; }
+#alert-countdown p { color: #876f61; font-size: 12px; line-height: 1.5; }
+#cancel-alert { width: 100%; border: 1px solid #c77556; border-radius: 8px; padding: 12px; background: #fff; color: #9b482e; font-weight: 650; }
+@keyframes alert-breathe { to { border-color: #f3c2a1; box-shadow: 0 8px 80px #943d3310; } }
+.hospital-marker { background: #effbf5; color: #408973; border: 1px solid #80b7a4; border-radius: 7px; text-align: center; font-size: 15px; font-weight: 750; line-height: 25px; box-shadow: 0 2px 8px #3458451a; }
+.hospital-marker.transfer { background: #dcf3e7; border-color: #3f8f75; box-shadow: 0 2px 12px #34584533; }
+.hospital-marker.threatened { background: #fdf2ec; color: #a76347; border-color: #d8a58d; }
+.hospital-marker.avoided { background: #f4f2f0; color: #9c9691; border-color: #cfc8c2; text-decoration: line-through; }
+.closure-marker { border-radius: 50%; background: #c94048; color: white; text-align: center; line-height: 23px; font-size: 23px; box-shadow: 0 2px 12px #71373e38; }
+.response-vehicle.ambulance { border-color: #55a58a; color: #318966; }
+.response-station.ambulance { color: #318966; border-color: #91b9aa; }
+.response-station { font-size: 9px; border-radius: 6px; }
+.scenario-wind { font-size: 9px; color: #637a8c; white-space: nowrap; text-shadow: 0 1px 3px white; }
+.maritime-marker { color: #51889d; background: #fffffff0; border: 1px solid #75a1b4; border-radius: 7px; padding: 3px; }
+.maritime-marker svg { width: 28px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+#detail-priority { color: #a76347; font-size: 12px; line-height: 1.5; }
+@media (max-width: 650px) {
+  #history-toggle { top: 67px; right: 12px; padding: 9px 12px; font-size: 10px; }
+  #decision-panel { top: 110px; bottom: 24px; right: 12px; padding: 16px; }
+  #decision-title { font-size: 19px; }
+  #plan-invalidated { top: 112px; font-size: 11px; }
+  #scene-summary { max-height: 115px; }
 }
 @media (prefers-reduced-motion: reduce) {
   *,

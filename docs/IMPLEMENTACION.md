@@ -619,7 +619,86 @@ Las exportaciones señalan `operational_status=not_verified` y `dispatch_authori
 El compilador del atlas no modifica bases ni workflows de HappyRobot. La migración futura conserva
 las tablas relacionales, convierte JSON a JSONB y sustituye únicamente el índice/distancia por PostGIS.
 
-## 11. Director de respuesta y presentación automática
+## 12. Escenario de sala de hackathon (revisión posterior)
+
+Esta sección sustituye las limitaciones anteriores de activación exclusivamente por llamada,
+ausencia de sanitarios y ES-Alert solo como vista previa **cuando se arranca con `--hackathon`**.
+Fuera del modo de sala se conserva el comportamiento previo, ampliado con ambulancias en el atlas.
+
+`scene.py::Scene` mantiene el mundo de demostración dentro de `Director.state['scenario']`. No es
+un planner alternativo: el Reasoning Agent sigue eligiendo los despachos. El ejecutor simula trabajo,
+traslados, retiradas y cambios del entorno. Se conservan separados `footprint`/weather originales y
+`scenario.footprint`/wind_to/phase. El renderizador usa la geometría ilustrativa únicamente para el
+escenario, sin recalcular hectáreas NASA ni afirmar perímetro quemado.
+
+### Sensores y contraste
+
+Un grupo FIRMS dentro de la caja de trabajo, de ≤24 horas, con FRP pico ≥15 MW y al menos una
+observación de confianza alta debe permanecer elegible durante 8 s. Entonces recibe `sensor_report`
+y `source_kind=sensor`; no se crea una llamada ni una confirmación oficial. Se admite un máximo
+acotado de avisos de escenario. El contrato de `reported()` incluye sensores y ejercicios, además de
+112, y ordena por prioridad orientativa. El 123 permite vinculación a un sensor sin inventar run civil.
+
+El contraste calcula haversine hasta cada detección, no hasta el centroide del grupo. A ≤10 km se
+conservan ID, distancia y fecha; sin coincidencia, `mode=simulated` y texto explícito. La asociación a
+un sensor ya activo a ≤3 km evita duplicar el dispositivo y mantiene el punto de la llamada. Los avisos
+marítimos requieren ficha estructurada del 112 que comunique barco/incendio/Barcelona; su posición
+costera es ilustrativa. Nunca se generan automáticamente barcos desde FIRMS o el botón de ejercicio.
+
+### Red precargada y cortes
+
+`local_routes.py --prepare-demo` guarda 16 teselas OSM, subdividiendo peticiones que fallen y
+reanudando desde SQL. Se aceptan teselas marinas vacías, pero no respuestas `remark` parciales.
+El grafo completo se publica bajo `barcelona-demo-road-v1` solo después de completar todas las cajas.
+Bounding box: sur 41.28, oeste 2.00, norte 41.54, este 2.32. Un advisory lock impide dos escritores.
+Cada tramo tiene ID estable de pareja de nodos, compartido por A*, rutas y tráfico Canvas.
+
+A* elimina los tramos cortados y multiplica el coste de congestión simulado hasta un factor acotado.
+En el área precargada no se consulta OSRM: un proveedor ajeno al escenario desconocería el corte.
+Se conserva el trayecto anterior para dibujarlo gris y se parte de la posición interpolada al recalcular.
+Sin desvío, `blocked` + `held_position` inmovilizan la unidad; no se dibuja una carretera recta.
+Los coches son animación de frontend, no telemetría; fade desde zoom 11,7 y máximo 1.000 coches,
+con pausa, pestaña oculta y movimiento reducido. La cola queda antes del tramo bloqueado.
+
+### Medios, evolución y cierre
+
+El atlas se abre en solo lectura. Dos ambulancias ficticias por hospital/base; hospitales con ocho
+plazas de demo, sin usar camas oficiales como disponibilidad. Policía, dos camiones por parque y
+helicópteros siguen disponibles. Un aviso marítimo dirige tierra al encuentro costero y aire al mar.
+La prioridad 0–10 se deriva del riesgo comunicado, población censal próxima, hospitales y crecimiento;
+el LLM recibe esas evidencias y puede priorizar sus acciones. No es un índice operativo calibrado.
+
+Radio visual inicial de 180 m (barco 80 m); crecimiento acotado a 1,2 km (barco 150 m). El sector de
+viento simulado aumenta el entorno censal considerado. Dos camiones o un helicóptero trabajando
+45 s permiten pasar a contenido; 25 s después entra en vigilancia, que dura otros 45 s. Entonces se
+retiran recursos y solo se cierra cuando no quedan asignaciones. Una reactivación o parte puede
+invalidar el plan. Llegar no extingue, libera ni da el alta. Ambulancias con riesgo vital simulado
+trasladan tras 15 s en el punto, reservan capacidad en hospital y mantienen su reserva hasta retirada.
+
+La primera salida permite un corte automático y un giro de viento; los controles de sala añaden
+perturbaciones manuales y partes ficticios de bomberos, sanitarios o policía. Un aviso de ejercicio
+terrestre no se etiqueta FIRMS ni llamada. El resto de España y sus observaciones no se modifica.
+
+### API, memoria y ES-Alert
+
+- `GET /api/director`: añade `scenario` y `pending_alerts`; reloj servidor para cuenta atrás.
+- `GET /api/director/history`: historial SQL ordenado de la sesión, separado de tarjetas transitorias.
+- `GET /api/scenario/roads?bbox=west,south,east,north`: hasta 4.000 segmentos de la red en la caja.
+- `POST /api/scenario`: controles de sala; solo loopback, puerto principal, JSON ≤4 KB y Origin válido.
+- `POST /api/director/cancel-alert`: veto por UUID de propuesta, mismas restricciones.
+
+En el modo de sala, proponer alerta crea un temporizador servidor de 3 s. La cancelación y la entrega
+se serializan bajo el mismo lock; UUID, cooldown e idempotencia impiden duplicados o cancelación de
+otra propuesta. La entrega usa exclusivamente el receptor móvil existente. Un plan bloqueado no
+espera aprobación humana; el humano puede frenar el simulacro. El sonido requiere activación previa
+en la web receptora y no funciona como Cell Broadcast/push real.
+
+SQL conserva eventos y estado; se escriben solo eventos nuevos y un checkpoint periódico del
+escenario. El panel está oculto inicialmente y no depende de la selección del mapa. Reiniciar conserva
+el histórico SQL, pero inicia otra sesión: no restaura despachos. `verify_scene.py` recorre UI/SQL/grafo
+reales con voz/plan fixtures; `--cloud` prueba un plan real con cuota y entrada estructurada fixture.
+
+## 11. Director de respuesta y presentación automática (implementación anterior)
 
 `Director` observa los avisos estructurados de `DemoBridge` en un worker independiente. El LLM es
 un Reasoning Agent real en HappyRobot, no una política local. El contexto incluye hasta ocho avisos,
@@ -628,8 +707,9 @@ Los límites y datos ausentes se declaran. Capacidades demo: dos camiones por pa
 por sede; nunca se infiere disponibilidad operativa del catálogo. SQLite se abre con `mode=ro`.
 
 El fingerprint incluye posición, ficha, geometría, tiempo/valores meteorológicos y estado de las
-fuentes, no el reloj de polling. Un cambio o una revisión a 180 segundos inicia un único run, máximo
-30 por hora, sesión de agente de dos minutos. El hook recibe un string JSON; su salida real es
+fuentes, no el reloj de polling. Un cambio o una revisión a 180 segundos inicia un único run pendiente,
+sin tope local de ejecuciones por hora (retirado por petición expresa para la hackathon). Se conservan
+validación de revisiones/rutas y reintentos ante fallos; no se modifican límites de la cuenta remota. El hook recibe un string JSON; su salida real es
 `data.context_json`. El prompt debe usar `{{<grupo-persistente>.data.context_json}}`, obtenido del
 catálogo de variables. Un fork cambia IDs de nodos pero conserva IDs persistentes de variables.
 

@@ -55,7 +55,7 @@ import { createSpeakerOutput } from './audio.js';
     const selected = resourceChoice.value;
     resourceChoice.replaceChildren(new Option('Parte general, sin unidad', ''));
     for (const resource of incidents.find(i => i.id === incidentChoice.value)?.resources || []) {
-      if (resource.kind !== 'police') resourceChoice.add(new Option(`${resource.kind === 'helicopter' ? 'Helicóptero' : 'Camión'} · ${resource.name} · ${resource.id.split(':').at(-1)}`, resource.id));
+      resourceChoice.add(new Option(`${{ helicopter: 'Helicóptero', ambulance: 'Ambulancia', police: 'Patrulla', fire_engine: 'Camión' }[resource.kind] || 'Unidad'} · ${resource.name} · ${resource.id.split(':').at(-1)}`, resource.id));
     }
     if ([...resourceChoice.options].some(o => o.value === selected)) resourceChoice.value = selected;
   }

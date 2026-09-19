@@ -13,6 +13,10 @@ export function confirmedFire(incident, now = Date.now()) {
 }
 
 export function fireTint(incident, r, g, b, alpha = 1) {
+  if (incident.scenario && !incident.scenario.linked_call_id && incident.scenario.phase !== 'closed') {
+    if (incident.scenario.phase !== 'active') return `rgba(82,148,123,${alpha * .45})`;
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
   if (confirmedFire(incident)) return `rgba(${r},${g},${b},${alpha})`;
   const gray = Math.round(r * .2126 + g * .7152 + b * .0722);
   return `rgba(${gray},${gray},${gray},${alpha})`;
@@ -327,7 +331,8 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
       for (const id of embers.keys()) if (!alive.has(id)) embers.delete(id);
       footprints.clear();
       for (const incident of list) {
-        const shapes = rings(incident.footprint);
+        const geometry = !incident.scenario?.linked_call_id && incident.scenario?.phase !== 'closed' && incident.scenario?.footprint || incident.footprint;
+        const shapes = rings(geometry);
         const coordinates = shapes.flat();
         const cradle = coordinates.reduce((b, [lon, lat]) => ({
           west: Math.min(b.west, lon), east: Math.max(b.east, lon),
@@ -335,7 +340,7 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
         }), { west: Infinity, east: -Infinity, south: Infinity, north: -Infinity });
         footprints.set(incident.id, {
           shapes, cradle,
-          polygons: incident.footprint.type === "Polygon" ? [incident.footprint.coordinates] : incident.footprint.coordinates,
+          polygons: geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates,
         });
       }
       loop();

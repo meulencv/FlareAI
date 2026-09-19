@@ -43,6 +43,73 @@ python app.py --offline --host 127.0.0.1 --port 8090
 
 Muestra el periodo de la muestra guardada, identificado como tal, aunque hayan transcurrido días. Las imágenes de Igea en ambas capas están guardadas. Otras zonas solo tendrán imagen offline si se consultaron antes con conexión. No se contacta con NASA ni NOAA en este modo.
 
+## Demo de sala: Barcelona, Collserola y costa
+
+```bash
+.venv/bin/python local_routes.py --prepare-demo
+.venv/bin/python app.py --hackathon --host 127.0.0.1 --port 8090
+```
+
+La preparación guarda en PostgreSQL la red OSM de `41.28–41.54 N, 2.00–2.32 E`, en 16 teselas
+reanudables. Incluye Barcelona, Collserola y el litoral; las zonas de mar pueden no contener vías.
+En ese ámbito los trayectos, desvíos y tiempos se calculan con A* local, sin pedir Overpass ni OSRM
+durante el despacho. La red no es un itinerario operativo: faltan giros completos, gálibos y tráfico real.
+El resto de España sigue visible, con sus detecciones y capas; no se recorta el país.
+
+**Decisiones e historial**, a la derecha y oculto inicialmente, conserva en SQL el relato de la sesión:
+detección, contraste, decisión, supuesto clave, despacho, recálculo, contención, vigilancia y cierre.
+Recargar o cambiar de foco no borra ese historial. Reiniciar el servidor crea otra sesión, conservando
+el histórico anterior en SQL. Dentro del panel, **Control del escenario** permite encuadrar Barcelona,
+añadir un ejercicio terrestre explícito, cortar una vía por delante de una unidad, crear congestión,
+girar el viento y registrar un parte simulado de bomberos, sanitarios o policía.
+
+- FIRMS fuerte en la zona (FRP ≥15 MW, alguna detección de confianza alta, edad ≤24 h) pasa por
+  ocho segundos de persistencia y entra como **aviso sensor**, sin exigir llamada ni afirmar confirmación oficial.
+- La llamada se contrasta con detecciones individuales a ≤10 km, con fecha/distancia. Sin coincidencia
+  se muestra **«Contraste satelital simulado»**, nunca evidencia NASA inventada. Un sensor ya activo
+  puede vincularse a una llamada a ≤3 km, conservando el punto comunicado.
+- Hospitales del atlas con ocho plazas ficticias por centro; dos ambulancias ficticias por hospital/base.
+  El director recibe riesgo vital, población, hospitales y capacidad. Los traslados reservan una plaza
+  de demo; llegada no es alta médica. Camiones, patrullas y helicópteros conservan flota y sedes del atlas.
+- El **barco solo aparece si una llamada comunica fuego en una embarcación en Barcelona**. Se coloca
+  en un punto marítimo ilustrativo, no una posición verificada. Aire va al aviso; tierra, al encuentro costero.
+- Coches de frontend aparecen con fade desde zoom 12 y desaparecen al alejar. Los cortes comparten
+  identificador de tramo con el grafo: los coches se acumulan antes de la barrera y las unidades se desvían.
+  Si no hay desvío, quedan detenidas; no atraviesan el corte ni usan una recta inventada.
+- El escenario gira el viento y provoca un corte tras la salida. El crecimiento se limita a 1,2 km de
+  radio ilustrativo (150 m en un barco); aumenta el entorno censal considerado. Tras trabajo sostenido de
+  medios de extinción, pasa a contenido, mantiene vigilancia y ejecuta regresos. No borra ni altera huellas NASA.
+- Cada propuesta de **ES-Alert** se envía automáticamente **solo al receptor de simulación** después
+  de tres segundos; un banner permite cancelar. El temporizador está en servidor, no depende de la pestaña.
+  El móvil receptor debe seguir abierto y haber activado el sonido en `/112/alerts/`.
+
+La voz 112 conserva el guion breve publicado; no se ha cambiado durante esta ampliación. El 123 también
+admite partes vinculados a avisos sensor. Traffic Lab continúa aislado. Crecimiento, extinción, viento de
+escenario, capacidades, vehículos, tráfico y alertas son simulados; no se moviliza ningún servicio real.
+El modo de sala requiere ejecución online y el director HappyRobot configurado; no sustituye al LLM por
+un planner local de respaldo. Los tests sin cloud sí usan fixtures explícitas.
+
+El director ya no tiene tope local de ejecuciones por hora: se retiró el límite de 30 que dejaba nuevos
+avisos sin despacho durante ensayos prolongados. Conserva una ejecución pendiente y validación de
+planes/rutas. Si pierde conexión o autenticación, el mapa muestra un aviso persistente.
+
+Para el ensayo, usar «Sagrada Familia, Barcelona» o «Plaça de Catalunya, Barcelona», con ubicación y
+ruta local comprobadas. Ejemplo 112: «Hay un incendio en Sagrada Familia, Barcelona, humo junto a los
+edificios y dos personas heridas». Después, en 123 y seleccionando ese aviso: «Hemos llegado,
+confirmamos el incendio, empeora y solicitamos refuerzos y ES-Alert». Activar antes el receptor y su
+sonido. La elección de vehículos sigue siendo del LLM: un parte puede solicitar helicóptero, pero
+no se garantiza que el plan lo asigne. «Tibidabo, Barcelona» no es un ejemplo fiable de acceso viario
+con el punto IGN comprobado; para Collserola usar el ejercicio de sala preparado.
+
+```bash
+.venv/bin/python -m unittest test_scene test_director test_local_routes test_demo -v
+.local/node-v22.19.0-darwin-arm64/bin/node --test test_scene.mjs
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_scene.py
+```
+
+`verify_scene.py --cloud` consume cuota real y prueba un plan con entrada de llamada fixture; requiere
+autorización expresa. No es una prueba de audio humano. El túnel móvil se abre aparte con `demo.py publish`.
+
 ## Demo webcall 112 → mapa
 
 La webcall reutiliza `happyrobot-112/`; **no llama al 112 real**. Solo esta integración requiere

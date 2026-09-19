@@ -12,8 +12,9 @@
   </head>
   <body class="map-only">
     <div id="agent-aura" aria-hidden="true" hidden></div>
+    <p id="director-warning" role="status" aria-live="polite" hidden></p>
     <section id="agent-card" role="status" aria-live="polite" hidden>
-      <span id="agent-label">FlareAI</span><strong id="agent-message"></strong><p id="agent-reason"></p>
+      <span id="agent-label">FlareAI</span><strong id="agent-message"></strong><p id="agent-reason"></p><p id="agent-priority"></p>
     </section>
     <aside id="agent-evidence" aria-labelledby="evidence-title" hidden>
       <header><div><span id="evidence-status"></span><h2 id="evidence-title"></h2></div><button id="evidence-close" aria-label="Cerrar evidencias">×</button></header>
@@ -26,6 +27,30 @@
       <span class="demo-mode" title="Flota ficticia; no moviliza servicios ni envía alertas públicas">modo demo</span>
       <button id="follow-toggle" aria-pressed="true">Seguimiento IA · activo</button>
     </nav>
+    <button id="history-toggle" aria-controls="decision-panel" aria-expanded="false">Decisiones e historial</button>
+    <aside id="decision-panel" aria-labelledby="decision-title" hidden>
+      <header><div><span class="eyebrow">CENTRO DE COORDINACIÓN · DEMO</span><h2 id="decision-title">Cada decisión, su porqué.</h2></div><button id="history-close" aria-label="Cerrar historial">×</button></header>
+      <p id="scene-status" role="status"></p>
+      <div class="cycle-key">Vigilar → Detectar → Contrastar → Decidir → Actuar → Cerrar</div>
+      <details id="scene-controls" hidden>
+        <summary>Control del escenario · Barcelona</summary>
+        <p>Datos reales al inicio. Lo que alteras aquí es simulación visible, no una emergencia real.</p>
+        <div class="scene-buttons"><button id="scene-barcelona">Ver Barcelona</button><button data-scene-action="exercise">Aviso de ejercicio · Collserola</button><button data-scene-action="closure">Cortar vía en ruta</button><button data-scene-action="congestion">Crear tapón</button></div>
+        <label>Aviso activo<select id="scene-incident" aria-label="Aviso del escenario"></select></label>
+        <button data-scene-action="wind">Girar viento · escenario</button>
+        <div class="field-form"><label>Equipo<select id="scene-role"><option>bomberos</option><option>sanitarios</option><option>policía</option></select></label><label>Parte<select id="scene-report"><option>empeora</option><option>heridos</option><option>contenido</option><option>reactivación</option></select></label><button id="scene-field">Registrar parte simulado</button></div>
+        <p id="scene-feedback" role="status"></p>
+      </details>
+      <div id="scene-summary"></div>
+      <p id="history-count">Esperando los primeros pasos…</p>
+      <ol id="decision-history" aria-label="Historial cronológico de decisiones"></ol>
+      <footer>Flota ficticia · hospitales del atlas · capacidad de demo · rutas ilustrativas · coches dibujados · no es un protocolo operativo.</footer>
+    </aside>
+    <div id="plan-invalidated" role="status" hidden></div>
+    <section id="alert-countdown" role="alert" aria-label="Propuesta automática ES-Alert de demo" hidden>
+      <span>ES-ALERT · SIMULACRO</span><strong>Envío automático en <b id="alert-countdown-number">3</b></strong>
+      <p id="alert-countdown-message"></p><button id="cancel-alert">Cancelar envío</button>
+    </section>
     <svg class="symbols" aria-hidden="true">
       <defs>
         <symbol id="i-wind" viewBox="0 0 24 24">
@@ -258,7 +283,7 @@
           <div>
             <span class="eyebrow">ZONA SELECCIONADA</span>
             <h2 id="detail-name">Selecciona una zona</h2>
-            <p id="detail-location">Explora el mapa de España</p>
+            <p id="detail-location">Explora el mapa de España</p><p id="detail-priority"></p>
           </div>
           <button
             class="icon-button"

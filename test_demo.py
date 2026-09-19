@@ -411,6 +411,10 @@ class DemoHTTPTests(unittest.TestCase):
         from app import Handler, MobileHandler, Store
 
         store = Store(offline=True)
+        from app import ROOT
+        store.fires = json.loads((ROOT / 'examples/firms.geojson').read_text())
+        store.weather = json.loads((ROOT / 'examples/weather.json').read_text())
+        store.incidents = json.loads((ROOT / 'examples/combined.json').read_text())['incidents']
         provider = Mock(ready=True)
         run = '00000000-0000-4000-8000-000000000099'
         provider.create.return_value = {'run_id': run, 'token': 'fixture', 'url': 'wss://example.invalid', 'room_name': 'fixture'}

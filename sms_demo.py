@@ -244,6 +244,8 @@ def make_server(service: SMSService, port: int = 8091,
     post_routes = {"/api/send": service.send, **(actions or {})}
 
     class Handler(BaseHTTPRequestHandler):
+        server: ThreadingHTTPServer
+
         def log_message(self, format, *args):
             pass
 

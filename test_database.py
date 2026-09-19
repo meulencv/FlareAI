@@ -43,8 +43,11 @@ class DatabaseTests(unittest.TestCase):
         self.assertTrue(result['potential']['samples'])
         self.assertTrue(all(i['confirmation']['status'] == 'unconfirmed' for i in self.store.payload()['incidents']))
         self.assertEqual(self.db.snapshot('weather'), dict(self.store.weather))
+        import json
+        from app import ROOT
         from satellite import picture
-        image = picture(self.store.incidents[0], 'natural', True, self.db)
+        fixture = next(i for i in json.loads((ROOT / 'examples/combined.json').read_text())['incidents'] if i['name'] == 'Igea')
+        image = picture(fixture, 'natural', True, self.db)
         self.assertIn('/satellite/', image['url'])
 
     def test_demo_restart_ignores_persisted_calls_and_browser_sessions(self):

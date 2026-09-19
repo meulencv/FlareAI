@@ -1,10 +1,10 @@
 {
   "url": "https://firms.modaps.eosdis.nasa.gov/data/active_fire/suomi-npp-viirs-c2/csv/SUOMI_VIIRS_C2_Global_24h.csv",
   "http_status": 200,
-  "requested_at_utc": "2026-09-19T13:32:00.226275+00:00",
-  "received_at_utc": "2026-09-19T13:32:02.269017+00:00",
+  "requested_at_utc": "2026-09-19T15:44:29.365608+00:00",
+  "received_at_utc": "2026-09-19T15:44:31.614521+00:00",
   "content_type": "text/csv",
-  "bytes": 7128298,
-  "sha256": "cc4d37c3d27604b952b196da80527c137b8465e79bb3ffb4bad866deed57912c",
+  "bytes": 8689825,
+  "sha256": "469fa350ca5e3a622fc9e353493df193a8a9bc85d1d1af87a5094967bc7c9525",
   "file": "snpp_global_24h.csv"
 }

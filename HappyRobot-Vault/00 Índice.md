@@ -55,6 +55,16 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-19)
+- **Estabilidad Barcelona:** eliminado el tope local de 30 runs/hora que impedía despachar tras
+  varios avisos; no era agotamiento demostrado de HappyRobot. Despacho terrestre real verificado,
+  pruebas backend/UI completas y aviso persistente de fallo del director. Helicóptero no garantizado
+  por el LLM. [[2026-09-19#Revisión de estabilidad y desbloqueo del director|Resultados y límites]].
+- **Macro simulador de sala:** `app.py --hackathon`; España completa y red Barcelona/Collserola/costa
+  precargada (69.882 vías). Sensores sin llamada, hospitales/ambulancias, tráfico dibujado, cortes con
+  desvíos locales, prioridad, supuesto invalidable y ciclo hasta cierre. Historial persistente y ES-Alert
+  automático a los tres segundos con veto, solo al simulador. Director actualizado con autorización;
+  run real movilizó dos camiones, dos ambulancias y policía. Voz intacta. Detalles y comandos en
+  [[2026-09-19#Macro simulador de sala de hackathon|la bitácora de sala]].
 - **Routing MVP revisado:** APIs OSM/OSRM con respaldo y caché, alternativas de parque libre e
   inventario disponible/ocupado. Sustituye Overpass durante el despacho tras un 504 en Barcelona;
   probado en seis localidades, incluida Las Palmas. [[2026-09-19#Rutas MVP y parques alternativos]].

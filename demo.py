@@ -111,6 +111,17 @@ def select_location_candidate(query: str, candidates: list[dict]) -> dict | None
     return ranked[0][1]
 
 
+def maritime_location(summary: dict) -> dict | None:
+    text = normalized(' '.join(str(v) for v in summary.values()))
+    if 'barcelona' not in text or not re.search(r'\b(barco|embarcacion|buque|velero|yate)\b', text) or not is_fire(summary):
+        return None
+    if re.search(r'\b(no es un barco|no hay barco|barco en tierra|dique seco)\b', text):
+        return None
+    return {'lat': 41.37, 'lon': 2.235, 'label': 'Mar de Barcelona · posición ilustrativa del barco comunicado',
+            'precision': 'area', 'approximate': True, 'maritime': True, 'source': 'Llamada 112 · escenario marítimo',
+            'reason': 'Aviso de barco comunicado; punto ilustrativo en el mar, no posición verificada del buque.'}
+
+
 def is_fire(summary: dict) -> bool:
     text = normalized(summary.get('emergencia', ''))
     denied = re.search(r'\b(?:no (?:hay|es|existe|veo|vemos)(?: (?:un|ningun))? (?:incendio|fuego)|sin (?:incendio|fuego)|falsa alarma|(?:incendio|fuego) (?:ya )?(?:descartado|extinguido|apagado))\b', text)
@@ -386,6 +397,7 @@ class DemoBridge:
         self.executor = ThreadPoolExecutor(max_workers=MAX_ACTIVE_CALLS, thread_name_prefix='demo-call')
         self.closed = threading.Event()
         self.field_reports: dict[str, dict] = {}
+        self.sensor_incidents: dict[str, dict] = {}
         self.db.start_demo(self.session_id)
 
     def open_browser(self) -> str:
@@ -418,8 +430,11 @@ class DemoBridge:
                 raise PermissionError('Abre primero el marcador de la demo')
             if role not in {'citizen', 'firefighter'}:
                 raise ValueError('Tipo de llamada no válido')
-            if role == 'firefighter' and (not binding or binding.get('run_id') not in self.calls or self.calls[binding['run_id']].get('role') != 'citizen'):
-                raise ValueError('Selecciona un aviso activo para informar')
+            if role == 'firefighter':
+                citizen = binding and self.calls.get(str(binding.get('run_id', '')), {}).get('role') == 'citizen'
+                sensor = binding and self.sensor_incidents.get(str(binding.get('sensor_id', '')))
+                if not citizen and not sensor:
+                    raise ValueError('Selecciona un aviso activo para informar')
             if not self.provider.ready or role == 'firefighter' and not self.provider.responder_ready:
                 raise RuntimeError('HappyRobot no está configurado para este número')
             active = sum(not c.get('ended') and c['poll_until'] > time.monotonic() for c in self.calls.values())
@@ -483,7 +498,9 @@ class DemoBridge:
             if summary == call['summary']:
                 return
             old_location = call['summary'].get('ubicacion')
-        location = call['location'] if old_location == summary.get('ubicacion') else self.resolver(summary.get('ubicacion', ''))
+        location = maritime_location(summary)
+        if location is None:
+            location = call['location'] if old_location == summary.get('ubicacion') and not (call['location'] or {}).get('maritime') else self.resolver(summary.get('ubicacion', ''))
         state = 'not_fire' if not is_fire(summary) else 'located' if location else 'needs_location'
         with self.lock:
             call = self.calls[run_id]
@@ -561,7 +578,9 @@ class DemoBridge:
     def overlay(self, incidents: list[dict], weather: dict, now: datetime) -> list[dict]:
         with self.lock:
             calls = deepcopy(self.calls)
-        result = [dict(i) for i in incidents]
+            self.sensor_incidents = {i['id']: {'lat': i['lat'], 'lon': i['lon']} for i in incidents
+                                     if (i.get('sensor_report') or i.get('scene_report')) and i.get('scenario', {}).get('phase') not in {'closed', 'releasing'}}
+        result = [deepcopy(i) for i in incidents]
         latest_revision = -1
         latest_id = None
         targets = {}
@@ -586,11 +605,12 @@ class DemoBridge:
         reports: dict[str, dict] = {}
         for run_id, call in calls.items():
             binding = call.get('binding', {})
-            target_item = targets.get(binding.get('run_id'))
+            sensor_id = binding.get('sensor_id')
+            target_item = next((i for i in result if i['id'] == sensor_id), None) if sensor_id else targets.get(binding.get('run_id'))
             if call.get('role') != 'firefighter' or not target_item or not call.get('part_updates'):
                 continue
             item = target_item
-            origin = calls[binding['run_id']]['location']
+            origin = item if sensor_id else calls[binding['run_id']]['location']
             if any(binding.get(k) != origin.get(k) for k in ('lat', 'lon')):
                 continue
             report = reports.setdefault(item['id'], {'incident_id': item['id'], 'fields': {}, 'field_versions': {}, 'field_sources': {}, 'revision': 0})
@@ -608,7 +628,8 @@ class DemoBridge:
             item['responder_report'] = report
             status = report['fields'].get('incendio')
             if status in {'descartado', 'extinguido'}:
-                item['demo_report']['cancelled'] = True
+                if item.get('demo_report'):
+                    item['demo_report']['cancelled'] = True
                 if item.get('confirmation', {}).get('demo'):
                     item['confirmation'] = {'status': 'unconfirmed', 'demo': True, 'reason': 'Parte de bomberos · ' + status}
             elif status == 'confirmado' and item.get('confirmation', {}).get('demo'):
