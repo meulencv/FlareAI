@@ -58,8 +58,11 @@ y dashboard con aprobación humana.
 - **Director autónomo FlareAI:** Reasoning Agent separado del marcador; contexto local, plan por tool,
   validación SQL y vehículos sobre rutas A* locales. Run real de Tarragona verificado: dos camiones,
   ruta de 2,08 km. Entrada de llamada fixture, no nueva prueba de audio. Mapa minimalista y borde de
-  actividad; SMS fuera del flujo y cámaras pendientes. Detalles y correcciones de autenticación/
-  variables en [[2026-09-19#Director autónomo con rutas locales|la bitácora del director]].
+  actividad; SMS fuera del flujo. Seguimiento cinematográfico entre avisos/camiones y panel automático
+  de evidencias FIRMS/GFS, GIBS y cámaras verificadas: revisión visual, no visión artificial ni
+  descarte de llamadas. Traffic Lab sigue aislado. Detalles en
+  [[2026-09-19#Seguimiento cinematográfico y evidencias visuales|la revisión visual]] y correcciones
+  de autenticación/variables en [[2026-09-19#Director autónomo con rutas locales|la bitácora del director]].
 - **Atlas local de emergencias de FlareAI**: generados y verificados SQLite, GeoJSON y manifiesto;
   25.136 entidades, 22.575 georreferenciadas y presencia en las 52 provincias/ciudades autónomas.
   Pendientes 2.561 registros oficiales sin ubicación fiable; cobertura no exhaustiva ni

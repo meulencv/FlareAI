@@ -1,3 +1,73 @@
+import { selectionBounds } from "./context.js";
+import { imagePoints } from "./simulation.js";
+import { safeLink } from "./infrastructure.js";
+
+const smooth = t => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+
+export function cinematicFrame(start, end, overview, progress) {
+  const travel = smooth((progress - .25) / .5);
+  return { center: { x: start.center.x + (end.center.x - start.center.x) * travel,
+    y: start.center.y + (end.center.y - start.center.y) * travel },
+  zoom: progress < .25 ? start.zoom + (overview - start.zoom) * smooth(progress / .25)
+    : overview + (end.zoom - overview) * smooth((progress - .75) / .25) };
+}
+
+export function createCameraTour({ map, L, now = () => performance.now(), requestFrame = requestAnimationFrame, cancelFrame = cancelAnimationFrame }) {
+  let frame = 0, generation = 0;
+  function cancel() { generation++; if (frame) cancelFrame(frame); frame = 0; if (Number.isFinite(map.getZoom())) map.stop(); }
+  function go(center, zoom, reduced = false) {
+    cancel();
+    const target = L.latLng(center), origin = map.getCenter();
+    zoom = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom));
+    if (reduced) { map.setView(center, zoom, { animate: false }); return; }
+    const start = { center: map.project(origin, 0), zoom: map.getZoom() }, end = { center: map.project(target, 0), zoom };
+    const distance = Math.hypot(start.center.x - end.center.x, start.center.y - end.center.y) * 2 ** Math.min(start.zoom, zoom);
+    if (distance < 16 && Math.abs(start.zoom - zoom) < .15) return;
+    const overview = distance < 80 ? Math.min(start.zoom, zoom)
+      : Math.max(map.getMinZoom(), Math.min(start.zoom, zoom, map.getBoundsZoom(L.latLngBounds([origin, target]), false, L.point(160, 180))) - .7);
+    const duration = distance < 80 ? 1400 : 3200, token = generation;
+    let previous = now(), elapsed = 0;
+    function tick(timestamp) {
+      if (token !== generation) return;
+      elapsed += Math.max(0, Math.min(50, timestamp - previous)); previous = timestamp;
+      const progress = Math.min(1, elapsed / duration);
+      const view = cinematicFrame(start, end, overview, progress);
+      map.setView(map.unproject(L.point(view.center.x, view.center.y), 0), view.zoom, { animate: false });
+      frame = progress < 1 ? requestFrame(tick) : 0;
+    }
+    frame = requestFrame(tick);
+  }
+  function bounds(points, maxZoom = 12.5, reduced = false) {
+    const bounds = L.latLngBounds(points), size = map.getSize();
+    go(bounds.getCenter(), Math.min(maxZoom, map.getBoundsZoom(bounds, false, L.point(Math.min(180, size.x * .3), Math.min(220, size.y * .3)))), reduced);
+  }
+  return { go, bounds, cancel, moving: () => Boolean(frame) };
+}
+
+function distanceKm(a, b) {
+  if (![a.lat, a.lon, b.lat, b.lon].every(Number.isFinite)) return Infinity;
+  const rad = Math.PI / 180, dlat = (b.lat - a.lat) * rad, dlon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dlat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dlon / 2) ** 2;
+  return 12742 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+export function nearbyEvidence(incident, incidents, cameras) {
+  const origin = incident.demo_report?.location || incident;
+  const thermal = incidents.filter(i => i.source_kind !== "call" && i.observations > 0)
+    .map(i => ({ incident: i, distance_km: Math.min(...(i.detections || []).map(d => distanceKm(origin, d))) }))
+    .filter(i => i.distance_km <= 10).sort((a, b) => a.distance_km - b.distance_km)[0] || null;
+  const camera = cameras.filter(c => ["snapshot", "player"].includes(c.kind))
+    .map(item => ({ item, distance_km: distanceKm(origin, item) }))
+    .filter(c => c.distance_km <= 10).sort((a, b) => a.distance_km - b.distance_km)[0] || null;
+  return { thermal, camera };
+}
+
+export function patrolTargets(incidents, assignments) {
+  return [...incidents.filter(i => i.demo_report).map(i => ({ key: `incident:${i.id}`, incident: i })),
+    ...Object.values(assignments).filter(a => ["enroute", "returning"].includes(a.status))
+      .map(a => ({ key: `vehicle:${a.resource.id}`, assignment: a }))];
+}
+
 export function routePosition(route, progress) {
   const points = route.coordinates, distances = route.cumulative_km;
   const target = Math.max(0, Math.min(1, progress)) * distances.at(-1);
@@ -15,9 +85,115 @@ export function freshEvents(events, sequence, now) {
   return events.filter(event => event.sequence > sequence && now - event.at < 90);
 }
 
+export function createEvidenceView({ document, fetch, getData, getCameras, openCamera }) {
+  const $ = id => document.getElementById(id), cache = new Map();
+  const number = value => Number.isFinite(value) ? value.toLocaleString("es-ES", { maximumFractionDigits: 1 }) : "—";
+  const date = value => value && Number.isFinite(Date.parse(value)) ? new Date(value).toLocaleString("es-ES", { timeZone: "UTC" }) + " UTC" : "fecha no disponible";
+  let generation = 0, controller = null, expires = 0;
+  function hide() {
+    generation++; controller?.abort(); controller = null; expires = 0;
+    $("agent-evidence").hidden = true;
+    $("evidence-satellite").replaceChildren(); $("evidence-camera").replaceChildren();
+  }
+  function node(tag, text, className) {
+    const element = document.createElement(tag);
+    if (text) element.textContent = text;
+    if (className) element.className = className;
+    return element;
+  }
+  async function json(url, signal, key = url) {
+    const saved = cache.get(key);
+    if (saved && Date.now() - saved.at < 60000) return saved.value;
+    const response = await fetch(url, { signal: globalThis.AbortSignal.any([signal, globalThis.AbortSignal.timeout(20000)]) });
+    if (!response.ok) throw new Error("Fuente no disponible");
+    const value = await response.json();
+    if (cache.size > 32) cache.delete(cache.keys().next().value);
+    cache.set(key, { at: Date.now(), value });
+    return value;
+  }
+  function image(root, url, alt, caption, token, detections = null, bbox = null) {
+    const wrap = node("div", null, "evidence-image"), img = node("img"), note = node("p", "Cargando imagen…");
+    img.alt = alt;
+    img.onload = () => {
+      if (token !== generation) return;
+      note.textContent = caption; wrap.append(img);
+      if (detections && bbox) {
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", "0 0 900 600"); svg.setAttribute("aria-hidden", "true");
+        svg.innerHTML = imagePoints(detections, bbox).filter(p => p.x >= 0 && p.x <= 900 && p.y >= 0 && p.y <= 600)
+          .map(p => `<circle cx="${p.x}" cy="${p.y}" r="6"/>`).join("");
+        wrap.append(svg);
+      }
+    };
+    img.onerror = () => { if (token === generation) { wrap.replaceChildren(); note.textContent = "Imagen no disponible. El aviso se mantiene."; } };
+    root.append(wrap, note); img.src = url;
+  }
+  async function satellite(incident, thermal, token, signal, mode = "swir") {
+    const root = $("evidence-satellite");
+    root.replaceChildren(node("h3", "NASA GIBS · " + (mode === "swir" ? "infrarrojo SWIR" : "color natural")));
+    if (!thermal) { root.append(node("p", "Sin detecciones FIRMS a ≤10 km en los datos disponibles. Se omite la imagen; no se descarta el aviso.")); return; }
+    root.append(node("p", "Consultando mosaico satelital…", "evidence-loading"));
+    try {
+      const url = `/api/satellite?id=${encodeURIComponent(incident.id)}&mode=${mode}`;
+      const picture = await json(url, signal, `${url}|${incident.lat}|${incident.lon}`);
+      if (token !== generation || signal.aborted) return;
+      if (!/^\/satellite\/[a-f0-9]{24}\.png$/.test(picture.url)) throw new Error("Imagen inválida");
+      root.querySelector(".evidence-loading")?.remove();
+      const detections = (getData()?.incidents || []).flatMap(i => i.detections || []);
+      image(root, picture.url, `NASA ${mode} · ${incident.name}`, `${picture.date} · mosaico diario, no directo. Puntos: detecciones, no confirmación por imagen.`, token, detections, picture.bbox);
+      const button = node("button", mode === "swir" ? "Ver color natural" : "Ver infrarrojo SWIR");
+      button.onclick = () => { expires = Date.now() + 30000; satellite(incident, thermal, token, signal, mode === "swir" ? "natural" : "swir"); };
+      root.append(button);
+    } catch {
+      if (token === generation && !signal.aborted) { root.querySelector(".evidence-loading")?.remove(); root.append(node("p", "Sin mosaico disponible. Continuamos con el aviso, sin validación por imagen.")); }
+    }
+  }
+  async function camera(match, token, signal) {
+    const root = $("evidence-camera");
+    root.replaceChildren(node("h3", "Cámara cercana · revisión visual"));
+    if (!match) { root.append(node("p", "Sin cámaras verificadas disponibles a ≤10 km. No implica ausencia de incendio.")); return; }
+    const item = match.item;
+    root.append(node("p", `${item.name} · ${item.source} · ${number(match.distance_km)} km del aviso`));
+    if (item.kind === "player") {
+      const button = node("button", "Abrir vídeo del proveedor");
+      button.onclick = () => openCamera(item);
+      root.append(button, node("p", "Requiere abrir el reproductor; puede usar cookies. No se ha analizado el contenido del vídeo."));
+      return;
+    }
+    try {
+      const result = await json(`/api/webcam?id=${encodeURIComponent(item.id)}`, signal);
+      if (token !== generation || signal.aborted) return;
+      if (result.verification_pending || result.kind !== "snapshot" || !/^\/territorial\/[a-f0-9]{24}\.img$/.test(result.url)) throw new Error("Captura no disponible");
+      image(root, result.url, `Captura de ${item.name}`, `${result.offline ? "Copia offline. " : ""}Recuperada ${date(result.fetched_at)}. ${result.source_modified ? `Modificada en origen ${date(result.source_modified)}. ` : ""}Recuperación no es hora de captura; no se infiere fuego ni tráfico.`, token);
+      const href = safeLink(item.pageUrl);
+      if (href) { const link = node("a", "Fuente y autoría"); link.href = href; link.target = "_blank"; link.rel = "noopener noreferrer"; root.append(link); }
+    } catch {
+      if (token === generation && !signal.aborted) root.append(node("p", "Captura no disponible. La llamada sigue activa."));
+    }
+  }
+  function show(incident) {
+    hide(); controller = new globalThis.AbortController();
+    const token = generation, signal = controller.signal, payload = getData() || {};
+    const { thermal, camera: nearbyCamera } = nearbyEvidence(incident, payload.incidents || [], getCameras());
+    $("agent-evidence").hidden = false; expires = Date.now() + 30000;
+    $("evidence-title").textContent = incident.demo_report?.location?.label || incident.name;
+    $("evidence-status").textContent = payload.status === "offline" ? "MUESTRA HISTÓRICA · SIN CONEXIÓN" : payload.status !== "ready" ? "FUENTES SIN ACTUALIZAR · CONSULTA LAS FECHAS" : "REVISIÓN AUTOMÁTICA DE FUENTES";
+    const facts = $("evidence-facts"); facts.replaceChildren();
+    if (thermal) {
+      const i = thermal.incident;
+      facts.append(node("p", `NASA FIRMS · detección a ${number(thermal.distance_km)} km. ${i.observations} observaciones en el grupo · última ${date(i.last_seen)}.`));
+      facts.append(node("p", `Brillo I4 máximo del grupo: ${number(i.brightness_i4_c)} °C eq. (${number(i.brightness_i4_k)} K), ${date(i.brightness_at_utc)}. No es temperatura de las llamas ni del aire.`));
+    } else facts.append(node("p", "NASA FIRMS · sin coincidencia cercana en esta ventana. La ausencia de detección no invalida la llamada."));
+    const w = incident.weather || {};
+    facts.append(node("p", `NOAA GFS · ambiente a 2 m: ${number(w.air_temperature_c)} °C · viento ${number(w.wind_speed_kmh)} km/h. Modelo, no sensor local. Validez ${date(w.valid_at_utc)} · ciclo ${date(w.model_run_utc)}.`));
+    satellite(incident, thermal, token, signal); camera(nearbyCamera, token, signal);
+  }
+  return { show, hide, tick(now) { if (expires && now > expires) hide(); } };
+}
+
 const VEHICLE = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h12v12H2zM14 11h4l4 4v3h-8M5 3h7M5 9h6m-6 3h6"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="19" r="2"/></svg>';
 
-export function createDirectorView({ map, L, document, fetch, focus, clearContext, findIncident }) {
+export function createDirectorView({ map, L, document, fetch, focus, clearContext, findIncident, getData, getCameras, openCamera, beforeMove }) {
   const $ = id => document.getElementById(id);
   const routes = L.layerGroup().addTo(map), stations = L.layerGroup().addTo(map), alerts = L.layerGroup().addTo(map);
   const vehicles = new Map();
@@ -27,24 +203,66 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   let state = null, session = null, sequence = 0, loading = false, paused = false, frame = 0, offset = 0;
   let queue = [], current = null, shownUntil = 0, lastContact = 0, contextUntil = 0, routeKey = "";
   const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  const cameraTour = createCameraTour({ map, L });
+  const evidence = createEvidenceView({ document, fetch, getData, getCameras, openCamera: item => { manual(); openCamera(item); } });
+  let following = true, armed = false, nextVisit = 0, lastTarget = "", lastEvidence = "", evidenceAt = 0;
 
+  function followControl() {
+    $("follow-toggle").textContent = following ? "Seguimiento IA · activo" : "Reanudar seguimiento IA";
+    $("follow-toggle").setAttribute("aria-pressed", String(following));
+  }
+  function manual() {
+    following = false; contextUntil = 0; cameraTour.cancel(); evidence.hide(); followControl();
+  }
+  function visit(incident, review = false) {
+    beforeMove(); focus(incident);
+    cameraTour.bounds(selectionBounds(incident), 12.5, reduced.matches);
+    contextUntil = Date.now() + 45000; lastTarget = `incident:${incident.id}`;
+    if (review && (lastEvidence !== incident.id || Date.now() - evidenceAt > 60000)) {
+      evidence.show(incident); lastEvidence = incident.id; evidenceAt = Date.now();
+    } else if (lastEvidence !== incident.id) evidence.hide();
+  }
+  function followVehicle(assignment, overview = false) {
+    beforeMove(); evidence.hide();
+    if (overview) cameraTour.bounds(assignment.route.coordinates.map(([lon, lat]) => [lat, lon]), 13.5, reduced.matches);
+    else {
+      const progress = reduced.matches ? (assignment.status === "onscene" ? 1 : 0) : ((Date.now() + offset) / 1000 - assignment.started_at) / assignment.travel_seconds;
+      const [lon, lat] = routePosition(assignment.route, progress);
+      cameraTour.go([lat, lon], 14, reduced.matches);
+    }
+    lastTarget = `vehicle:${assignment.resource.id}`;
+  }
   function show(event) {
     current = event;
-    shownUntil = Date.now() + ({ thinking: 1800, report: 4000, focus: 2500, context: 3500 }[event.kind] || 4500);
+    shownUntil = Date.now() + ({ thinking: 1800, report: 6500, focus: 5000, context: 5000 }[event.kind] || 5500);
+    nextVisit = shownUntil + 10000;
     $("agent-card").hidden = false;
-    $("agent-label").textContent = event.kind === "report" ? "AVISO RECIBIDO" : event.kind === "error" || event.kind === "blocked" ? "FLAREAI · REVISIÓN" : "FLAREAI · DIRECTOR";
+    $("agent-label").textContent = event.kind === "report" ? "AVISO RECIBIDO" : event.visual ? "FLAREAI · SEGUIMIENTO VISUAL" : event.kind === "error" || event.kind === "blocked" ? "FLAREAI · REVISIÓN" : "FLAREAI · DIRECTOR";
     $("agent-message").textContent = event.message;
     $("agent-reason").textContent = event.reason || "";
     const incident = findIncident(event.incident_id);
-    if (incident && ["focus", "context"].includes(event.kind)) {
-      focus(incident, event.kind === "focus");
-      contextUntil = Date.now() + 45000;
-    }
-    if (event.resource_id && ["dispatch", "reassign", "return"].includes(event.kind)) {
-      const assignment = state?.assignments[event.resource_id];
-      if (assignment) map.fitBounds(assignment.route.coordinates.map(([lon, lat]) => [lat, lon]), { padding: [90, 100], maxZoom: 14, animate: false });
+    if (incident || event.resource_id) armed = true;
+    if (!following || paused) return;
+    if (incident && ["report", "focus", "context", "watch", "arrived"].includes(event.kind)) visit(incident, ["report", "context", "watch"].includes(event.kind));
+    if (event.resource_id && ["dispatch", "reassign", "return", "vehicle"].includes(event.kind)) {
+      const assignment = state?.assignments?.[event.resource_id];
+      if (assignment) followVehicle(assignment, event.kind !== "vehicle");
     }
   }
+  function patrol() {
+    const targets = patrolTargets(getData()?.incidents || [], state?.assignments || {});
+    if (!targets.length) { armed = false; return; }
+    const target = targets[(targets.findIndex(t => t.key === lastTarget) + 1) % targets.length];
+    if (target.incident) show({ kind: "watch", visual: true, incident_id: target.incident.id, message: `Revisando ${target.incident.demo_report.location.label}`, reason: "Seguimiento del aviso y consulta de fuentes disponibles; no es una nueva decisión del agente." });
+    else show({ kind: "vehicle", visual: true, resource_id: target.assignment.resource.id, message: "Seguimiento de recursos en movimiento", reason: `${target.assignment.resource.name} · trayecto de demostración, tiempo acelerado` });
+  }
+  $("follow-toggle").onclick = () => {
+    if (following) manual();
+    else { following = true; lastEvidence = ""; nextVisit = 0; followControl(); }
+  };
+  $("evidence-close").onclick = () => evidence.hide();
+  reduced.addEventListener("change", () => cameraTour.cancel());
+  followControl();
 
   function renderAssignments() {
     const assignments = Object.values(state.assignments || {});
@@ -94,7 +312,13 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     if (document.hidden) return;
     const now = Date.now(), connected = now - lastContact < 10000;
     if (current && now > shownUntil) { current = null; $("agent-card").hidden = true; }
-    if (!current && queue.length) show(queue.shift());
+    if (!paused && !current && queue.length) {
+      const event = queue[0];
+      if (!event.incident_id || findIncident(event.incident_id)) show(queue.shift());
+      else if (now - (event.queuedAt || event.at * 1000 - offset || now) > 15000) queue.shift();
+    }
+    if (connected && following && armed && !paused && !current && !queue.length && !cameraTour.moving() && now > nextVisit) patrol();
+    evidence.tick(now);
     if (contextUntil && now > contextUntil) { contextUntil = 0; clearContext(); }
     $("agent-aura").hidden = !connected || !(state?.status === "thinking" || current && !["error", "blocked"].includes(current.kind));
     if (connected && !paused) for (const { marker, assignment } of vehicles.values()) {
@@ -114,6 +338,9 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       const next = await response.json();
       if (session !== next.session_id) {
         sequence = 0; queue = []; current = null; session = next.session_id;
+        armed = false; lastTarget = ""; lastEvidence = ""; routeKey = ""; contextUntil = 0;
+        cameraTour.cancel(); evidence.hide();
+        if (Number.isFinite(map.getZoom())) clearContext();
         $("agent-card").hidden = true;
       }
       offset = next.server_time ? next.server_time * 1000 - Date.now() : 0;
@@ -124,24 +351,28 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     } catch {
       $("agent-aura").hidden = true;
       if (state && state.status !== "disconnected") {
-        state.status = "disconnected"; queue = [];
+        state.status = "disconnected"; queue = []; cameraTour.cancel(); evidence.hide();
         show({ kind: "error", message: "Conexión con el director interrumpida", reason: "La vista conserva el último estado recibido." });
       }
     } finally { loading = false; }
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; }
+    if (document.hidden) { cancelAnimationFrame(frame); frame = 0; cameraTour.cancel(); evidence.hide(); queue = []; current = null; $("agent-card").hidden = true; }
     else { refresh(); if (!frame) frame = requestAnimationFrame(tick); }
   });
   refresh(); setInterval(refresh, 2000); frame = requestAnimationFrame(tick);
   return {
-    report(incident) { contextUntil = Date.now() + 45000; queue.push({ kind: "report", message: `Nuevo aviso de incendio · ${incident.demo_report.location.label}`, reason: "Ubicación comunicada en la llamada", incident_id: incident.id }); },
+    report(incident) {
+      armed = true; current = null; lastEvidence = ""; cameraTour.cancel(); evidence.hide();
+      queue = queue.filter(e => e.incident_id !== incident.id || !["report", "focus", "context", "watch"].includes(e.kind));
+      queue.unshift({ kind: "report", message: `Nuevo aviso de incendio · ${incident.demo_report.location.label}`, reason: "Ubicación comunicada en la llamada · consultando evidencias sin descartar el aviso", incident_id: incident.id, queuedAt: Date.now() });
+    },
     call(call) {
       if (!call || call.state === "located") return;
       queue.push({ kind: call.error ? "error" : "call", message: call.error || (call.state === "needs_location" ? "Precisando la ubicación del aviso" : call.state === "not_fire" ? "Aviso revisado · incendio no confirmado" : call.ended ? "Llamada finalizada" : "Llamada entrante · recogiendo datos"), reason: "" });
     },
-    setPaused(value) { paused = value; document.body.classList.toggle("motion-paused", value); },
-    manual() { contextUntil = 0; },
+    setPaused(value) { paused = value; if (value) { cameraTour.cancel(); evidence.hide(); } document.body.classList.toggle("motion-paused", value); },
+    manual,
   };
 }

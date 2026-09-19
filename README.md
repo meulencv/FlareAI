@@ -125,6 +125,19 @@ movilizan servicios reales, no hay SMS y ES-Alert es solo una vista previa. Las 
 todavía en las rutas. La memoria se conserva durante la sesión; reiniciar crea una nueva, sin borrar
 el historial SQL anterior.
 
+El seguimiento visual aleja el mapa, recorre la distancia y vuelve a acercarse al aviso o al
+trayecto. Tras recibir actividad, alterna entre los avisos de la sesión y vehículos en movimiento.
+Arrastrar, hacer zoom o explorar manualmente suspende este seguimiento; **Reanudar seguimiento IA**
+lo recupera. La pausa y la preferencia de movimiento reducido también se respetan.
+
+Al revisar un aviso se muestran evidencias disponibles: detecciones FIRMS a ≤10 km, brillo I4
+máximo del grupo (no temperatura de las llamas), ambiente/viento NOAA GFS y, si hay coincidencias
+FIRMS, mosaico NASA GIBS SWIR con opción de color natural. Las cámaras verificadas cercanas muestran
+una captura o permiten abrir explícitamente el vídeo del proveedor. Cada fuente lleva su fecha;
+la ausencia de imagen o detección **no descarta la llamada**. Es contraste visual automático de
+fuentes, no un análisis de píxeles por IA ni una confirmación oficial. No conecta el Traffic Lab
+ni cambia decisiones del Reasoning Agent.
+
 Las rutas se calculan **localmente con A\***: se descargan geometrías OSM acotadas vía Overpass y se
 cachean en PostgreSQL. No se llama a un servicio externo de routing. Se respetan sentidos únicos
 y acceso básico, pero no hay cortes/tráfico real, gálibos ni todas las restricciones de giro. Sin

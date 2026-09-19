@@ -263,7 +263,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
   roads.on("tileerror", () => { tileFailed = true; problem("roads", "Carreteras: cobertura no disponible en parte de esta vista"); });
   roads.on("load", () => { if (!tileFailed) problem("roads", null); });
   roads.addTo(map);
-  let loadingCatalog = false, attributed = false;
+  let loadingCatalog = false, attributed = false, catalogAt = 0;
   async function loadCatalog() {
     if (loadingCatalog) return;
     loadingCatalog = true;
@@ -272,7 +272,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
       if (!response.ok) throw new Error("Catálogo no disponible");
       const result = await response.json();
       if (!Array.isArray(result.cameras) || !Array.isArray(result.sources)) throw new Error("Catálogo inválido");
-      catalog = result;
+      catalog = result; catalogAt = Date.now();
       if (!attributed) {
         map.attributionControl.addAttribution('<a href="/webcams/sources" target="_blank" rel="noopener">Cámaras públicas · fuentes y cobertura parcial</a>');
         attributed = true;
@@ -290,6 +290,8 @@ export function createInfrastructure({ map, L, document, fetch }) {
       facilities.clearLayers();
       if (context) draw(context.potential.facilities, facilities, "facility");
     },
+    cameras: () => Date.now() - catalogAt < 70000 ? catalog?.cameras || [] : [],
+    openCamera: camera,
     load: loadCatalog,
   };
 }

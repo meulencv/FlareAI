@@ -15,9 +15,16 @@
     <section id="agent-card" role="status" aria-live="polite" hidden>
       <span id="agent-label">FlareAI</span><strong id="agent-message"></strong><p id="agent-reason"></p>
     </section>
+    <aside id="agent-evidence" aria-labelledby="evidence-title" hidden>
+      <header><div><span id="evidence-status"></span><h2 id="evidence-title"></h2></div><button id="evidence-close" aria-label="Cerrar evidencias">×</button></header>
+      <div id="evidence-facts"></div>
+      <div class="evidence-media"><section id="evidence-satellite"></section><section id="evidence-camera"></section></div>
+      <p class="evidence-caveat">Contraste visual de fuentes, no confirmación oficial ni análisis automático de píxeles. La llamada se mantiene aunque falten datos.</p>
+    </aside>
     <nav class="quiet-controls" aria-label="Controles del observatorio">
       <button id="explore-toggle" aria-expanded="false" title="Explorar datos">flareai <span>＋</span></button>
       <span class="demo-mode" title="Flota ficticia; no moviliza servicios ni envía alertas públicas">modo demo</span>
+      <button id="follow-toggle" aria-pressed="true">Seguimiento IA · activo</button>
     </nav>
     <svg class="symbols" aria-hidden="true">
       <defs>

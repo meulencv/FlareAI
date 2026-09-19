@@ -52,7 +52,8 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 ## Director HappyRobot y rutas locales (19/09/2026)
 
 - `director.py` conecta avisos de DemoBridge con un Reasoning Agent independiente; no hay planner
-  determinista de respaldo en producción. SMS/Telegram quedan fuera. Cámaras/Traffic Lab, para después.
+  determinista de respaldo en producción. SMS/Telegram quedan fuera. Traffic Lab sigue aislado;
+  las cámaras del mapa participan únicamente en la revisión visual, no en decisiones de rutas.
 - `director_workflow.py`: workflow `01a0b948-d14b-7883-bb58-2c9a014f27f4`; versión corregida
   `01a0b969-9df4-7789-87b5-d2cea2da3cff`. No modificar el workflow de voz. `upgrade` prepara un fork;
   HappyRobot exige despublicar la versión viva antes de publicar otra: pedir confirmación específica.
@@ -75,6 +76,19 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 - UI inicial solo mapa, instalaciones desde zoom 13 y exclusión sobre huellas; cámaras desde 10.
   `static/director.js`: decisiones temporales, borde de actividad y camiones por distancia acumulada.
   ES-Alert es solo vista previa, sin envío. Dos vehículos de la misma sede salen escalonados.
+- Seguimiento visual: viaje en tres fases (alejar, recorrer, acercar), ronda de avisos demo y
+  vehículos activos tras un evento reciente. Los refrescos no reencuadran; interacción manual
+  suspende hasta pulsar «Reanudar seguimiento IA». Respetar pausa, pestaña oculta y movimiento reducido.
+  Limitar el delta por fotograma evita saltos si el render tarda. No limpiar el calor antes de
+  tener zoom inicial: `heat.paint()` necesita `getPixelOrigin()` de un mapa inicializado.
+- Evidencias automáticas: FIRMS por detección a ≤10 km del aviso, no por centroide; brillo máximo
+  etiquetado como máximo del grupo, separado de ambiente NOAA GFS. GIBS SWIR/color natural vía
+  proxies existentes, sin imagen automática cuando no hay detecciones cercanas. Cámaras del catálogo
+  verificado reciente, captura automática o vídeo por apertura explícita. Fechas/offline visibles,
+  respuestas tardías canceladas. Es revisión visual de fuentes, NO visión artificial ni confirmación
+  oficial. Nunca modifica llamadas, planes o clasificación. No integrar Traffic Lab por este flujo.
+  `verify_director_ui.py` añade recorrido entre zonas, GIBS offline real y cámara fixture, pausa,
+  control manual y móvil; captura generada en `.local/director-evidence.png`.
 - Pruebas: `.venv/bin/python -m unittest test_director test_local_routes -v`;
   `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_director_ui.py`
   (fixtures, ruta Tarragona debe estar cacheada). `verify_director.py --cloud` o el verificador UI

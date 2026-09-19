@@ -43,7 +43,11 @@ const contextView = createContextView({ map, document, fetch, canvas: $("heat"),
 } });
 const directorView = createDirectorView({ map, L, document, fetch,
   findIncident: id => data?.incidents.find(i => i.id === id),
-  focus: (incident, focus) => selectIncident(incident, focus),
+  focus: incident => selectIncident(incident),
+  getData: () => data,
+  getCameras: () => infrastructure.cameras(),
+  openCamera: item => infrastructure.openCamera(item),
+  beforeMove: () => { cancelZoom(); map.closePopup(); },
   clearContext: () => { if (document.body.classList.contains("map-only")) contextView.clear(); },
 });
 const views = {
@@ -57,6 +61,7 @@ function stopPlay() {
 }
 
 function setRegion(name) {
+  if (data) directorView.manual();
   cancelZoom();
   region = name;
   document.querySelectorAll("[data-region]").forEach(b => b.classList.toggle("active", b.dataset.region === name));
@@ -119,6 +124,7 @@ function renderFires(incidents) {
 }
 
 function selectIncident(incident, focus = false, details = false) {
+  if (focus || details) directorView.manual();
   stopPlay(); $("horizon").value = "0";
   selected = incident;
   $("details").classList.toggle("open", details || !document.body.classList.contains("map-only"));
@@ -244,8 +250,7 @@ async function refresh() {
     $("error-banner").textContent = data.status === "offline" ? "Modo sin conexión. Consulta las fechas de la muestra guardada." : "Alguna fuente no está actualizada. Conservamos los últimos datos con su fecha.";
     const next = focusReport ? reported : data.incidents.find(i => i.id === selected?.id);
     if (focusReport) {
-      directorView.report(next);
-      selectIncident(next, true);
+      directorView.report(next); renderList();
     } else if (!selected || next?.id !== selected.id) {
       if (next) selectIncident(next);
       else { selected = null; contextView.clear(); $("scenario-shortcut").disabled = true; $("detail-content").hidden = true; $("detail-name").textContent = "Sin detecciones"; closeSimulation(); imageRequest++; renderList(); }
@@ -311,6 +316,7 @@ function cancelZoom() {
 }
 
 function zoomTo(zoom, anchor = null) {
+  directorView.manual();
   zoomTarget = Math.max(map.getMinZoom(), Math.min(map.getMaxZoom(), zoom));
   if (zoomFrame) cancelAnimationFrame(zoomFrame);
   const start = map.getZoom(), centre = map.getCenter(), began = performance.now();
@@ -352,6 +358,7 @@ $("wind-toggle").onclick = () => {
   $("wind-toggle").setAttribute("aria-pressed", String(windVisible)); stage.setWind(windVisible);
 };
 $("explore-toggle").onclick = () => {
+  directorView.manual();
   const minimal = document.body.classList.toggle("map-only");
   $("explore-toggle").setAttribute("aria-expanded", String(!minimal));
   if (minimal) { $("details").classList.remove("open"); $("sidebar").classList.remove("open"); closeSimulation(); }
@@ -368,13 +375,13 @@ $("close-details").onclick = () => {
 };
 $("focus-fire").onclick = () => {
   if (!selected) return;
-  cancelZoom();
+  directorView.manual(); cancelZoom();
   map.setView([selected.lat, selected.lon], 14.5, { animate: false });
   $("details").classList.remove("open");
 };
 $("simulate").onclick = () => {
   if (!selected) return;
-  cancelZoom();
+  directorView.manual(); cancelZoom();
   simulationOpen = true; $("simulation-card").hidden = false;
   $("details").classList.remove("open");
   map.setView([selected.lat, selected.lon], 13, { animate: false });
