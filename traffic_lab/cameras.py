@@ -1,6 +1,7 @@
 CAMERAS = {
     "08301": {
         "id": "08301", "name": "M-30 · enlace M-607",
+        "reference_sha256": "cd52b34ce34e8a7abf2f218ca799def51afa08723047b98c4adef42bd6fe845a",
         "url": "https://informo.madrid.es/cameras/Camara08301.jpg",
         "roi_reference": "Encuadre del 19-09-2026; revisar si la cámara gira o cambia de zoom.",
         "zones": [
@@ -10,6 +11,7 @@ CAMERAS = {
     },
     "06303": {
         "id": "06303", "name": "Plaza de Castilla · norte",
+        "reference_sha256": "2682d80f3f9abd92ce04fd695d73897979bc06b2d74db0063211fda075cc1c97",
         "url": "https://informo.madrid.es/cameras/Camara06303.jpg",
         "roi_reference": "Encuadre del 19-09-2026; sombras y árboles ocultan parte de la vía.",
         "zones": [

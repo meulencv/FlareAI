@@ -1,0 +1,138 @@
+{
+  "job": {
+    "job_id": "d54affb9-b8aa-45a2-9427-66b50c774b27",
+    "incident": {
+      "id": "verify-final",
+      "lat": 40.4859,
+      "lon": -3.694,
+      "radius_km": 5,
+      "description": "Revisar accesos M-30 y M-607 cerca de este incidente"
+    },
+    "status": "completed",
+    "selected": [
+      {
+        "id": "madrid-08301",
+        "name": "M30 - PK30+500 C (M607)",
+        "source": "madrid",
+        "lat": 40.4859047008195,
+        "lon": -3.69402554488404,
+        "image_url": "https://informo.madrid.es/cameras/Camara08301.jpg",
+        "time_zone": "Europe/Madrid",
+        "distance_km": 0.002
+      },
+      {
+        "id": "madrid-08308",
+        "name": "HERRERA ORIA - M607",
+        "source": "madrid",
+        "lat": 40.4900013095212,
+        "lon": -3.69873245176535,
+        "image_url": "https://informo.madrid.es/cameras/Camara08308.jpg",
+        "time_zone": "Europe/Madrid",
+        "distance_km": 0.607
+      }
+    ],
+    "results": [
+      {
+        "schema_version": "3.0",
+        "camera_id": "madrid-08301",
+        "density": "unknown",
+        "vehicle_count_estimate": null,
+        "image_status": "road_visible",
+        "reason": "La imagen muestra una carretera urbana con varios vehículos visibles en ambas direcciones, aunque la parte inferior está parcialmente oculta por un puente, dificultando el conteo exacto.",
+        "limitations": [
+          "Parte de la calzada está parcialmente oculta por un puente en primer plano, lo que limita la visibilidad completa de los vehículos en esa zona.",
+          "Hora transcrita por IA del reloj de la imagen, no autenticada ni verificada independientemente."
+        ],
+        "capture_time_verified": false,
+        "current_visual_evidence": false,
+        "speed_kmh": null,
+        "road_blocked": null,
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "requires_human_review": true,
+        "engine": "multimodal_estimate_not_yolo",
+        "analyzed_at": "2026-09-19T12:56:34.676727+00:00",
+        "visual_estimate": {
+          "density": "moderate",
+          "vehicle_count_estimate": 15
+        },
+        "timestamp_text": "15-09-2026 14:52:33",
+        "timestamp_legible": true,
+        "capture_timezone": "Europe/Madrid",
+        "captured_at": "2026-09-15T12:52:33+00:00",
+        "expires_at": "2026-09-15T13:02:33+00:00",
+        "capture_time_source": "image_overlay_ai_transcription",
+        "max_age_seconds": 600,
+        "freshness": "stale",
+        "age_seconds": 345953.0,
+        "usable_for_current_review": false,
+        "recency_checked_at": "2026-09-19T12:58:26.035597+00:00",
+        "image_url": "https://informo.madrid.es/cameras/Camara08301.jpg",
+        "usage_cost_usd": 0.0009556,
+        "child_run_id": "f2868c85-df3f-4ae8-be6e-95c7fa07cb94"
+      },
+      {
+        "schema_version": "3.0",
+        "camera_id": "madrid-08308",
+        "density": "moderate",
+        "vehicle_count_estimate": 11,
+        "image_status": "road_visible",
+        "reason": "La imagen muestra una carretera con varios vehículos visibles en ambos sentidos, sin congestión severa pero con tráfico constante.",
+        "limitations": [
+          "La visibilidad es buena, pero la sombra proyectada por la estructura superior puede dificultar la identificación precisa de algunos vehículos en el carril derecho.",
+          "Hora transcrita por IA del reloj de la imagen, no autenticada ni verificada independientemente."
+        ],
+        "capture_time_verified": false,
+        "current_visual_evidence": false,
+        "speed_kmh": null,
+        "road_blocked": null,
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "requires_human_review": true,
+        "engine": "multimodal_estimate_not_yolo",
+        "analyzed_at": "2026-09-19T12:56:33.956367+00:00",
+        "visual_estimate": {
+          "density": "moderate",
+          "vehicle_count_estimate": 11
+        },
+        "timestamp_text": "19/09/2026 14:52:34",
+        "timestamp_legible": true,
+        "capture_timezone": "Europe/Madrid",
+        "captured_at": "2026-09-19T12:52:34+00:00",
+        "expires_at": "2026-09-19T13:02:34+00:00",
+        "capture_time_source": "image_overlay_ai_transcription",
+        "max_age_seconds": 600,
+        "freshness": "recent",
+        "age_seconds": 352.0,
+        "usable_for_current_review": true,
+        "recency_checked_at": "2026-09-19T12:58:26.035632+00:00",
+        "image_url": "https://informo.madrid.es/cameras/Camara08308.jpg",
+        "usage_cost_usd": 0.0009364,
+        "child_run_id": "e35bac02-27b6-4b2c-b6de-83b752101cc6"
+      }
+    ],
+    "run_id": "7524ae84-6493-409c-80f7-94bfa6dae41d",
+    "selection_reason": "Se seleccionan madrid-08301, prácticamente en el punto del incidente y asociada a M-30/M-607, y madrid-08308, también sobre M-607 y con un punto de vista complementario. La distancia es geográfica; no se confirma cobertura de accesos, sentido de circulación ni disponibilidad.",
+    "selection_status": "selected",
+    "candidate_count": 12,
+    "selection_verified": true,
+    "child_runs": {
+      "call": "f2868c85-df3f-4ae8-be6e-95c7fa07cb94",
+      "call_second": "e35bac02-27b6-4b2c-b6de-83b752101cc6"
+    },
+    "call_attempt_count": 2,
+    "catalog_count": 2600,
+    "catalog_source": "read_only_snapshot_of_database_source",
+    "catalog_sha256": "11da95c833a50a8ba96cb8f22e2721628926419326371c6109d5308ddefdedd3",
+    "catalog_copied_at": "2026-09-19T11:39:33.572197+00:00",
+    "budget": {
+      "cap_usd": 2.0,
+      "used_or_reserved_usd": 0.005775,
+      "remaining_usd": 1.994225
+    }
+  },
+  "javascript_errors": [],
+  "cards_rendered": 2,
+  "expiry_test": "passed_with_simulated_browser_clock",
+  "new_paid_calls_by_this_script": 0
+}

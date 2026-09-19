@@ -1,0 +1,162 @@
+{
+  "schema_version": "1.0",
+  "analyzed_at": "2026-09-19T11:08:42.750814+00:00",
+  "source": {
+    "camera_id": "08301",
+    "mode": "regression",
+    "sha256": "690ae5dea8f09fd9565b47107a801516db7d6946e17c76a5beb5c1d38e4ab2e4",
+    "downloaded_at": "2026-09-19T10:57:48.717197+00:00",
+    "source_updated_at": null
+  },
+  "freshness": "unverified",
+  "capture_time_verified": false,
+  "captured_at": null,
+  "quality": {
+    "status": "basic_checks_passed",
+    "issues": [],
+    "brightness": 113.0,
+    "contrast": 68.2,
+    "sharpness": 3564.1,
+    "width": 1280,
+    "height": 720
+  },
+  "calibration": {
+    "status": "unverified",
+    "reference_id": null
+  },
+  "zones": [
+    {
+      "id": "08301-left",
+      "name": "Calzada izquierda en imagen",
+      "polygon": [
+        [
+          0.0,
+          0.8
+        ],
+        [
+          0.4,
+          0.565
+        ],
+        [
+          0.65,
+          0.485
+        ],
+        [
+          0.36,
+          0.77
+        ],
+        [
+          0.08,
+          0.98
+        ],
+        [
+          0.0,
+          0.98
+        ]
+      ],
+      "vehicle_count": null,
+      "box_coverage_pct": null,
+      "density": "unknown",
+      "mean_detection_score": null,
+      "speed_kmh": null,
+      "road_blocked": null,
+      "motion": "not_measured",
+      "detections": []
+    },
+    {
+      "id": "08301-centre",
+      "name": "Calzada central en imagen",
+      "polygon": [
+        [
+          0.15,
+          0.98
+        ],
+        [
+          0.52,
+          0.59
+        ],
+        [
+          0.62,
+          0.54
+        ],
+        [
+          0.5,
+          0.98
+        ]
+      ],
+      "vehicle_count": null,
+      "box_coverage_pct": null,
+      "density": "unknown",
+      "mean_detection_score": null,
+      "speed_kmh": null,
+      "road_blocked": null,
+      "motion": "not_measured",
+      "detections": []
+    }
+  ],
+  "scene": {
+    "vehicle_count": 3,
+    "detections": [
+      {
+        "box": [
+          1137,
+          488,
+          1168,
+          507
+        ],
+        "label": "car",
+        "score": 0.679
+      },
+      {
+        "box": [
+          319,
+          458,
+          333,
+          471
+        ],
+        "label": "car",
+        "score": 0.426
+      },
+      {
+        "box": [
+          323,
+          470,
+          340,
+          483
+        ],
+        "label": "car",
+        "score": 0.338
+      }
+    ],
+    "includes_parked_vehicles": true,
+    "density": "unknown"
+  },
+  "usable_for_route_review": false,
+  "requires_human_review": true,
+  "reason": "Detecciones parciales; encuadre, aforo, antigüedad real y cobertura vial requieren validación.",
+  "model": {
+    "name": "YOLOv8s COCO / ONNX · imagen completa + teselas",
+    "sha256": "1bd2afeed7a85188e295875b3936a6f08df5a7671457ece9077f3b9b8daee6d6",
+    "license": "AGPL-3.0",
+    "detection_threshold": 0.25,
+    "nms_iou": 0.45,
+    "tile_size": 512,
+    "tile_overlap": 0.25,
+    "density_thresholds": [
+      0.12,
+      0.28
+    ],
+    "score_is_calibrated_probability": false
+  },
+  "warnings": [
+    "Encuadre diferente o no verificable: zonas desactivadas; hace falta una referencia calibrada.",
+    "Fecha de actualización del proveedor ausente, inválida o de más de 10 minutos",
+    "Muestra histórica/local, no describe el tráfico actual",
+    "La fecha HTTP del proveedor no verifica la hora real de captura.",
+    "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+    "Cajas naranjas: fuera de zonas validadas; pueden incluir aparcados. No son aforo de la carretera.",
+    "Los conteos son detecciones, no el número real certificado; pueden faltar vehículos pequeños u ocultos."
+  ],
+  "elapsed_ms": 3918,
+  "single_pass_scene_count": 1
+}

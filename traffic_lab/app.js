@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const levels = {low: 'DENSIDAD BAJA', moderate: 'DENSIDAD MEDIA', high: 'DENSIDAD ALTA', unknown: 'NO EVALUABLE'};
+const levels = {low: 'DENSIDAD BAJA', moderate: 'DENSIDAD MEDIA', high: 'DENSIDAD ALTA', unknown: 'NO CONCLUYENTE'};
 let observation = null;
 let cloudReady = false;
 let busy = false;
@@ -12,32 +12,77 @@ async function api(path, body) {
   return value;
 }
 
+function providerAge() {
+  const timestamp = observation?.evidence.source.source_updated_at;
+  return typeof timestamp === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/i.test(timestamp)
+    ? (Date.now() - Date.parse(timestamp)) / 1000 : NaN;
+}
+
 function controls() {
   $('analyze').disabled = busy || cloudBusy;
   $('camera').disabled = busy || cloudBusy;
   $('mode').disabled = busy || cloudBusy;
   $('download').disabled = !observation || busy;
-  $('cloud').disabled = !observation || !cloudReady || busy || cloudBusy;
+  const evidence = observation?.evidence;
+  const age = providerAge();
+  const eligible = evidence?.calibration?.status === 'aligned' && evidence.zones.some(zone => zone.vehicle_count > 0)
+    && (evidence.source.mode === 'demo' || (Number.isFinite(age) && age >= -60 && age <= 600));
+  $('cloud').disabled = !eligible || !cloudReady || busy || cloudBusy;
+}
+
+function formatTime(value) {
+  return typeof value === 'string' && /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) && Number.isFinite(Date.parse(value))
+    ? new Date(value).toLocaleString('es-ES', {timeZone: 'Europe/Madrid', timeZoneName: 'short'}) : 'No verificada';
+}
+
+function updateTime() {
+  if (!observation) return;
+  const result = observation.evidence;
+  const age = providerAge();
+  result.freshness = !Number.isFinite(age) || age < -60 ? 'unverified' : age > 600 ? 'stale' : 'recent';
+  $('updated').textContent = formatTime(result.source.source_updated_at);
+  $('analyzed').textContent = formatTime(result.analyzed_at);
+  $('captured').textContent = result.capture_time_verified ? formatTime(result.captured_at) : 'NO VERIFICADA · no equivale a la fecha HTTP';
+  $('age').textContent = Number.isFinite(age) && age >= -60
+    ? `${Math.floor(Math.max(0, age) / 60)} min ${Math.floor(Math.max(0, age) % 60)} s${age > 600 ? ' · CADUCADA' : ' · captura aún no verificada'}` : 'Desconocida o reloj incoherente';
+  $('source-badge').textContent = result.source.mode === 'demo' ? 'MUESTRA HISTÓRICA'
+    : age > 600 ? 'ACTUALIZACIÓN > 10 MIN' : 'HORA DE CAPTURA NO VERIFICADA';
+  controls();
+}
+
+function resetReadout() {
+  $('image').hidden = true;
+  $('empty').hidden = false;
+  for (const id of ['updated', 'analyzed', 'age', 'scene-count', 'quality']) $(id).textContent = '—';
+  $('captured').textContent = 'No verificada';
+  $('calibration-message').textContent = 'Encuadre pendiente de comprobar.';
+  $('source-badge').textContent = 'SIN ANALIZAR';
+  $('json').textContent = '{}';
+  $('warnings').replaceChildren();
 }
 
 function zoneCard(zone) {
   const card = document.createElement('div');
   card.className = 'zone';
-  card.innerHTML = '<div class="zone-title"></div><div class="zone-values"><div><strong></strong><small>VEHÍCULOS</small></div><span class="level"></span></div><p class="coverage"></p>';
+  card.innerHTML = '<div class="zone-title"></div><div class="zone-values"><div><strong></strong><small>DETECCIONES</small></div><span class="level"></span></div><p class="coverage"></p>';
   card.querySelector('.zone-title').textContent = zone.name;
   card.querySelector('strong').textContent = zone.vehicle_count ?? '—';
   const level = card.querySelector('.level');
   level.classList.add(zone.density);
-  level.textContent = levels[zone.density];
-  card.querySelector('.coverage').textContent = `Cobertura de cajas: ${zone.box_coverage_pct ?? '—'} % · No es aforo`;
+  level.textContent = zone.vehicle_count === null ? 'ZONA DESACTIVADA' : levels[zone.density];
+  card.querySelector('.coverage').textContent = zone.vehicle_count === null ? 'El encuadre no coincide con la referencia.'
+    : zone.vehicle_count === 0 ? 'Sin detecciones; no demuestra ausencia de coches.'
+      : `Cobertura de cajas: ${zone.box_coverage_pct} % · No es aforo`;
   return card;
 }
 
 $('analyze').addEventListener('click', async () => {
   busy = true;
   observation = null;
+  resetReadout();
   controls();
-  $('status').textContent = 'Obteniendo imagen y ejecutando el detector local…';
+  $('status').textContent = 'Comprobando encuadre y buscando vehículos a varias escalas…';
+  $('zones').textContent = 'Analizando…';
   $('cloud-summary').textContent = 'Aún no se ha ejecutado para esta imagen.';
   $('cloud-check').textContent = '';
   $('run-id').textContent = '';
@@ -50,25 +95,26 @@ $('analyze').addEventListener('click', async () => {
     $('image').hidden = false;
     $('empty').hidden = true;
     $('zones').replaceChildren(...result.zones.map(zoneCard));
-    if (!result.zones.length) $('zones').textContent = 'Sin zona de carretera válida. No se emite un nivel de tráfico.';
-    $('source-badge').textContent = result.source.mode === 'demo' ? 'MUESTRA HISTÓRICA' : result.freshness === 'recent' ? 'IMAGEN RECIENTE DEL PROVEEDOR' : 'FECHA ANTIGUA / NO VERIFICADA';
-    $('updated').textContent = result.source.source_updated_at ? new Date(result.source.source_updated_at).toLocaleString('es-ES') : 'No verificada';
-    $('quality').textContent = result.quality.status === 'unusable' ? 'No evaluable' : 'Controles básicos superados · revisar encuadre';
-    $('latency').textContent = `${result.elapsed_ms} ms · CPU / ONNX`;
+    if (!result.zones.length) $('zones').textContent = 'Sin zona de carretera configurada.';
+    const aligned = result.calibration?.status === 'aligned';
+    $('calibration-message').textContent = aligned
+      ? 'Encuadre coincidente con la referencia. Las zonas están activas; el conteo puede omitir vehículos.'
+      : 'ENCUADRE NO VALIDADO: no se dibujan ni utilizan las zonas antiguas. Solo se muestran detecciones de toda la imagen.';
+    $('scene-count').textContent = result.scene?.vehicle_count ?? '—';
+    $('quality').textContent = result.quality.status === 'unusable' ? 'Imagen no evaluable'
+      : aligned ? 'Calidad básica superada · encuadre coincidente' : 'Calidad básica superada · ZONAS NO VÁLIDAS';
+    $('latency').textContent = `${result.elapsed_ms} ms · imagen completa + teselas`;
     $('json').textContent = JSON.stringify(result, null, 2);
     $('warnings').replaceChildren(...result.warnings.map(text => {const li = document.createElement('li'); li.textContent = text; return li;}));
-    $('status').textContent = `Análisis terminado · ${result.source.name} · ${result.source.sha256.slice(0, 12)}…`;
-    $('cloud-status').textContent = cloudReady ? 'Listo para ejecutar el workflow remoto con esta evidencia.' : 'Modo local. Arranca el servidor con HAPPYROBOT_API_KEY y despliega el workflow.';
+    $('status').textContent = `${aligned ? 'Análisis terminado' : 'Análisis parcial: requiere calibración'} · ${result.source.name} · ${result.source.sha256.slice(0, 12)}…`;
+    $('cloud-status').textContent = !aligned ? 'Resumen por carretera bloqueado: el encuadre no está validado.'
+      : cloudReady ? 'El resumen usa estas detecciones, no vuelve a analizar la imagen.' : 'Modo local. HappyRobot no está configurado en este proceso.';
+    updateTime();
   } catch (error) {
+    resetReadout();
     $('status').textContent = `No se pudo analizar: ${error.message}. No se ha emitido una lectura nueva.`;
-    $('image').hidden = true;
-    $('empty').hidden = false;
     $('zones').textContent = 'Sin datos vigentes.';
-    $('updated').textContent = '—';
-    $('quality').textContent = '—';
     $('source-badge').textContent = 'ERROR DE ADQUISICIÓN';
-    $('json').textContent = '{}';
-    $('warnings').replaceChildren();
   } finally {busy = false; controls();}
 });
 
@@ -121,14 +167,8 @@ $('cloud').addEventListener('click', async () => {
 for (const id of ['camera', 'mode']) {
   $(id).addEventListener('change', () => {
     observation = null;
-    $('image').hidden = true;
-    $('empty').hidden = false;
+    resetReadout();
     $('zones').textContent = 'Pulsa Analizar imagen para medir la nueva selección.';
-    $('source-badge').textContent = 'SIN ANALIZAR';
-    $('updated').textContent = '—';
-    $('quality').textContent = '—';
-    $('json').textContent = '{}';
-    $('warnings').replaceChildren();
     $('cloud-summary').textContent = 'Aún no se ha ejecutado para esta selección.';
     $('cloud-check').textContent = '';
     $('run-id').textContent = '';
@@ -138,6 +178,7 @@ for (const id of ['camera', 'mode']) {
   });
 }
 
+setInterval(updateTime, 1000);
 api('/api/cameras').then(data => {
   cloudReady = data.cloud_ready;
   for (const camera of data.cameras) {
@@ -146,6 +187,6 @@ api('/api/cameras').then(data => {
     option.textContent = camera.name;
     $('camera').append(option);
   }
-  $('status').textContent = 'Listo. El modo muestra funciona sin conexión tras preparar el modelo.';
+  $('status').textContent = 'YOLO local · encuadre verificado antes de contar por carretera · detecciones parciales, no aforo.';
   controls();
 }).catch(error => {$('status').textContent = error.message;});

@@ -47,6 +47,10 @@ def main():
             raise AssertionError("Falta imagen anotada")
         if any(z["speed_kmh"] is not None or z["road_blocked"] is not None for z in evidence["zones"]):
             raise AssertionError("El detector ha inventado velocidad o bloqueo")
+        if evidence["calibration"]["status"] != "aligned" and any(zone["vehicle_count"] is not None or zone["density"] != "unknown" for zone in evidence["zones"]):
+            raise AssertionError("Se han usado zonas de un encuadre no validado")
+        if evidence.get("capture_time_verified"):
+            raise AssertionError("La fecha HTTP no verifica la captura")
         report["observations"].append(evidence)
         print(json.dumps({"camera_id": camera["id"], "quality": evidence["quality"]["status"], "zones": evidence["zones"]}, ensure_ascii=True), flush=True)
         if not args.cloud:
@@ -54,6 +58,10 @@ def main():
         if not catalog["cloud_ready"]:
             raise AssertionError("Servidor sin credenciales o workflow sin desplegar")
         body = {"observation_id": payload["observation_id"]}
+        if evidence["calibration"]["status"] != "aligned" or not any((zone["vehicle_count"] or 0) > 0 for zone in evidence["zones"]) or (mode == "live" and evidence["freshness"] != "recent"):
+            probe.request("/api/workflow", body, 409)
+            report["cloud_runs"].append({"camera_id": camera["id"], "status": "blocked_before_cloud"})
+            continue
         run_id = probe.request("/api/workflow", body, 202)["run_id"]
         if probe.request("/api/workflow", body, 202)["run_id"] != run_id:
             raise AssertionError("Reenvío duplicado: debe reutilizar la ejecución")
@@ -80,7 +88,7 @@ def main():
             time.sleep(2)
         else:
             raise TimeoutError("Run pendiente: " + run_id)
-    destination = Path(__file__).resolve().parent / f"verification-{mode}.json"
+    destination = Path(__file__).resolve().parent / f"verification-{mode}-alignment.json"
     destination.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"Verificacion completa: {destination.name}")
 

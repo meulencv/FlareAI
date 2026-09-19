@@ -7,17 +7,17 @@ from pathlib import Path
 from cameras import CAMERAS
 
 ROOT = Path(__file__).resolve().parent
-MODEL_SHA256 = "65158dad735be799c2466fa15e260c09558080bd530b42a8d0c3d1b419afd8b5"
-MODEL_URL = "https://huggingface.co/inference4j/yolov8n/resolve/66295110f9dd507498735446f4f9f05da3007073/model.onnx"
-MODEL_PATH = ROOT / "models/yolov8n.onnx"
+MODEL_SHA256 = "1bd2afeed7a85188e295875b3936a6f08df5a7671457ece9077f3b9b8daee6d6"
+MODEL_URL = "https://huggingface.co/Kalray/yolov8/resolve/9e0af089be9c2f172e4fd9b724805f8b6514854e/yolov8s.onnx"
+MODEL_PATH = ROOT / "models/yolov8s.onnx"
 
 
 def prepare():
     MODEL_PATH.parent.mkdir(exist_ok=True)
     if not MODEL_PATH.exists() or hashlib.sha256(MODEL_PATH.read_bytes()).hexdigest() != MODEL_SHA256:
-        print("Descargando YOLOv8n ONNX (12.8 MB), revision fija y SHA-256 verificado...")
+        print("Descargando YOLOv8s ONNX (44.9 MB), revision fija y SHA-256 verificado...")
         with urllib.request.urlopen(MODEL_URL, timeout=90) as response:
-            body = response.read(20_000_001)
+            body = response.read(60_000_001)
         if hashlib.sha256(body).hexdigest() != MODEL_SHA256:
             raise ValueError("El modelo no coincide con el SHA-256 esperado")
         MODEL_PATH.write_bytes(body)

@@ -1,0 +1,128 @@
+{
+  "verified_at": "2026-09-19T10:33:32.612808+00:00",
+  "workflow_id": "01a0b92b-35cd-78af-a37d-19bf9dce95c3",
+  "version_id": "01a0b92b-35db-7e9b-9166-88ddeae33b69",
+  "remote_execution_verified": true,
+  "capture_freshness_verified": false,
+  "auth_redaction_probe": "passed",
+  "budget_usd_authorized": 2,
+  "vercel_reported_inference_cost_usd": 0.0019968,
+  "runs": [
+    {
+      "run_id": "10635db2-5332-4fd4-9955-6c1da1c51265",
+      "result": {
+        "schema_version": "2.0",
+        "camera_id": "madrid-08301",
+        "density": "low",
+        "vehicle_count_estimate": 22,
+        "image_status": "road_visible",
+        "reason": "La carretera es claramente visible y se pueden contar vehículos en varios carriles.",
+        "limitations": [
+          "La imagen tiene buena iluminación y visibilidad, sin obstrucciones significativas.",
+          "La resolución permite distinguir vehículos con claridad.",
+          "No se observan sombras que dificulten la identificación de vehículos.",
+          "Hora de captura no verificada: la hora de análisis no es la de la cámara."
+        ],
+        "capture_time_verified": false,
+        "current_visual_evidence": false,
+        "speed_kmh": null,
+        "road_blocked": null,
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "requires_human_review": true,
+        "engine": "multimodal_estimate_not_yolo",
+        "image_url": "https://informo.madrid.es/cameras/Camara08301.jpg",
+        "analyzed_at": "2026-09-19T10:30:32.915414+00:00",
+        "freshness": "not_verified"
+      },
+      "model": "openai/gpt-4.1-mini",
+      "usage": {
+        "cost": 0.000846,
+        "market_cost": 0.000846,
+        "gateway_cost": 0.000846,
+        "total_tokens": 1887,
+        "prompt_tokens": 1811,
+        "completion_tokens": 76,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "run_id": "cce9c7a5-3cf6-4f76-b1cf-f7104877b41e",
+      "result": {
+        "schema_version": "2.0",
+        "camera_id": "madrid-06303",
+        "density": "low",
+        "vehicle_count_estimate": 3,
+        "image_status": "road_visible",
+        "reason": "La imagen muestra una carretera con tres carriles visibles en sentido opuesto y dos carriles en sentido cercano, con pocos vehículos visibles en la calzada. La visibilidad es buena excepto por la sombra y el follaje que cubren parcialmente la parte izquierda de la vía.",
+        "limitations": [
+          "Parte de la calzada está parcialmente oculta por árboles y sombras, lo que dificulta la visibilidad completa de todos los vehículos presentes.",
+          "Hora de captura no verificada: la hora de análisis no es la de la cámara."
+        ],
+        "capture_time_verified": false,
+        "current_visual_evidence": false,
+        "speed_kmh": null,
+        "road_blocked": null,
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "requires_human_review": true,
+        "engine": "multimodal_estimate_not_yolo",
+        "image_url": "https://informo.madrid.es/cameras/Camara06303.jpg",
+        "analyzed_at": "2026-09-19T10:31:43.353711+00:00",
+        "freshness": "not_verified"
+      },
+      "model": "openai/gpt-4.1-mini",
+      "usage": {
+        "cost": 0.0008956,
+        "market_cost": 0.0008956,
+        "gateway_cost": 0.0008956,
+        "total_tokens": 1918,
+        "prompt_tokens": 1811,
+        "completion_tokens": 107,
+        "cache_creation_input_tokens": 0
+      }
+    },
+    {
+      "run_id": "5844c2c2-7dbe-4d31-abe1-6facd39a554e",
+      "result": {
+        "schema_version": "2.0",
+        "camera_id": "madrid-04301",
+        "density": "unknown",
+        "vehicle_count_estimate": null,
+        "image_status": "unavailable",
+        "reason": "El video o imagen está temporalmente no disponible, no se puede observar la carretera ni vehículos.",
+        "limitations": [
+          "imagen no disponible para análisis de tráfico",
+          "Hora de captura no verificada: la hora de análisis no es la de la cámara."
+        ],
+        "capture_time_verified": false,
+        "current_visual_evidence": false,
+        "speed_kmh": null,
+        "road_blocked": null,
+        "recommended_route": null,
+        "dispatch_authorized": false,
+        "requires_human_review": true,
+        "engine": "multimodal_estimate_not_yolo",
+        "image_url": "https://informo.madrid.es/cameras/Camara04301.jpg",
+        "analyzed_at": "2026-09-19T10:31:43.127868+00:00",
+        "freshness": "not_verified"
+      },
+      "model": "openai/gpt-4.1-mini",
+      "usage": {
+        "cost": 0.0002552,
+        "market_cost": 0.0002552,
+        "gateway_cost": 0.0002552,
+        "total_tokens": 485,
+        "prompt_tokens": 434,
+        "completion_tokens": 51,
+        "cache_creation_input_tokens": 0
+      }
+    }
+  ],
+  "limitations": [
+    "No benchmark etiquetado de precisión visual; conteos estimados.",
+    "Catálogo local leído, no sincronización remota de PostgreSQL.",
+    "La API de visión recibe la URL pública; no hay evidencia inmutable del fotograma exacto.",
+    "Sin cron ni despachos: ejecución bajo demanda."
+  ]
+}

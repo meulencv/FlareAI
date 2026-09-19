@@ -19,6 +19,7 @@ import numpy as np
 
 from cameras import CAMERAS
 from happyrobot import API, STATE, run_result, start_run
+from monitor import Monitor
 from traffic import Detector, analyze, freshness
 
 ROOT = Path(__file__).resolve().parent
@@ -51,6 +52,18 @@ class Lab:
         self.cloud_runs = {}
         self.cloud_lock = threading.Lock()
         self.api = API() if os.environ.get("HAPPYROBOT_API_KEY") else None
+        self.monitor = Monitor(self.api)
+
+    def reference_views(self, camera_id):
+        camera = CAMERAS[camera_id]
+        expected = camera.get("reference_sha256")
+        path = ROOT / f"samples/cam_{camera_id}.jpg"
+        if not expected or not path.exists():
+            return []
+        body = path.read_bytes()
+        if hashlib.sha256(body).hexdigest() != expected:
+            return []
+        return [{"id": f"{camera_id}-original", "image": decode_image(body), "sha256": expected, "zones": camera["zones"]}]
 
     def inspect(self, camera_id, mode):
         if camera_id not in CAMERAS or mode not in ("demo", "live"):
@@ -62,7 +75,7 @@ class Lab:
             if cached and time.monotonic() - cached[0] < 180:
                 evidence = cached[1]["evidence"]
                 evidence["freshness"] = freshness(evidence["source"].get("source_updated_at"))
-                warning = "Fecha de actualización ausente, inválida o antigua"
+                warning = "Fecha de actualización del proveedor ausente, inválida o de más de 10 minutos"
                 if evidence["freshness"] != "recent" and warning not in evidence["warnings"]:
                     evidence["warnings"].append(warning)
                 return cached[1]
@@ -90,7 +103,8 @@ class Lab:
             metadata = {"camera_id": camera_id, "name": camera["name"], "url": camera["url"],
                         "mode": mode, "downloaded_at": downloaded, "source_updated_at": updated,
                         "sha256": digest, "roi_reference": camera["roi_reference"]}
-            result, annotated = analyze(decode_image(body), self.detector, camera["zones"], metadata)
+            result, annotated = analyze(decode_image(body), self.detector, camera["zones"], metadata,
+                                        references=self.reference_views(camera_id))
             ok, encoded = cv2.imencode(".jpg", annotated, [cv2.IMWRITE_JPEG_QUALITY, 88])
             if not ok:
                 raise ValueError("No se pudo codificar la evidencia")
@@ -133,9 +147,27 @@ class Handler(BaseHTTPRequestHandler):
             return self.send({"error": "Host u origen no permitido"}, 403)
         parsed = urlsplit(self.path)
         assets = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"), "/style.css": ("style.css", "text/css; charset=utf-8")}
+        assets["/remote-ui.js"] = ("remote-ui.js", "text/javascript; charset=utf-8")
         if parsed.path in assets:
             name, mime = assets[parsed.path]
             return self.send((ROOT / name).read_bytes(), mime=mime)
+        if parsed.path.startswith("/api/remote/"):
+            query = parse_qs(parsed.query)
+            try:
+                if parsed.path == "/api/remote/status":
+                    return self.send(self.lab.monitor.status())
+                if parsed.path == "/api/remote/incidents":
+                    return self.send(self.lab.monitor.flare_incidents())
+                if parsed.path == "/api/remote/job":
+                    return self.send(self.lab.monitor.get(query.get("id", [""])[0]))
+                if parsed.path == "/api/remote/image":
+                    body, mime = self.lab.monitor.image(query.get("job", [""])[0], query.get("camera", [""])[0])
+                    return self.send(body, mime=mime)
+                return self.send({"error": "No encontrado"}, 404)
+            except (KeyError, ValueError):
+                return self.send({"error": "Consulta o cámara no válida"}, 404)
+            except (OSError, RuntimeError):
+                return self.send({"error": "La fuente no está disponible"}, 502)
         if parsed.path == "/api/cameras":
             return self.send({"cameras": list(CAMERAS.values()), "cloud_ready": self.lab.api is not None and STATE.exists()})
         if parsed.path == "/api/run":
@@ -158,6 +190,8 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(self.rfile.read(size))
             if not isinstance(data, dict):
                 raise ValueError("Se requiere un objeto JSON")
+            if self.path == "/api/remote/start":
+                return self.send(self.lab.monitor.start(data.get("incident")), 202)
             if self.path == "/api/analyze":
                 return self.send(self.lab.inspect(data.get("camera_id"), data.get("mode", "demo")))
             if self.path == "/api/workflow":
@@ -166,6 +200,12 @@ class Handler(BaseHTTPRequestHandler):
                 evidence = self.lab.observations.get(data.get("observation_id"))
                 if evidence is None:
                     return self.send({"error": "Primero analiza una cámara"}, 400)
+                if evidence["source"].get("mode") == "live" and freshness(evidence["source"].get("source_updated_at")) != "recent":
+                    return self.send({"error": "Actualización del proveedor de más de 10 minutos o no verificable"}, 409)
+                if evidence.get("calibration", {}).get("status") != "aligned":
+                    return self.send({"error": "Encuadre sin validar: no se envían conteos por carretera"}, 409)
+                if not any((zone.get("vehicle_count") or 0) > 0 for zone in evidence["zones"]):
+                    return self.send({"error": "Sin detecciones en zonas validadas; no se concluye vía despejada"}, 409)
                 with self.lab.cloud_lock:
                     observation_id = data["observation_id"]
                     identifier = self.lab.cloud_runs.get(observation_id)

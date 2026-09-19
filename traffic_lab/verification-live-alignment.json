@@ -1,0 +1,552 @@
+{
+  "verified_at": "2026-09-19T11:11:07.455120+00:00",
+  "http_checks": "passed",
+  "observations": [
+    {
+      "schema_version": "1.0",
+      "analyzed_at": "2026-09-19T11:11:11.141426+00:00",
+      "source": {
+        "camera_id": "08301",
+        "name": "M-30 · enlace M-607",
+        "url": "https://informo.madrid.es/cameras/Camara08301.jpg",
+        "mode": "live",
+        "downloaded_at": "2026-09-19T11:11:10.893707+00:00",
+        "source_updated_at": "2026-09-19T11:09:17+00:00",
+        "sha256": "042bfec0cb144e0169c689c92cbbed4cabbb9658853095f93c4ad161a1346ee8",
+        "roi_reference": "Encuadre del 19-09-2026; revisar si la cámara gira o cambia de zoom."
+      },
+      "freshness": "recent",
+      "capture_time_verified": false,
+      "captured_at": null,
+      "quality": {
+        "status": "basic_checks_passed",
+        "issues": [],
+        "brightness": 92.5,
+        "contrast": 69.5,
+        "sharpness": 3384.3,
+        "width": 1280,
+        "height": 720
+      },
+      "calibration": {
+        "status": "unverified",
+        "reference_id": null
+      },
+      "zones": [
+        {
+          "id": "08301-left",
+          "name": "Calzada izquierda en imagen",
+          "polygon": [
+            [
+              0.0,
+              0.8
+            ],
+            [
+              0.4,
+              0.565
+            ],
+            [
+              0.65,
+              0.485
+            ],
+            [
+              0.36,
+              0.77
+            ],
+            [
+              0.08,
+              0.98
+            ],
+            [
+              0.0,
+              0.98
+            ]
+          ],
+          "vehicle_count": null,
+          "box_coverage_pct": null,
+          "density": "unknown",
+          "mean_detection_score": null,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": []
+        },
+        {
+          "id": "08301-centre",
+          "name": "Calzada central en imagen",
+          "polygon": [
+            [
+              0.15,
+              0.98
+            ],
+            [
+              0.52,
+              0.59
+            ],
+            [
+              0.62,
+              0.54
+            ],
+            [
+              0.5,
+              0.98
+            ]
+          ],
+          "vehicle_count": null,
+          "box_coverage_pct": null,
+          "density": "unknown",
+          "mean_detection_score": null,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": []
+        }
+      ],
+      "scene": {
+        "vehicle_count": 20,
+        "detections": [
+          {
+            "box": [
+              584,
+              662,
+              628,
+              710
+            ],
+            "label": "car",
+            "score": 0.854
+          },
+          {
+            "box": [
+              597,
+              420,
+              633,
+              452
+            ],
+            "label": "car",
+            "score": 0.771
+          },
+          {
+            "box": [
+              735,
+              394,
+              764,
+              422
+            ],
+            "label": "car",
+            "score": 0.737
+          },
+          {
+            "box": [
+              624,
+              395,
+              657,
+              421
+            ],
+            "label": "car",
+            "score": 0.732
+          },
+          {
+            "box": [
+              584,
+              365,
+              611,
+              386
+            ],
+            "label": "car",
+            "score": 0.686
+          },
+          {
+            "box": [
+              439,
+              645,
+              493,
+              692
+            ],
+            "label": "car",
+            "score": 0.668
+          },
+          {
+            "box": [
+              601,
+              595,
+              655,
+              645
+            ],
+            "label": "car",
+            "score": 0.662
+          },
+          {
+            "box": [
+              742,
+              360,
+              768,
+              380
+            ],
+            "label": "car",
+            "score": 0.63
+          },
+          {
+            "box": [
+              759,
+              344,
+              783,
+              365
+            ],
+            "label": "car",
+            "score": 0.536
+          },
+          {
+            "box": [
+              938,
+              696,
+              997,
+              719
+            ],
+            "label": "car",
+            "score": 0.527
+          },
+          {
+            "box": [
+              794,
+              400,
+              827,
+              433
+            ],
+            "label": "car",
+            "score": 0.449
+          },
+          {
+            "box": [
+              760,
+              427,
+              795,
+              454
+            ],
+            "label": "car",
+            "score": 0.446
+          },
+          {
+            "box": [
+              629,
+              559,
+              675,
+              598
+            ],
+            "label": "truck",
+            "score": 0.439
+          },
+          {
+            "box": [
+              588,
+              305,
+              612,
+              330
+            ],
+            "label": "car",
+            "score": 0.356
+          },
+          {
+            "box": [
+              581,
+              340,
+              606,
+              364
+            ],
+            "label": "car",
+            "score": 0.349
+          },
+          {
+            "box": [
+              595,
+              322,
+              612,
+              337
+            ],
+            "label": "car",
+            "score": 0.299
+          },
+          {
+            "box": [
+              679,
+              272,
+              694,
+              284
+            ],
+            "label": "car",
+            "score": 0.273
+          },
+          {
+            "box": [
+              636,
+              247,
+              650,
+              264
+            ],
+            "label": "car",
+            "score": 0.269
+          },
+          {
+            "box": [
+              655,
+              243,
+              675,
+              255
+            ],
+            "label": "car",
+            "score": 0.266
+          },
+          {
+            "box": [
+              662,
+              280,
+              677,
+              295
+            ],
+            "label": "car",
+            "score": 0.262
+          }
+        ],
+        "includes_parked_vehicles": true,
+        "density": "unknown"
+      },
+      "usable_for_route_review": false,
+      "requires_human_review": true,
+      "reason": "Detecciones parciales; encuadre, aforo, antigüedad real y cobertura vial requieren validación.",
+      "model": {
+        "name": "YOLOv8s COCO / ONNX · imagen completa + teselas",
+        "sha256": "1bd2afeed7a85188e295875b3936a6f08df5a7671457ece9077f3b9b8daee6d6",
+        "license": "AGPL-3.0",
+        "detection_threshold": 0.25,
+        "nms_iou": 0.45,
+        "tile_size": 512,
+        "tile_overlap": 0.25,
+        "density_thresholds": [
+          0.12,
+          0.28
+        ],
+        "score_is_calibrated_probability": false
+      },
+      "warnings": [
+        "Encuadre diferente o no verificable: zonas desactivadas; hace falta una referencia calibrada.",
+        "La fecha HTTP del proveedor no verifica la hora real de captura.",
+        "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+        "Cajas naranjas: fuera de zonas validadas; pueden incluir aparcados. No son aforo de la carretera.",
+        "Los conteos son detecciones, no el número real certificado; pueden faltar vehículos pequeños u ocultos."
+      ],
+      "elapsed_ms": 5946
+    },
+    {
+      "schema_version": "1.0",
+      "analyzed_at": "2026-09-19T11:11:22.263644+00:00",
+      "source": {
+        "camera_id": "06303",
+        "name": "Plaza de Castilla · norte",
+        "url": "https://informo.madrid.es/cameras/Camara06303.jpg",
+        "mode": "live",
+        "downloaded_at": "2026-09-19T11:11:22.103915+00:00",
+        "source_updated_at": "2026-09-19T11:06:20+00:00",
+        "sha256": "6d49f5c485aca188827022de83fe3dad4b22ad907ee4942538c31904cec499bc",
+        "roi_reference": "Encuadre del 19-09-2026; sombras y árboles ocultan parte de la vía."
+      },
+      "freshness": "recent",
+      "capture_time_verified": false,
+      "captured_at": null,
+      "quality": {
+        "status": "basic_checks_passed",
+        "issues": [],
+        "brightness": 101.8,
+        "contrast": 77.9,
+        "sharpness": 3418.3,
+        "width": 1280,
+        "height": 720
+      },
+      "calibration": {
+        "status": "unverified",
+        "reference_id": null
+      },
+      "zones": [
+        {
+          "id": "06303-upper",
+          "name": "Calzada superior en imagen",
+          "polygon": [
+            [
+              0.51,
+              0.1
+            ],
+            [
+              0.62,
+              0.17
+            ],
+            [
+              0.99,
+              0.49
+            ],
+            [
+              0.99,
+              0.59
+            ],
+            [
+              0.7,
+              0.6
+            ],
+            [
+              0.56,
+              0.31
+            ]
+          ],
+          "vehicle_count": null,
+          "box_coverage_pct": null,
+          "density": "unknown",
+          "mean_detection_score": null,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": []
+        },
+        {
+          "id": "06303-lower",
+          "name": "Calzada inferior en imagen",
+          "polygon": [
+            [
+              0.3,
+              0.38
+            ],
+            [
+              0.46,
+              0.36
+            ],
+            [
+              0.66,
+              0.67
+            ],
+            [
+              0.61,
+              0.75
+            ],
+            [
+              0.47,
+              0.7
+            ]
+          ],
+          "vehicle_count": null,
+          "box_coverage_pct": null,
+          "density": "unknown",
+          "mean_detection_score": null,
+          "speed_kmh": null,
+          "road_blocked": null,
+          "motion": "not_measured",
+          "detections": []
+        }
+      ],
+      "scene": {
+        "vehicle_count": 1,
+        "detections": [
+          {
+            "box": [
+              809,
+              177,
+              895,
+              237
+            ],
+            "label": "car",
+            "score": 0.822
+          }
+        ],
+        "includes_parked_vehicles": true,
+        "density": "unknown"
+      },
+      "usable_for_route_review": false,
+      "requires_human_review": true,
+      "reason": "Detecciones parciales; encuadre, aforo, antigüedad real y cobertura vial requieren validación.",
+      "model": {
+        "name": "YOLOv8s COCO / ONNX · imagen completa + teselas",
+        "sha256": "1bd2afeed7a85188e295875b3936a6f08df5a7671457ece9077f3b9b8daee6d6",
+        "license": "AGPL-3.0",
+        "detection_threshold": 0.25,
+        "nms_iou": 0.45,
+        "tile_size": 512,
+        "tile_overlap": 0.25,
+        "density_thresholds": [
+          0.12,
+          0.28
+        ],
+        "score_is_calibrated_probability": false
+      },
+      "warnings": [
+        "Encuadre diferente o no verificable: zonas desactivadas; hace falta una referencia calibrada.",
+        "La fecha HTTP del proveedor no verifica la hora real de captura.",
+        "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+        "Cajas naranjas: fuera de zonas validadas; pueden incluir aparcados. No son aforo de la carretera.",
+        "Los conteos son detecciones, no el número real certificado; pueden faltar vehículos pequeños u ocultos."
+      ],
+      "elapsed_ms": 5334
+    },
+    {
+      "schema_version": "1.0",
+      "analyzed_at": "2026-09-19T11:11:27.777614+00:00",
+      "source": {
+        "camera_id": "04301",
+        "name": "M-30 · O'Donnell · control de fallo",
+        "url": "https://informo.madrid.es/cameras/Camara04301.jpg",
+        "mode": "live",
+        "downloaded_at": "2026-09-19T11:11:27.619594+00:00",
+        "source_updated_at": "2026-09-09T12:12:16+00:00",
+        "sha256": "03a52a43b8c3b2fcc4e1cae231ba3c2a1d5daa269b7c0900745c8043c8245a30",
+        "roi_reference": "Sin zona calibrada: se observó un cartel de vídeo no disponible."
+      },
+      "freshness": "stale",
+      "capture_time_verified": false,
+      "captured_at": null,
+      "quality": {
+        "status": "unusable",
+        "issues": [
+          "Resolución insuficiente o posible cartel de sustitución"
+        ],
+        "brightness": 91.5,
+        "contrast": 42.5,
+        "sharpness": 2898.3,
+        "width": 298,
+        "height": 217
+      },
+      "calibration": {
+        "status": "unverified",
+        "reference_id": null
+      },
+      "zones": [],
+      "scene": {
+        "vehicle_count": null,
+        "detections": [],
+        "includes_parked_vehicles": true,
+        "density": "unknown"
+      },
+      "usable_for_route_review": false,
+      "requires_human_review": true,
+      "reason": "Detecciones parciales; encuadre, aforo, antigüedad real y cobertura vial requieren validación.",
+      "model": {
+        "name": "YOLOv8s COCO / ONNX · imagen completa + teselas",
+        "sha256": "1bd2afeed7a85188e295875b3936a6f08df5a7671457ece9077f3b9b8daee6d6",
+        "license": "AGPL-3.0",
+        "detection_threshold": 0.25,
+        "nms_iou": 0.45,
+        "tile_size": 512,
+        "tile_overlap": 0.25,
+        "density_thresholds": [
+          0.12,
+          0.28
+        ],
+        "score_is_calibrated_probability": false
+      },
+      "warnings": [
+        "Resolución insuficiente o posible cartel de sustitución",
+        "Encuadre diferente o no verificable: zonas desactivadas; hace falta una referencia calibrada.",
+        "Sin zona de carretera configurada: no se clasifica tráfico",
+        "Fecha de actualización del proveedor ausente, inválida o de más de 10 minutos",
+        "La fecha HTTP del proveedor no verifica la hora real de captura.",
+        "Una foto no mide velocidad, retenciones ni confirma que la vía esté abierta.",
+        "Cajas naranjas: fuera de zonas validadas; pueden incluir aparcados. No son aforo de la carretera.",
+        "Los conteos son detecciones, no el número real certificado; pueden faltar vehículos pequeños u ocultos."
+      ],
+      "elapsed_ms": 2
+    }
+  ],
+  "cloud_runs": []
+}

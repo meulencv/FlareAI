@@ -100,6 +100,96 @@ class TrafficTests(unittest.TestCase):
                 summarize_zone([], {**ZONE, "polygon": polygon}, (100, 100))
 
 
+class AlignmentTests(unittest.TestCase):
+    def test_same_frame_matches_reference(self):
+        from traffic import scene_alignment
+        image = np.random.default_rng(8).integers(0, 255, (360, 640, 3), dtype=np.uint8)
+        self.assertEqual(scene_alignment(image, image)["status"], "aligned")
+
+    def test_pan_is_not_accepted_as_same_calibration(self):
+        import cv2
+        from traffic import scene_alignment
+        image = np.random.default_rng(9).integers(0, 255, (360, 640, 3), dtype=np.uint8)
+        moved = cv2.warpAffine(image, np.float32([[1, 0, 65], [0, 1, 10]]), (640, 360))
+        self.assertNotEqual(scene_alignment(image, moved)["status"], "aligned")
+
+    def test_overlay_does_not_make_different_scenes_match(self):
+        import cv2
+        from traffic import scene_alignment
+        a = np.random.default_rng(1).integers(0, 255, (360, 640, 3), dtype=np.uint8)
+        b = np.random.default_rng(2).integers(0, 255, (360, 640, 3), dtype=np.uint8)
+        a[:50] = b[:50] = 255
+        for image in (a, b):
+            cv2.putText(image, "SAME CAMERA NAME", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 0), 2)
+        self.assertNotEqual(scene_alignment(a, b)["status"], "aligned")
+
+    def test_no_reference_does_not_produce_road_count(self):
+        class Fake:
+            def detect(self, image):
+                return [{"box": [10, 10, 30, 30], "label": "car", "score": 0.9}]
+        image = np.random.default_rng(4).integers(20, 230, (360, 640, 3), dtype=np.uint8)
+        result, _ = analyze(image, Fake(), [ZONE], {}, now=NOW)
+        self.assertIsNone(result["zones"][0]["vehicle_count"])
+        self.assertEqual(result["zones"][0]["density"], "unknown")
+        self.assertEqual(result["calibration"]["status"], "unverified")
+        self.assertGreater(result["scene"]["vehicle_count"], 0)
+
+    def test_real_changed_view_never_reuses_old_road_polygons(self):
+        import cv2
+        from pathlib import Path
+        from cameras import CAMERAS
+        root = Path(__file__).resolve().parent
+        reference = cv2.imread(str(root / "samples/cam_08301.jpg"))
+        changed = cv2.imread(str(root / "samples/m30-front.jpg"))
+        self.assertIsNotNone(reference)
+        self.assertIsNotNone(changed)
+
+        class Empty:
+            def detect(self, image):
+                return []
+        zones = CAMERAS["08301"]["zones"]
+        result, annotated = analyze(changed, Empty(), zones, {}, now=NOW,
+                                    references=[{"id": "original", "image": reference, "zones": zones}])
+        self.assertNotEqual(result["calibration"]["status"], "aligned")
+        self.assertTrue(all(z["vehicle_count"] is None and z["density"] == "unknown" for z in result["zones"]))
+        self.assertTrue(np.array_equal(changed, annotated))
+
+    def test_lighting_change_keeps_stable_scene(self):
+        import cv2
+        from pathlib import Path
+        from traffic import scene_alignment
+        reference = cv2.imread(str(Path(__file__).resolve().parent / "samples/cam_06303.jpg"))
+        darker = cv2.convertScaleAbs(reference, alpha=0.9, beta=3)
+        self.assertEqual(scene_alignment(reference, darker)["status"], "aligned")
+
+    def test_tiles_cover_whole_image(self):
+        from traffic import tile_windows
+        coverage = np.zeros((720, 1280), np.uint8)
+        windows = tile_windows(1280, 720)
+        self.assertGreater(len(windows), 1)
+        for x, y, w, h in windows:
+            coverage[y:y + h, x:x + w] = 1
+            self.assertLessEqual(max(w, h), 512)
+        self.assertTrue(coverage.all())
+
+    def test_tiling_does_not_duplicate_car(self):
+        from traffic import detect_multiscale
+        image = np.zeros((512, 800, 3), np.uint8)
+        image[200:240, 350:390, 0] = 255
+
+        class Fake:
+            def detect(self, tile):
+                ys, xs = np.where(tile[:, :, 0] > 0)
+                if not len(xs):
+                    return []
+                return [{"box": [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1], "label": "car", "score": 0.9}]
+        self.assertEqual(len(detect_multiscale(Fake(), image)), 1)
+
+    def test_provider_timestamp_expires_at_ten_minutes(self):
+        self.assertEqual(freshness((NOW - timedelta(seconds=600)).isoformat(), NOW), "recent")
+        self.assertEqual(freshness((NOW - timedelta(seconds=601)).isoformat(), NOW), "stale")
+
+
 class CloudTests(unittest.TestCase):
     def evidence(self, mode="live", age=0, cover=30):
         return {"schema_version": "1.0", "source": {"camera_id": "test", "mode": mode,
@@ -148,6 +238,48 @@ class CloudTests(unittest.TestCase):
         self.assertIsNone(result["recommended_route"])
         self.assertTrue(result["requires_human_review"])
         self.assertEqual(result["review_priority"], "inspect_density")
+
+
+class APIGuardTests(unittest.TestCase):
+    def test_invalid_road_measurements_never_reach_happyrobot(self):
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        from types import SimpleNamespace
+        import server
+
+        now = datetime.now(timezone.utc)
+        observations = {
+            "pan": {"source": {"mode": "live", "source_updated_at": now.isoformat()},
+                    "calibration": {"status": "unverified"}, "zones": [{"vehicle_count": None}]},
+            "old": {"source": {"mode": "live", "source_updated_at": (now - timedelta(minutes=11)).isoformat()},
+                    "calibration": {"status": "aligned"}, "zones": [{"vehicle_count": 2}]},
+            "empty": {"source": {"mode": "demo"}, "calibration": {"status": "aligned"}, "zones": [{"vehicle_count": 0}]},
+        }
+
+        class Handler(server.Handler):
+            lab = SimpleNamespace(api=object(), observations=observations)
+
+        with patch.object(server, "STATE") as state, patch.object(server, "start_run") as paid_call:
+            state.exists.return_value = True
+            with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as http:
+                worker = threading.Thread(target=http.serve_forever, daemon=True)
+                worker.start()
+                try:
+                    for identifier in observations:
+                        with self.subTest(identifier=identifier):
+                            request = urllib.request.Request(f"http://127.0.0.1:{http.server_port}/api/workflow",
+                                                             data=json.dumps({"observation_id": identifier}).encode(),
+                                                             headers={"Content-Type": "application/json"})
+                            with self.assertRaises(urllib.error.HTTPError) as error:
+                                urllib.request.urlopen(request, timeout=3)
+                            self.assertEqual(error.exception.code, 409)
+                            error.exception.close()
+                    paid_call.assert_not_called()
+                finally:
+                    http.shutdown()
+                    worker.join()
 
 
 class PlatformTests(unittest.TestCase):
