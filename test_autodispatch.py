@@ -109,13 +109,9 @@ class AutoDispatchTests(unittest.TestCase):
             for _ in range(2):
                 clock[0] += 5
                 self.director.step()
-            self.assertEqual(record['phase'], 'contained')
-            clock[0] += 26
-            self.director.step()
-            self.assertEqual(record['phase'], 'watching')
-            clock[0] += 46
-            self.director.step()
             self.assertEqual(record['phase'], 'releasing')
+            self.assertEqual(record['extinguished_pct'], 100)
+            self.assertTrue(all(5 <= a['travel_seconds'] <= 15 for a in self.assignments()))
             self.assertTrue(all(a['status'] == 'returning' for a in self.assignments()))
             self.assertEqual(len(self.assignments()), 5)
             for assignment in self.assignments():
@@ -127,7 +123,7 @@ class AutoDispatchTests(unittest.TestCase):
             self.director.step()
             self.assertEqual(record['phase'], 'closed')
             kinds = [e['kind'] for e in self.director.state['events']]
-            for kind in ('contained', 'watch', 'release', 'return', 'available', 'closed'):
+            for kind in ('contained', 'release', 'return', 'available', 'closed'):
                 self.assertIn(kind, kinds)
             # Cerrado: no vuelve a salir nadie hasta un parte de reactivación.
             clock[0] += WAVE_COOLDOWN + 1

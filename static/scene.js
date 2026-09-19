@@ -1,11 +1,10 @@
-import { createTraffic } from './traffic.js';
-
 export function priorityLine(record) {
   return record ? `Prioridad ${Number(record.priority).toFixed(1)}/10 · ${record.priority_reason}` : '';
 }
 
 export function extinctionLine(record) {
   if (!record || !['active', 'contained'].includes(record.phase)) return '';
+  if (record.fire_power) return `Potencia manual · ${record.fire_power < 0 ? 'apagar' : 'avivar'} ${Math.abs(record.fire_power)} % · evolución simulada`;
   if (record.waiting_suppression) return 'Extinción pendiente · esperando llamada o refuerzos de bomberos';
   const working = record.suppression_power || 0;
   const pct = Math.max(0, Math.min(100, Number(record.extinguished_pct) || 0));
@@ -60,8 +59,8 @@ export function threatOutline(record, footprint, marginKm = THREAT_MARGIN_KM) {
   });
 }
 
-export function createSceneView({ map, L, document, fetch, focus, findIncident = () => null, getTrafficVehicles = () => [] }) {
-  const $ = id => document.getElementById(id), traffic = createTraffic({ map, L, document, fetch, getVehicles: getTrafficVehicles });
+export function createSceneView({ map, L, document, fetch, focus, findIncident = () => null }) {
+  const $ = id => document.getElementById(id);
   const hospitals = L.layerGroup(), cuts = L.layerGroup().addTo(map), hazards = L.layerGroup().addTo(map);
   let state = null, session = null, offset = 0, renderedSequence = -1, mapKey = '', events = new Map(), historyLoading = false;
   let visualEvents = [];
@@ -191,7 +190,7 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
       state = next; offset = (next.server_time || Date.now() / 1000) * 1000 - Date.now();
       if (session !== next.session_id) { session = next.session_id; events = new Map(); visualEvents = []; renderedSequence = -1; mapKey = ''; if (!panel.hidden) loadHistory(); }
       for (const event of next.events || []) events.set(event.sequence, event);
-      history(); renderWorld(); traffic.update(next.scenario, next.session_id);
+      history(); renderWorld();
       const invalidated = [...events.values()].reverse().find(e => e.kind === 'invalidated');
       $('plan-invalidated').hidden = !invalidated || Date.now() + offset - invalidated.at * 1000 > 16000;
       if (invalidated) $('plan-invalidated').textContent = `Plan anterior invalidado · ${invalidated.reason} · recalculando`;
@@ -206,6 +205,5 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
         $('cancel-alert').dataset.id = proposal.id;
       }
     },
-    setPaused(value) { traffic.setPaused(value); },
   };
 }

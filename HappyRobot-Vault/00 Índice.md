@@ -55,6 +55,11 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-20)
+- **Demo breve:** retirada inmediata al apagarse el fuego, regreso visual de 5–15 s e informe disponible
+  antes de llegar a base. [[Dashboard y simulador#Retirada e informe rápidos (2026-09-20)|Decisión y verificación]].
+- **Editor manual:** lápiz rojo junto a Ajustes, corte aleatorio con recálculo A* real del escenario,
+  dirección del viento y potencia progresiva del incendio. No altera NASA/NOAA ni servicios reales.
+  [[Dashboard y simulador#Editor manual del escenario (2026-09-20)|Decisiones, registro y verificación]].
 - **Tráfico local discreto:** solo con zoom cercano y junto a unidades terrestres, máximo 48 coches;
   avería puntual identificada como simulación para el ensayo visual de recálculo. No modifica rutas reales.
   [[Dashboard y simulador#Tráfico visual local (2026-09-20)|Criterios y verificación]].

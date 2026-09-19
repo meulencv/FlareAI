@@ -1,8 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTraffic, trafficProgress, trafficOpacity, localTrafficRoads, trafficRouteRoads, TRAFFIC_LIMIT } from './static/traffic.js';
-import { priorityLine, extinctionLine, engagedHospitals, HOSPITAL_THREAT_LIMIT } from './static/scene.js';
+import { createSceneView, priorityLine, extinctionLine, engagedHospitals, HOSPITAL_THREAT_LIMIT } from './static/scene.js';
 import { patrolTargets, engagedStations } from './static/director.js';
+
+test('la sala no crea canvas de tráfico ni solicita carreteras para coches', () => {
+  const elements = new Map(), requests = [];
+  const node = () => ({ hidden: true, dataset: {}, style: {}, append() {}, replaceChildren() {}, setAttribute() {} });
+  const document = { getElementById(id) { if (!elements.has(id)) elements.set(id, node()); return elements.get(id); },
+    createElement(tag) { assert.notEqual(tag, 'canvas'); return node(); }, querySelectorAll: () => [] };
+  const group = () => ({ addTo() { return this; }, clearLayers() {}, remove() {} });
+  const map = { on() {}, getZoom: () => 16 };
+  const view = createSceneView({ map, L: { layerGroup: group }, document, fetch: url => requests.push(url), focus() {} });
+  view.update({ session_id: 'no-traffic', status: 'watching', events: [], assignments: {} });
+  view.tick();
+  assert.deepEqual(requests, []);
+});
 
 test('los coches desaparecen lejos y entran progresivamente al acercarse', () => {
   assert.equal(trafficOpacity(10), 0);
@@ -91,6 +104,8 @@ test('ningún coche cruza la barrera y el tapón queda aguas arriba', () => {
 test('prioridad en una sola línea y ronda incluye sensores sin fabricar llamadas', () => {
   assert.equal(priorityLine({ priority: 9.2, priority_reason: 'riesgo vital y cerca de zona urbana' }), 'Prioridad 9.2/10 · riesgo vital y cerca de zona urbana');
   assert.equal(extinctionLine({ phase: 'active', suppression_power: 0, extinguished_pct: 0 }), 'Fuego creciendo · medios en camino');
+  assert.match(extinctionLine({ phase: 'active', fire_power: -1 }), /Potencia manual · apagar 1 %/);
+  assert.match(extinctionLine({ phase: 'active', fire_power: 80 }), /Potencia manual · avivar 80 %/);
   assert.equal(extinctionLine({ phase: 'active', suppression_power: 4, extinguished_pct: 37 }), 'Extinción simulada 37 % · 4 medios trabajando · más medios, antes');
   assert.equal(extinctionLine({ phase: 'watching', suppression_power: 4, extinguished_pct: 90 }), '');
   assert.match(extinctionLine({ phase: 'active', waiting_suppression: true, suppression_power: 3 }), /esperando llamada o refuerzos/);

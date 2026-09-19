@@ -49,6 +49,20 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Cierre rápido para demo (20/09/2026, sustituye las esperas anteriores)
+
+- Petición expresa: al apagarse el fuego, regreso inmediato e informe rápido. `Scene.evolve` y
+  `AutoDispatch.lifecycle` pasan de contención a retirada en el mismo tick, sin vigilancia de 25 + 45 s.
+  El regreso visual dura 5–15 s; la unidad sigue ocupada hasta llegar a sede y se respetan cortes reales
+  del escenario. Las ambulancias en traslado lo completan antes de regresar; no se inicia otro al retirar.
+- `Operations.tick` genera el informe al entrar en `releasing`, sin esperar `closed`. El PDF indica las
+  unidades todavía ocupadas al emitirse; no declara regreso completado ni alta médica. No duplica el
+  informe al cerrar. Peticiones pendientes antiguas no vuelven a movilizar medios durante la retirada.
+- Verificado con 123 pruebas Python (`test_autodispatch test_scene test_operations test_presentation
+  test_director test_demo test_local_routes`), 36 JS y Ruff. `verify_presentation.py` actualiza las
+  expectativas a cinco testigos + llamada, comprueba PDF antes de llegar a base y descarga desde Cerebro
+  en Chromium; voz/LLM fixtures, rutas locales cacheadas, sin llamadas ni cloud.
+
 ## Dispositivo automático garantizado (petición expresa 19/09/2026, posterior)
 
 - Sustituye la regla «no hay planner determinista de respaldo» para la movilización: el usuario exige que
@@ -564,3 +578,23 @@ Si el vault no existe todavía, créalo con esta misma estructura antes de escri
   Node `--test test_operations.mjs`, Ruff y recorrido Playwright con API fixture (no llamadas/cloud).
   Comprobación posterior sobre la web real en 8090: dimensiones del grafo, búsqueda, selección, móvil y API caída.
   Capturas claras en `evidence/brain-light-desktop.png` y `evidence/brain-light-mobile.png`.
+
+## Editor manual del escenario (20/09/2026)
+
+- Lápiz rojo a la izquierda de Ajustes (`static/operations.js::createScenarioEditor`); Cerebro se desplaza
+  a su izquierda. Panel con selector de incendio, corte aleatorio, dirección del viento hacia 0–359° y
+  potencia -100–100 (apagar/normal/avivar). Envía al soltar el slider, serializa órdenes, conserva foco
+  de teclado y descarta respuestas de sesiones anteriores. Sin escenario explica el modo requerido.
+- Reutiliza POST local `/api/scenario` y sus controles de origen. `random_closure` elige una vía sin cortar
+  por delante de una unidad terrestre en marcha; excluye vuelos/rutas aproximadas. A* local recalcula
+  desde posición interpolada; sin desvío conserva `held_position`, nunca usa OSRM para saltarse el corte.
+  El corte afecta a todas las rutas que usan ese tramo, no solo al incendio elegido para los sliders.
+- `fire_power=0` conserva evolución normal; negativo introduce reducción manual hasta 0,0125 km/s;
+  positivo añade crecimiento hasta 0,0125 km/s. Los medios siguen restando su trabajo y permanecen los
+  topes de radio. Puede reactivar contenido/vigilancia, nunca retirada/cierre; no modifica NASA/NOAA.
+  El viento manual marca `wind_changed` para evitar que un giro programado lo sobrescriba.
+- Verificar: `.venv/bin/python -m unittest test_scene test_local_routes test_autodispatch test_director test_operations test_presentation`
+  y Node `--test test_operations.mjs test_scene.mjs test_director.mjs`.
+  UI aislada: `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_presentation.py --editor`.
+  Usa voz/LLM fixtures, atlas/grafo cacheado y HTTP real, sin llamadas ni cloud. Las otras rutas del
+  verificador conservan expectativas históricas: `--editor` permite probar este panel independientemente.

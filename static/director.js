@@ -73,7 +73,7 @@ export function nearbyEvidence(incident, incidents, cameras) {
 
 export function patrolTargets(incidents, assignments) {
   return [...incidents.filter(i => (i.demo_report && !i.demo_report.cancelled || i.sensor_report || i.scene_report) && i.scenario?.phase !== 'closed' && !i.scenario?.linked_call_id).map(i => ({ key: `incident:${i.id}`, incident: i })),
-    ...Object.values(assignments).filter(a => ["enroute", "returning"].includes(a.status))
+    ...Object.values(assignments).filter(a => ["enroute", "transporting", "returning"].includes(a.status))
       .map(a => ({ key: `vehicle:${a.resource.id}`, assignment: a }))];
 }
 
@@ -136,13 +136,11 @@ export function createRouteRehearsal({ random = Math.random } = {}) {
     nextAt = now + delay(45, 45);
     if (!candidates.length) return null;
     const a = candidates[Math.floor(random() * candidates.length)];
-    const reason = ['Viento cambiado', 'Vehículo averiado', 'Acceso alternativo'][Math.floor(random() * 3)];
+    const reason = ['Viento cambiado', 'Revisión de acceso', 'Acceso alternativo'][Math.floor(random() * 3)];
     const event = { kind: 'route_rehearsal', visual: true, at: now, resource_id: a.resource.id, incident_id: a.incident_id,
       message: `${reason} · simulación · recalculando ruta`,
       reason: `${a.resource.name} · ensayo visual aleatorio, no una observación ni una decisión del LLM. No modifica el viento, la ruta ni los tiempos del servidor.` };
-    const progress = (now - a.started_at) / a.travel_seconds;
-    const obstruction = reason === 'Vehículo averiado' ? routePosition(a.route, progress + .08 / a.route.cumulative_km.at(-1)) : null;
-    active = { resource_id: a.resource.id, assignment_id: a.id, revision: a.route_revision, until: now + 6, obstruction, event };
+    active = { resource_id: a.resource.id, assignment_id: a.id, revision: a.route_revision, until: now + 6, event };
     return event;
   }
   return { step, get active() { return active; }, reset() { active = null; nextAt = null; } };
@@ -290,8 +288,6 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
   const evidence = createEvidenceView({ document, fetch, getData, getCameras, openCamera: item => { manual(); openCamera(item); } });
   let following = true, armed = false, nextVisit = 0, lastTarget = "", lastEvidence = "", evidenceAt = 0;
   const sceneView = createSceneView({ map, L, document, fetch, findIncident,
-    getTrafficVehicles: () => [...vehicles.values()].filter(v => v.assignment.resource.kind !== 'helicopter' && !v.assignment.route.approximate)
-      .map(v => ({ lat: v.marker.getLatLng().lat, lon: v.marker.getLatLng().lng, route: v.assignment.route })),
     focus: id => { const incident = findIncident(id); if (incident) { manual(); focus(incident); map.setView([incident.lat, incident.lon], 15.5, { animate: false }); } } });
   map.on('zoom', () => { if (!state?.scenario || map.getZoom() >= 11) stations.addTo(map); else stations.remove(); });
 
@@ -397,11 +393,9 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     L.polyline(points, { pane: 'response-routes', renderer: rehearsalRenderer, color: '#9180cd', weight: 9, opacity: .18, interactive: false }).addTo(rehearsalLayer);
     L.polyline(points, { pane: 'response-routes', renderer: rehearsalRenderer, color: '#7560bd', weight: 4, opacity: .9,
       dashArray: '12 16', className: 'route-rehearsal', interactive: false }).addTo(rehearsalLayer);
-    const [lon, lat] = active.obstruction || routePosition(a.route, (active.event.at - a.started_at) / a.travel_seconds);
-    if (active.obstruction) L.marker([lat, lon], { pane: 'response-vehicles', interactive: false,
-      icon: L.divIcon({ className: 'traffic-breakdown', html: '<svg viewBox="0 0 32 24" aria-hidden="true"><rect x="3" y="9" width="19" height="9" rx="3"/><path d="M7 9l3-5h7l3 5M5 18v3m14-3v3M25 4l6 10H19zM25 7v3m0 1v1"/></svg>', iconSize: [32, 24], iconAnchor: [16, 12] }) }).addTo(rehearsalLayer);
+    const [lon, lat] = routePosition(a.route, (active.event.at - a.started_at) / a.travel_seconds);
     L.marker([lat, lon], { pane: 'response-vehicles', interactive: false,
-      icon: L.divIcon({ className: 'route-rehearsal-label', html: active.obstruction ? 'Avería · simulación' : 'Recalculando · demo', iconSize: [144, 24], iconAnchor: [72, 40] }) }).addTo(rehearsalLayer);
+      icon: L.divIcon({ className: 'route-rehearsal-label', html: 'Recalculando · demo', iconSize: [144, 24], iconAnchor: [72, 40] }) }).addTo(rehearsalLayer);
   }
 
   function stopRehearsal() {
@@ -504,7 +498,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       if (!call || call.state === "located" || call.state === 'field_report') return;
       queue.push({ kind: call.error ? "error" : "call", message: call.error || (call.state === "needs_location" ? "Precisando la ubicación del aviso" : call.state === "not_fire" ? "Aviso revisado · incendio no confirmado" : call.ended ? "Llamada finalizada" : "Llamada entrante · recogiendo datos"), reason: "" });
     },
-    setPaused(value) { paused = value; sceneView.setPaused(value); aura.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); stopRehearsal(); } document.body.classList.toggle("motion-paused", value); },
+    setPaused(value) { paused = value; aura.setPaused(value); if (value) { cameraTour.cancel(); evidence.hide(); stopRehearsal(); } document.body.classList.toggle("motion-paused", value); },
     manual,
   };
 }

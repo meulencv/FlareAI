@@ -75,22 +75,44 @@ class SceneTests(TestCase):
         self.assertIsNone(one, 'Un solo camión apenas frena el fuego')
         self.assertLess(record['radius_km'], grown + .2)  # 600 s más: sin medios habría crecido hasta el tope de 1,2 km
         three, record, _ = self.contain_seconds(3)
-        self.assertEqual(record['phase'], 'contained')
+        self.assertEqual(record['phase'], 'releasing')
         self.assertGreater(three, 30, 'Llegar no basta: la extinción es progresiva')
-        self.assertEqual(record['extinguished_pct'], round(100 * (1 - record['radius_km'] / record['peak_radius_km'])))
+        self.assertEqual(record['extinguished_pct'], 100)
         five, _, _ = self.contain_seconds(5)
         self.assertLess(five, three)
         kinds = [c.args[0] for c in self.director.event.call_args_list]
         self.assertIn('suppression', kinds)
         record = self.scene.data['incidents']['sensor']
         at = 1789812000 + 100 + five
-        self.scene.evolve(at + 25)
-        self.assertEqual(record['phase'], 'watching')
-        self.scene.evolve(at + 71)
         self.assertEqual(record['phase'], 'releasing')
         self.director.state['assignments'] = {}
-        self.scene.evolve(at + 72)
+        self.scene.evolve(at + 1)
         self.assertEqual(record['phase'], 'closed')
+
+    def test_extinction_returns_units_immediately_without_interrupting_transport(self):
+        import time
+        from unittest.mock import patch
+        self.scene.observe({'incidents': [{**incident(), 'scene_report': {'source': 'fixture'}}]}, 1000)
+        self.scene.data['automatic'] = False
+        record = self.scene.data['incidents']['sensor']
+        record.update(radius_km=.061, medical=True)
+        self.director.state['assignments'] = {
+            key: {'incident_id': 'sensor', 'status': status, 'resource': {'kind': kind, 'name': key, 'lat': 41.4, 'lon': 2.1},
+                  'route': {'coordinates': [[2.1, 41.4], [2.12, 41.43]], 'cumulative_km': [0, 4], 'distance_km': 4},
+                  'target': [2.12, 41.43], 'started_at': time.time() - 100, 'arrived_at': time.time() - 30, 'travel_seconds': 30}
+            for key, kind, status in [('truck1', 'fire_engine', 'onscene'), ('truck2', 'fire_engine', 'onscene'),
+                                      ('police', 'police', 'enroute'), ('ambulance', 'ambulance', 'onscene'),
+                                      ('patient', 'ambulance', 'transporting'), ('air', 'helicopter', 'onscene')]}
+        self.scene.evolve(1001)
+        self.assertEqual(record['phase'], 'releasing')
+        self.assertEqual(record['extinguished_pct'], 100)
+        with patch.object(self.scene, 'route', return_value={'coordinates': [[2.12, 41.43], [2.1, 41.4]], 'duration_seconds': 900}):
+            self.scene.maintenance()
+        for key, assignment in self.director.state['assignments'].items():
+            self.assertEqual(assignment['status'], 'transporting' if key == 'patient' else 'returning')
+            if key != 'patient':
+                self.assertLessEqual(assignment['travel_seconds'], 15)
+        self.assertNotEqual(record['phase'], 'closed')
 
     def test_phone_and_requested_firefighters_delay_shrinking_until_arrival(self):
         from operations import Operations, HOLD_LIMIT
@@ -127,9 +149,9 @@ class SceneTests(TestCase):
                 self.assertLess(record['radius_km'], before)
                 self.assertEqual(record['phase'], 'active', 'La llegada inicia trabajo progresivo, no apaga de golpe')
                 self.assertGreater(record['extinguished_pct'], 0)
-            if record['phase'] == 'contained':
+            if record['phase'] == 'releasing':
                 break
-        self.assertEqual(record['phase'], 'contained')
+        self.assertEqual(record['phase'], 'releasing')
 
     def test_happyrobot_template_normalization_does_not_weaken_prompt_check(self):
         from director_workflow import canonical_prompt
@@ -220,6 +242,93 @@ class SceneTests(TestCase):
         self.assertIn('seguridad', message)
         self.assertIn('Hospital junto al fuego', reason)
         self.assertIn('no es protocolo sanitario', reason)
+
+    def test_manual_wind_and_fire_power_preserve_observations(self):
+        item = {**incident(), 'scene_report': {'source': 'fixture'}}
+        original = deepcopy(item)
+        self.scene.observe({'incidents': [item]}, 1000)
+        self.scene.data['automatic'] = False
+        record = self.scene.data['incidents']['sensor']
+        self.scene.command({'action': 'wind', 'incident_id': 'sensor', 'value': 45})
+        self.assertEqual(record['wind_to'], 45)
+        self.scene.command({'action': 'fire_power', 'incident_id': 'sensor', 'value': -1})
+        before = record['radius_km']
+        self.scene.evolve(record['last_tick'] + 1)
+        self.assertLess(record['radius_km'], before)
+        self.scene.command({'action': 'fire_power', 'incident_id': 'sensor', 'value': 100})
+        self.assertEqual(record['phase'], 'active')
+        before = record['radius_km']
+        self.scene.evolve(record['last_tick'] + 10)
+        self.assertGreater(record['radius_km'], before)
+        self.scene.command({'action': 'fire_power', 'incident_id': 'sensor', 'value': 0})
+        self.assertEqual(record['fire_power'], 0)
+        self.scene.command({'action': 'fire_power', 'incident_id': 'sensor', 'value': -100})
+        before = record['radius_km']
+        now = record['last_tick']
+        self.scene.evolve(now + 10)
+        self.assertLess(record['radius_km'], before)
+        for elapsed in range(20, 100, 10):
+            self.scene.evolve(now + elapsed)
+            if record['phase'] == 'releasing':
+                break
+        self.assertEqual(record['phase'], 'releasing')
+        with self.assertRaises(ValueError):
+            self.scene.command({'action': 'fire_power', 'incident_id': 'sensor', 'value': 100})
+        self.assertEqual(item, original)
+        self.assertEqual(self.scene.overlay({'incidents': [item]})['incidents'][0]['weather'], original['weather'])
+
+    def test_manual_controls_validate_values_and_terminal_phases(self):
+        self.scene.observe({'incidents': [{**incident(), 'scene_report': {"source": "fixture"}}]}, 1000)
+        for action, invalid in [('wind', [-1, 360, '90', None, True, float('nan'), float('inf')]),
+                                ('fire_power', [-101, 101, '0', None, False, float('nan')])]:
+            for value in invalid:
+                with self.subTest(action=action, value=value), self.assertRaises(ValueError):
+                    self.scene.command({'action': action, 'incident_id': 'sensor', 'value': value})
+        record = self.scene.data['incidents']['sensor']
+        for phase in ('releasing', 'closed'):
+            record['phase'] = phase
+            with self.assertRaises(ValueError):
+                self.scene.command({'action': 'fire_power', 'incident_id': 'sensor', 'value': 100})
+        self.assertNotIn('fire_power', record)
+
+    def test_random_closure_reroutes_locally_or_stops_without_a_detour(self):
+        from local_routes import RoadGraph
+        from test_local_routes import way
+        from unittest.mock import patch
+        import time
+        for detour in (True, False):
+            with self.subTest(detour=detour):
+                self.setUp()
+                elements = [way(1, [1, 2, 3], [(2.1, 41.4), (2.101, 41.4), (2.102, 41.4)])]
+                if detour:
+                    elements.append(way(2, [1, 4, 3], [(2.1, 41.4), (2.101, 41.401), (2.102, 41.4)]))
+                graph = RoadGraph({'elements': elements})
+                start, end = [2.1, 41.4], [2.102, 41.4]
+                route = graph.route(start, end)
+                self.director.router = Mock()
+                self.director.router.route.side_effect = lambda a, b, **kw: graph.route(a, b, blocked=kw['blocked'], congestion=kw['congestion'])
+                assignment = {'incident_id': 'sensor', 'status': 'enroute', 'route': route,
+                              'started_at': time.time(), 'travel_seconds': 100, 'target': end,
+                              'resource': {'kind': 'fire_engine'}}
+                self.director.state['assignments'] = {'truck': assignment}
+                with patch('scene.random.choice', side_effect=lambda candidates: candidates[-1]) as choose:
+                    self.scene.command({'action': 'random_closure'})
+                choose.assert_called_once()
+                self.assertEqual(len(self.scene.data['closures']), 1)
+                self.assertEqual(assignment['previous_route'], route)
+                self.assertTrue(self.director.router.route.call_args.kwargs['scenario'])
+                if detour:
+                    self.assertEqual(assignment['status'], 'enroute')
+                    self.assertNotEqual(assignment['route']['coordinates'], route['coordinates'])
+                    self.assertFalse(set(assignment['route']['edge_ids']) & set(self.scene.data['closures']))
+                else:
+                    self.assertEqual(assignment['status'], 'blocked')
+                    self.assertIn('held_position', assignment)
+
+    def test_random_closure_rejects_missing_or_finished_routes(self):
+        with self.assertRaises(ValueError):
+            self.scene.command({'action': 'random_closure'})
+        self.assertFalse(self.scene.data['closures'])
 
     def test_no_automatic_maritime_incident(self):
         self.scene.observe({'incidents': []}, 1789812000)

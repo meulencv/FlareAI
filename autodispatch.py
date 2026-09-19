@@ -21,8 +21,6 @@ LOCATION_REDIRECT_KM = 20   # cerca del punto corregido: continúa desde su posi
 LOCATION_EPSILON_KM = .15   # evita recalcular por redondeos de geocodificación
 WAVE_COOLDOWN = 20          # segundos entre oleadas automáticas por aviso
 CONTAIN_WORK = 90           # medios × segundos de trabajo en el lugar para contener: 2 camiones 45 s, 3 en 30 s, 5 en 18 s
-WATCH_SECONDS = 25
-RELEASE_SECONDS = 45
 STRUGGLE_SECONDS = 120      # activo con medios en el lugar sin contener: un camión más
 PHASES = {'active': 'En intervención', 'contained': 'Fuego contenido', 'watching': 'En vigilancia',
           'releasing': 'Retirada escalonada', 'closed': 'Cerrado · simulación'}
@@ -146,7 +144,7 @@ class AutoDispatch:
     def requests(self, incident: dict, record: dict, report: dict, now: float) -> bool:
         """Solicitudes explícitas de un parte de bomberos (refuerzos, ambulancias, helicópteros, policía).
         En presentación las tramita `Operations.reinforce`; aquí el resto de modos."""
-        if self.director.operations is not None or not report:
+        if self.director.operations is not None or not report or record['phase'] in {'releasing', 'closed'}:
             return False
         from operations import requested_resources
         fields, versions = report.get('fields', {}), report.get('field_versions', {})
@@ -184,8 +182,8 @@ class AutoDispatch:
                 route = ground_fallback(origin, target)
         assignment.pop('held_position', None)
         assignment.update(route=route, target=target, status='returning', started_at=now,
-                          travel_seconds=max(30, min(120, route['duration_seconds'] / 20)), route_revision=int(now))
-        self.director.event('return', 'Regresa · ' + resource['name'], 'Fin de la vigilancia de la simulación; la unidad sigue ocupada hasta llegar a sede.',
+                          travel_seconds=max(5, min(15, route['duration_seconds'] / 60)), route_revision=int(now))
+        self.director.event('return', 'Regresa · ' + resource['name'], 'Fin de la intervención; regreso acelerado de demo. La unidad sigue ocupada hasta llegar a sede.',
                             incident_id=assignment['incident_id'], resource_id=rid)
 
     @staticmethod
@@ -294,13 +292,9 @@ class AutoDispatch:
                     changed = True
             else:
                 record['suppression_since'] = None
-        elif phase == 'contained' and now - record['phase_at'] >= WATCH_SECONDS:
-            record.update(phase='watching', phase_at=now)
-            self.director.event('watch', 'En vigilancia · sin reactivación simulada', f'Se mantiene el dispositivo {RELEASE_SECONDS} s antes de retirar.', incident_id=identifier)
-            changed = True
-        elif phase == 'watching' and now - record['phase_at'] >= RELEASE_SECONDS:
-            record.update(phase='releasing', phase_at=now)
-            self.director.event('release', 'Retirada escalonada del dispositivo', 'Regresan camiones, ambulancias y patrullas; no se liberan hasta llegar a base.', incident_id=identifier)
+        if record['phase'] in {'contained', 'watching'}:
+            record.update(phase='releasing', phase_at=now, extinguished_pct=100)
+            self.director.event('release', 'Fuego apagado · regreso inmediato', 'Sin espera de vigilancia en la demo. Las unidades siguen ocupadas hasta llegar a base.', incident_id=identifier)
             changed = True
         if record['phase'] == 'releasing':
             for rid, assignment in self.director.state['assignments'].items():
@@ -309,7 +303,7 @@ class AutoDispatch:
                     changed = True
             if not assignments:
                 record.update(phase='closed', phase_at=now)
-                self.director.event('closed', 'Cerrado · simulación', 'Sin reactivación durante la vigilancia y medios de regreso en base. Datos NASA intactos.', incident_id=identifier)
+                self.director.event('closed', 'Cerrado · simulación', 'Medios de regreso en base. Datos NASA intactos.', incident_id=identifier)
                 changed = True
         return changed
 

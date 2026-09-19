@@ -233,8 +233,12 @@ def finish_operation(director, record: dict) -> dict:
     events = sorted({e['sequence']: e for e in events + current}.values(), key=lambda e: e['sequence'])
     fields = director.store.demo.field_reports.get(identifier, {}).get('fields', {})
     now = time.time()
+    pending = sum(a.get('incident_id') == identifier for a in director.state['assignments'].values())
+    summary = (f'Intervención de simulación finalizada en {record["name"]}. Informe disponible sin esperar al regreso a base. '
+               f'Unidades aún ocupadas en regreso, traslado o pendientes de acceso: {pending}. '
+               'Se conservan la evidencia, los partes y el cumplimiento de recursos; no implica alta médica.')
     report = {'id': report_id, 'incident_id': identifier, 'session_id': director.session_id, 'title': 'Operación · ' + record['name'],
-              'closed_at': now, 'summary': f'Operación de simulación cerrada en {record["name"]}. Se conserva la evidencia, los partes y el cumplimiento de recursos.',
+              'closed_at': now, 'summary': summary, 'pending_units': pending,
               'assessment': record.get('assessment'), 'events': events, 'field_report': fields,
               'requests': list(record['requests'].values()), 'metrics': impact(scene, fields, now),
               'testimonies': director.operations.context(identifier).get('testimonies', [])}

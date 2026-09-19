@@ -85,12 +85,12 @@ test('el recálculo visual es esporádico, selecciona una unidad y no modifica r
   assert.ok(h.step(63));
 });
 
-test('la avería puntual se sitúa por delante de la unidad y no modifica la ruta', () => {
+test('el ensayo de acceso no crea coches decorativos ni modifica la ruta', () => {
   const h = rehearsalHarness(() => .5), original = JSON.stringify(h.assignment.route);
   h.step(0);
   const event = h.step(18);
-  assert.match(event.message, /Vehículo averiado.*simulación/);
-  assert.deepEqual(h.rehearsal.active.obstruction, routePosition(h.assignment.route, .018 + .08));
+  assert.match(event.message, /Revisión de acceso.*simulación/);
+  assert.equal(h.rehearsal.active.obstruction, undefined);
   assert.equal(JSON.stringify(h.assignment.route), original);
   h.step(24);
   assert.equal(h.rehearsal.active, null);
@@ -198,6 +198,12 @@ test("la ronda visita avisos y vehículos activos, nunca detecciones sin llamada
   const assignments = { truck: { resource: { id: "truck" }, incident_id: "a", status: "enroute" }, done: { resource: { id: "done" }, status: "onscene" } };
   assert.deepEqual(patrolTargets([report, { id: "b" }], assignments).map(t => t.key), ["incident:a", "vehicle:truck"]);
   assert.deepEqual(patrolTargets([], {}), []);
+});
+
+test('la ronda sigue ambulancias en traslado y regresos, pero no unidades ya en destino', () => {
+  const assignments = Object.fromEntries(['enroute', 'transporting', 'returning', 'onscene', 'blocked'].map(status =>
+    [status, { ...rehearsalAssignment(status), status }]));
+  assert.deepEqual(patrolTargets([], assignments).map(t => t.key), ['vehicle:enroute', 'vehicle:transporting', 'vehicle:returning']);
 });
 
 test("interrumpir un viaje cancela el siguiente fotograma; movimiento reducido no anima", () => {

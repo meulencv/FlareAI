@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import process from 'node:process';
-import { createOperationView, mergeBrainNotes, testimonyRows, witnessPosition, hashSeed } from './static/operations.js';
+import { createOperationView, createScenarioEditor, mergeBrainNotes, testimonyRows, witnessPosition, hashSeed } from './static/operations.js';
 import { GET, POST } from './happyrobot-112/cloud/route.js';
 
 const { Request, Response } = globalThis;
@@ -41,7 +41,7 @@ test('las personitas se reparten de forma estable alrededor del aviso y la llama
 });
 
 test('las llamadas y testigos desaparecen al cerrar el incendio sin perder el historial ni otros avisos', () => {
-  const element = () => ({ setAttribute() {}, append() {}, prepend() {}, addEventListener() {}, classList: { add() {} } });
+  const element = () => ({ setAttribute() {}, append() {}, prepend() {}, replaceChildren() {}, addEventListener() {}, classList: { add() {} } });
   const document = { createElement: element, createElementNS: element, body: element() };
   const visible = new Set();
   const layer = { addTo() { return this; }, removeLayer(marker) { visible.delete(marker); } };
@@ -63,7 +63,7 @@ test('las llamadas y testigos desaparecen al cerrar el incendio sin perder el hi
   }));
   const view = createOperationView({ document, L, map: { getPane: () => ({}) }, findIncident: id => incidents.get(id) });
   const state = { operations: { incidents: records } };
-  const snapshot = structuredClone(records);
+  const snapshot = globalThis.structuredClone(records);
   const assertResolvedHidden = () => {
     assert.equal(visible.size, 2);
     assert.ok([...visible].every(marker => marker.options.alt.endsWith(': active')));
@@ -99,6 +99,81 @@ test('las llamadas y testigos desaparecen al cerrar el incendio sin perder el hi
   assertResolvedHidden();
   view.update({});
   assert.equal(visible.size, 0);
+});
+
+function editorFixture(fetch) {
+  const elements = [], document = {};
+  const element = () => {
+    const item = { children: [], attributes: {}, handlers: {}, value: '',
+      setAttribute(key, value) { this.attributes[key] = value; },
+      append(...children) { this.children.push(...children); },
+      replaceChildren(...children) { this.children = children; },
+      addEventListener(type, handler) { this.handlers[type] = handler; },
+      focus() { document.activeElement = this; },
+    };
+    elements.push(item); return item;
+  };
+  Object.assign(document, { createElement: element, createElementNS: element, body: element() });
+  const editor = createScenarioEditor({ document, fetch });
+  const get = id => elements.find(item => item.id === id);
+  const state = { session_id: 'test', scenario: { incidents: {
+    first: { id: 'first', name: 'Primero', phase: 'active', wind_to: 90 },
+    second: { id: 'second', name: 'Segundo', phase: 'watching', wind_to: 180, fire_power: -50 },
+    closed: { id: 'closed', name: 'Cerrado', phase: 'closed' },
+    linked: { id: 'linked', name: 'Vinculado', phase: 'active', linked_call_id: 'first' },
+  } } };
+  return { editor, document, get, state };
+}
+
+test('el lápiz abre un panel accesible y envía corte, viento y potencia al escenario seleccionado', async () => {
+  const requests = [];
+  const { editor, get, state, document } = editorFixture(async (url, options) => {
+    requests.push({ url, body: JSON.parse(options.body) }); return { ok: true, json: async () => ({ ok: true }) };
+  });
+  const snapshot = globalThis.structuredClone(state);
+  editor.update(state);
+  const button = get('scenario-edit-toggle'), panel = get('scenario-edit-panel'), select = get('scenario-edit-incident');
+  assert.equal(button.hidden, false); assert.equal(panel.hidden, true);
+  button.onclick(); assert.equal(panel.hidden, false); assert.equal(button.attributes['aria-expanded'], 'true');
+  assert.equal(select.children.length, 2);
+  await get('scenario-random-cut').onclick();
+  assert.equal(requests[0].body.action, 'random_closure');
+  select.value = 'second'; select.onchange();
+  const wind = get('scenario-edit-wind'), power = get('scenario-edit-power');
+  assert.equal(wind.value, '180'); assert.equal(power.value, '-50');
+  wind.value = '270'; wind.focus(); wind.oninput();
+  editor.update(state);
+  assert.equal(wind.value, '270', 'el polling no interrumpe el deslizador enfocado');
+  await wind.onchange();
+  power.value = '75'; power.oninput(); await power.onchange();
+  await get('scenario-edit-normal').onclick();
+  assert.deepEqual(requests.slice(1).map(request => request.body), [
+    { action: 'wind', incident_id: 'second', value: 270 },
+    { action: 'fire_power', incident_id: 'second', value: 75 },
+    { action: 'fire_power', incident_id: 'second', value: 0 },
+  ]);
+  assert.ok(requests.every(request => request.url === '/api/scenario'));
+  assert.deepEqual(state, snapshot, 'no cambia el estado recibido del servidor');
+  panel.handlers.keydown({ key: 'Escape', preventDefault() {} });
+  assert.equal(panel.hidden, true); assert.equal(document.activeElement, button);
+  editor.update({ session_id: 'other', operations: {} });
+  assert.equal(get('scenario-random-cut').disabled, true); assert.equal(power.disabled, true);
+  assert.match(get('scenario-edit-notice').textContent, /no disponible/);
+  editor.update({ session_id: 'other' }); assert.equal(button.hidden, true);
+});
+
+test('el editor serializa órdenes, muestra errores y descarta respuestas de otra sesión', async () => {
+  let resolve, count = 0;
+  const { editor, get, state } = editorFixture(() => { count++; return new Promise(done => { resolve = done; }); });
+  editor.update(state);
+  const cut = get('scenario-random-cut'), status = get('scenario-edit-status');
+  const pending = cut.onclick();
+  assert.equal(cut.disabled, true); await cut.onclick(); assert.equal(count, 1);
+  resolve({ ok: false, json: async () => ({ error: 'Hace falta una unidad de carretera en ruta' }) });
+  await pending; assert.match(status.textContent, /Hace falta/); assert.equal(cut.disabled, false);
+  const old = cut.onclick(); editor.update({ ...state, session_id: 'new' });
+  resolve({ ok: true, json: async () => ({ ok: true }) }); await old;
+  assert.equal(status.textContent, ''); assert.equal(cut.disabled, false);
 });
 
 test('112 cloud protege la sesión, rechaza 123 y no revela credenciales', async () => {

@@ -40,6 +40,115 @@ export function mergeBrainNotes(notes = []) {
   return [...merged.values()];
 }
 
+export function createScenarioEditor({ document, fetch, onOpen = () => {} }) {
+  const node = (tag, id, text = '', className = '') => {
+    const element = document.createElement(tag); element.id = id; element.textContent = text; element.className = className;
+    return element;
+  };
+  const button = node('button', 'scenario-edit-toggle', '', 'settings-toggle scenario-edit-toggle'); button.type = 'button'; button.hidden = true;
+  button.setAttribute('aria-label', 'Editar escenario'); button.setAttribute('aria-expanded', 'false'); button.setAttribute('aria-controls', 'scenario-edit-panel');
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24'); icon.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(icon.namespaceURI, 'path');
+  path.setAttribute('d', 'M15 4l5 5M4 20l5-1L21 7a2 2 0 000-3l-1-1a2 2 0 00-3 0L5 15zM5 15l4 4'); icon.append(path); button.append(icon);
+  const panel = node('section', 'scenario-edit-panel', '', 'settings-panel scenario-edit-panel'); panel.hidden = true;
+  panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-labelledby', 'scenario-edit-title');
+  const heading = node('header', 'scenario-edit-heading'), closeButton = node('button', 'scenario-edit-close', 'Cerrar'); closeButton.type = 'button';
+  heading.append(node('h2', 'scenario-edit-title', 'Editar escenario'), closeButton);
+  const notice = node('p', 'scenario-edit-notice', 'Solo simulación. No modifica las observaciones NASA/NOAA.', 'settings-notice');
+  const cut = node('button', 'scenario-random-cut', 'Crear corte random', 'scenario-cut'); cut.type = 'button';
+  const hint = node('p', 'scenario-cut-hint', 'Corta una carretera por delante de una unidad en marcha. El motor local recalcula; sin desvío, la unidad se detiene.', 'settings-notice');
+  const label = node('label', 'scenario-edit-incident-label', 'Incendio a editar'); label.setAttribute('for', 'scenario-edit-incident');
+  const select = node('select', 'scenario-edit-incident');
+  function slider(id, text, min, max, value) {
+    const group = node('div', `${id}-group`, '', 'scenario-slider'), title = node('label', `${id}-label`, text);
+    title.setAttribute('for', id);
+    const output = node('output', `${id}-value`); output.setAttribute('for', id);
+    const input = node('input', id); input.type = 'range'; input.min = String(min); input.max = String(max); input.step = '1'; input.value = String(value);
+    group.append(title, output, input); return { group, input, output };
+  }
+  const wind = slider('scenario-edit-wind', 'Dirección del viento', 0, 359, 0);
+  const power = slider('scenario-edit-power', 'Potencia del incendio', -100, 100, 0);
+  const scale = node('div', 'scenario-power-scale', '', 'scenario-power-scale');
+  scale.append(node('span', '', 'Apagar'), node('span', '', 'Normal'), node('span', '', 'Avivar'));
+  power.group.append(scale);
+  const normal = node('button', 'scenario-edit-normal', 'Restaurar potencia normal', 'scenario-normal'); normal.type = 'button';
+  const status = node('p', 'scenario-edit-status', '', 'settings-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
+  panel.append(heading, notice, cut, hint, label, select, wind.group, power.group, normal, status);
+  document.body.append(button, panel);
+  let scene = null, session = null, busy = false, optionsKey = '', generation = 0;
+  const editable = () => Object.values(scene?.incidents || {}).filter(record => !record.linked_call_id && ['active', 'contained', 'watching'].includes(record.phase));
+  function close(restoreFocus = false) {
+    panel.hidden = true; button.setAttribute('aria-expanded', 'false'); if (restoreFocus) button.focus();
+  }
+  function labels() {
+    const degrees = Number(wind.input.value), strength = Number(power.input.value);
+    wind.output.textContent = `Hacia ${degrees}° · ${['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'][Math.round(degrees / 45) % 8]}`;
+    power.output.textContent = strength === 0 ? 'Evolución normal' : `${strength < 0 ? 'Apagar' : 'Avivar'} · ${Math.abs(strength)} %`;
+    wind.input.setAttribute('aria-valuetext', wind.output.textContent); power.input.setAttribute('aria-valuetext', power.output.textContent);
+  }
+  function render(sync = false) {
+    const records = editable(), key = JSON.stringify(records.map(record => [record.id, record.name]));
+    if (key !== optionsKey) {
+      optionsKey = key; const previous = select.value;
+      select.replaceChildren();
+      if (!records.length) select.append(node('option', '', 'Sin incendios editables'));
+      for (const record of records) { const option = node('option', '', record.name); option.value = record.id; select.append(option); }
+      select.value = records.some(record => record.id === previous) ? previous : records[0]?.id || ''; sync = true;
+    }
+    const record = records.find(record => record.id === select.value);
+    cut.disabled = busy || !scene; select.disabled = busy || !record;
+    for (const input of [wind.input, power.input, normal]) input.disabled = busy || !record;
+    if (record && !busy) {
+      if (sync || document.activeElement !== wind.input) wind.input.value = String(Math.round(record.wind_to || 0));
+      if (sync || document.activeElement !== power.input) power.input.value = String(record.fire_power || 0);
+    }
+    notice.textContent = scene ? 'Solo simulación. No modifica las observaciones NASA/NOAA.' : 'Escenario no disponible. Arranca el servidor con --presentation o --hackathon.';
+    labels();
+  }
+  async function post(action, value) {
+    if (busy || !scene) return;
+    const id = select.value, token = generation, focused = document.activeElement;
+    busy = true; render(); status.textContent = 'Aplicando cambio…';
+    try {
+      const response = await fetch('/api/scenario', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, incident_id: id, ...(value === undefined ? {} : { value }) }) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'No se pudo aplicar el cambio');
+      if (token !== generation) return;
+      const record = scene?.incidents?.[id];
+      if (record && action !== 'random_closure') record[action === 'wind' ? 'wind_to' : 'fire_power'] = value;
+      status.textContent = action === 'random_closure' ? 'Corte creado. Rutas recalculadas; sin alternativa, las unidades quedan detenidas.' : 'Cambio aplicado al incendio seleccionado.';
+    } catch (error) { if (token === generation) status.textContent = error.message || 'No se pudo conectar con el servidor local.'; }
+    finally {
+      if (token === generation) {
+        busy = false; render(true);
+        if (!panel.hidden && focused && !focused.disabled && document.activeElement === document.body) focused.focus();
+      }
+    }
+  }
+  button.onclick = () => {
+    if (!panel.hidden) { close(true); return; }
+    onOpen(); panel.hidden = false; button.setAttribute('aria-expanded', 'true'); render(true); closeButton.focus();
+  };
+  closeButton.onclick = () => close(true);
+  for (const target of [panel, button]) target.addEventListener('keydown', event => { if (event.key === 'Escape') { event.preventDefault(); close(true); } });
+  cut.onclick = () => post('random_closure'); select.onchange = () => render(true);
+  wind.input.oninput = power.input.oninput = labels;
+  wind.input.onchange = () => post('wind', Number(wind.input.value));
+  power.input.onchange = () => post('fire_power', Number(power.input.value)); normal.onclick = () => post('fire_power', 0);
+  return {
+    close,
+    update(state) {
+      if (session !== state.session_id) { session = state.session_id; generation++; busy = false; optionsKey = ''; status.textContent = ''; close(); }
+      scene = state.scenario ? globalThis.structuredClone(state.scenario) : null;
+      button.hidden = !state.scenario && !state.operations;
+      if (button.hidden) close();
+      render();
+    },
+  };
+}
+
 const PERSON = '<svg viewBox="0 0 20 24" aria-hidden="true"><circle cx="10" cy="5.5" r="4"/><path d="M3 23c0-6 3-9 7-9s7 3 7 9z"/></svg>';
 
 export function createOperationView({ document, fetch, map = null, L = null, findIncident = () => null }) {
@@ -71,7 +180,9 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
   const resetButton = node('button', 'Restablecer base de datos', 'settings-reset'); resetButton.type = 'button';
   const resetStatus = node('p', '', 'settings-status');
   settingsPanel.append(resetButton, resetStatus);
+  const editor = createScenarioEditor({ document, fetch, onOpen: () => { settingsPanel.hidden = true; settingsButton.setAttribute('aria-expanded', 'false'); } });
   settingsButton.onclick = () => {
+    editor.close();
     settingsPanel.hidden = !settingsPanel.hidden;
     settingsButton.setAttribute('aria-expanded', String(!settingsPanel.hidden));
   };
@@ -275,6 +386,7 @@ export function createOperationView({ document, fetch, map = null, L = null, fin
   }
   return {
     update(state) {
+      editor.update(state);
       button.hidden = !state.operations;
       settingsButton.hidden = !state.operations;
       if (!state.operations) settingsPanel.hidden = true;

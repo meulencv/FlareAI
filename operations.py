@@ -117,7 +117,7 @@ class Operations:
         self.reinforce(payload)
         for identifier, record in self.records.items():
             scene = (self.director.scene.data['incidents'].get(identifier) if self.director.scene else None) or {}
-            if scene.get('phase') == 'closed' and not record['reported']:
+            if scene.get('phase') in {'releasing', 'closed'} and not record['reported']:
                 from reports import finish_operation
                 finish_operation(self.director, record)
                 record['reported'] = True
@@ -182,7 +182,8 @@ class Operations:
             if not record:
                 continue
             fields = report['fields']
-            if fields.get('incendio') in {'descartado', 'extinguido'}:
+            scene = (self.director.scene.data['incidents'].get(identifier) if self.director.scene else None) or {}
+            if scene.get('phase') in {'releasing', 'closed'} or fields.get('incendio') in {'descartado', 'extinguido'}:
                 for request in record['requests'].values():
                     if request['fulfilled'] < request['quantity']:
                         request['status'] = 'cancelled'

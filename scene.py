@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import random
 import re
 import time
 from copy import deepcopy
@@ -17,6 +18,7 @@ SAFE_HOSPITAL_KM = 1.5
 # lugar (camión 1, helicóptero 2) lo reduce; más recursos, extinción antes. Con un solo camión apenas se frena.
 GROWTH_KM_PER_S = .0025
 SUPPRESSION_KM_PER_S = .0022
+MANUAL_GROWTH_KM_PER_S = .0125
 CONTAINED_RADIUS_KM = .06
 
 
@@ -227,15 +229,18 @@ class Scene:
                 step = min(elapsed, 10)
                 floor = .04 if record['maritime'] else CONTAINED_RADIUS_KM
                 cap = .15 if record['maritime'] else 1.2
-                record['radius_km'] = max(floor, min(cap, record['radius_km'] + step * (GROWTH_KM_PER_S - suppression * SUPPRESSION_KM_PER_S)))
+                power = record.get('fire_power', 0)
+                growth = (GROWTH_KM_PER_S if power >= 0 else 0) + power / 100 * MANUAL_GROWTH_KM_PER_S
+                record['radius_km'] = max(floor, min(cap, record['radius_km'] + step * (growth - suppression * SUPPRESSION_KM_PER_S)))
                 record['suppression_power'] = suppression
                 if suppression >= 1:
                     record['suppression_since'] = record['suppression_since'] if record['suppression_since'] is not None else now
                 else:
                     record['suppression_since'] = None
-                if suppression >= 1 and record['radius_km'] <= floor and not held:
+                if (suppression >= 1 or power < 0) and record['radius_km'] <= floor and not held:
                     record.update(phase='contained', phase_at=now)
-                    self.change('contained', 'Fuego contenido · escenario', f'{suppression} medios trabajando redujeron el frente hasta el mínimo; no es extinción medida.', identifier)
+                    reason = 'Control manual de potencia: reducción progresiva del fuego simulado.' if power < 0 else f'{suppression} medios trabajando redujeron el frente hasta el mínimo; no es extinción medida.'
+                    self.change('contained', 'Fuego contenido · escenario', reason, identifier)
                 if not record['wind_changed'] and now - record['started_at'] > 35 and self.data['automatic']:
                     record.update(wind_to=(record['wind_to'] + 70) % 360, wind_changed=True)
                     self.invalidate(identifier, 'El viento del escenario gira 70°; deja de cumplirse el supuesto de dirección estable')
@@ -245,20 +250,17 @@ class Scene:
                     self.change('growth', 'El fuego amplía su entorno de amenaza', f"Prioridad {record['priority']}/10 · {record['priority_reason']}. Población censal próxima: {record['exposed_population']}; no afectados medidos.", identifier)
                 elif band < old_band:
                     self.risk(record)
-                    self.change('suppression', f'El fuego retrocede · {suppression} medios trabajando', f"Radio ilustrativo {record['radius_km']:.2f} km; más medios en el lugar aceleran la extinción simulada.", identifier)
-            elif phase == 'contained':
-                record['radius_km'] = max(.02, record['radius_km'] - min(elapsed, 10) * (.004 + suppression * .002))
-                if now - record['phase_at'] >= 25:
-                    record.update(phase='watching', phase_at=now)
-                    self.change('watch', 'En vigilancia · sin reactivación simulada', 'Se mantiene el dispositivo 45 s antes de retirar. No equivale a alta médica.', identifier)
-            elif phase == 'watching' and now - record['phase_at'] >= 45:
-                record.update(phase='releasing', phase_at=now)
-                self.change('release', 'Retirada escalonada del dispositivo', 'Se solicita regreso de camiones, patrullas, ambulancias y aire; no se liberan hasta llegar a base.', identifier)
-            elif phase == 'releasing' and not assignments and not held:
+                    message = 'El fuego retrocede · potencia manual' if power < 0 else f'El fuego retrocede · {suppression} medios trabajando'
+                    self.change('suppression', message, f"Radio ilustrativo {record['radius_km']:.2f} km; reducción simulada, no extinción medida.", identifier)
+            if record['phase'] in {'contained', 'watching'}:
+                record.update(phase='releasing', phase_at=now, radius_km=.02)
+                self.change('release', 'Fuego apagado · regreso inmediato', 'Sin espera de vigilancia en la demo. Regresan las unidades; los traslados en curso terminan antes de volver a base.', identifier)
+            elif phase == 'releasing' and not assignments:
                 record.update(phase='closed', phase_at=now, radius_km=.02)
-                self.change('closed', 'Cerrado · seguro en el escenario', 'Sin reactivación durante la vigilancia y medios de regreso en base. Relato conservado; datos NASA intactos.', identifier)
+                self.change('closed', 'Cerrado · seguro en el escenario', 'Medios de regreso en base. Relato conservado; datos NASA intactos.', identifier)
             record['peak_radius_km'] = max(record['peak_radius_km'], record['radius_km'])
-            record['extinguished_pct'] = round(100 * max(0, 1 - record['radius_km'] / record['peak_radius_km'])) if record['peak_radius_km'] else 0
+            record['extinguished_pct'] = (100 if record['phase'] in {'releasing', 'closed'} else
+                                         round(100 * max(0, 1 - record['radius_km'] / record['peak_radius_km'])) if record['peak_radius_km'] else 0)
             self.risk(record)
 
     def overlay(self, payload: dict) -> dict:
@@ -283,8 +285,8 @@ class Scene:
 
     def command(self, body: dict) -> None:
         action = body.get('action')
-        if action in {'closure', 'congestion'}:
-            self.disrupt(action == 'closure')
+        if action in {'closure', 'random_closure', 'congestion'}:
+            self.disrupt(action != 'congestion', randomize=action == 'random_closure')
             return
         if action == 'automatic':
             self.data['automatic'] = not self.data['automatic']
@@ -307,10 +309,24 @@ class Scene:
         record = self.data['incidents'].get(identifier)
         if not record or record['phase'] == 'closed':
             raise ValueError('Selecciona un aviso activo')
-        if action == 'wind':
-            record['wind_to'] = (record['wind_to'] + 70) % 360
+        if action in {'wind', 'fire_power'}:
+            if record['phase'] == 'releasing' or record.get('linked_call_id'):
+                raise ValueError('Selecciona un incendio en intervención o vigilancia')
+            value = body.get('value', (record['wind_to'] + 70) % 360 if action == 'wind' else None)
+            low, high = (0, 359) if action == 'wind' else (-100, 100)
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not low <= value <= high:
+                raise ValueError(f'Valor de {action} fuera de rango: {low} a {high}')
+            if action == 'wind':
+                record.update(wind_to=value, wind_changed=True)
+                cause = 'Viento ajustado manualmente en el escenario: cambia el sector de población expuesta'
+            else:
+                record['fire_power'] = value
+                record['last_tick'] = time.time()
+                if value > 0 and record['phase'] in {'contained', 'watching'}:
+                    record.update(phase='active', phase_at=time.time(), suppression_since=None)
+                cause = f'Potencia manual del incendio: {value:+g} · evolución ilustrativa, no medición'
             self.risk(record)
-            self.invalidate(identifier, 'Giro de viento del escenario: cambia el sector de población expuesta')
+            self.invalidate(identifier, cause)
         elif action == 'field':
             role, report = body.get('role'), body.get('report')
             if role not in {'bomberos', 'sanitarios', 'policía'} or report not in {'empeora', 'heridos', 'contenido', 'reactivación'}:
@@ -330,22 +346,26 @@ class Scene:
     def route(self, start: list, end: list, relaxed: bool = False) -> dict:
         return self.director.router.route(start, end, scenario=True, blocked=set(self.data['closures']), congestion=self.data['congestion'], relaxed=relaxed)
 
-    def disrupt(self, closure: bool = True) -> None:
+    def disrupt(self, closure: bool = True, randomize: bool = False) -> None:
         from director import route_position
-        assignments = [a for a in self.director.state['assignments'].values() if a['status'] == 'enroute' and a['route'].get('edge_ids')]
+        assignments = [a for a in self.director.state['assignments'].values()
+                       if a['status'] in {'enroute', 'returning', 'transporting'} and a['route'].get('edge_ids')
+                       and not a['route'].get('approximate') and a['resource']['kind'] != 'helicopter']
+        if randomize:
+            random.shuffle(assignments)
         for assignment in assignments:
             route = assignment['route']
             progress = max(0, (time.time() - assignment['started_at']) / assignment['travel_seconds'])
             if progress > .75:
                 continue
             edges = route['edge_ids']
-            index = next((n for n, d in enumerate(route['cumulative_km'][:-1])
-                          if d >= route['distance_km'] * max(.4, progress + .15) and route['cumulative_km'][n + 1] - d >= .04), None)
-            if index is None:
+            candidates = [n for n, d in enumerate(route['cumulative_km'][:-1])
+                          if d >= route['distance_km'] * max(.4, progress + .15)
+                          and route['cumulative_km'][n + 1] - d >= .04 and edges[n] not in self.data['closures']]
+            if not candidates:
                 continue
+            index = random.choice(candidates) if randomize else candidates[0]
             edge = edges[index]
-            if edge in self.data['closures']:
-                continue
             coordinates = route['coordinates'][index:index + 2]
             if closure:
                 self.data['closures'][edge] = {'id': edge, 'coordinates': coordinates, 'label': 'Corte de vía · escenario', 'at': time.time()}
@@ -377,7 +397,7 @@ class Scene:
             record = self.data['incidents'].get(assignment.get('incident_id'))
             if not record:
                 continue
-            if assignment['status'] == 'onscene' and assignment['resource']['kind'] == 'ambulance' and record['medical'] and not assignment.get('patient_delivered') and now - assignment.get('arrived_at', now) >= 15:
+            if record['phase'] not in {'releasing', 'closed'} and assignment['status'] == 'onscene' and assignment['resource']['kind'] == 'ambulance' and record['medical'] and not assignment.get('patient_delivered') and now - assignment.get('arrived_at', now) >= 15:
                 ordered, avoided, margin = hospital_options(self.data['hospitals'], record)
                 origin = [record['lon'], record['lat']]
                 for hospital in ordered:
@@ -424,8 +444,8 @@ class Scene:
                     self.change('blocked', 'Regreso pendiente de acceso', 'Se conserva la unidad ocupada; reintento en 30 s. No se inventa un trayecto a base.', record['id'])
                     continue
                 assignment.pop('held_position', None)
-                assignment.update(route=route, target=target, status='returning', started_at=now, travel_seconds=max(30, min(120, route['duration_seconds'] / 20)), route_revision=self.data['revision'] + 1)
-                self.change('return', 'Regresa · ' + resource['name'], 'Fin de la vigilancia del escenario; la unidad sigue ocupada hasta llegar a sede.', record['id'])
+                assignment.update(route=route, target=target, status='returning', started_at=now, travel_seconds=max(5, min(15, route['duration_seconds'] / 60)), route_revision=self.data['revision'] + 1)
+                self.change('return', 'Regresa · ' + resource['name'], 'Fin de la intervención; regreso acelerado de demo. La unidad sigue ocupada hasta llegar a sede.', record['id'])
         if self.data['automatic'] and not self.data.get('auto_cut'):
             traveling = [a for a in self.director.state['assignments'].values() if a['status'] == 'enroute' and a['route'].get('edge_ids') and now - a['started_at'] > 12]
             if traveling:

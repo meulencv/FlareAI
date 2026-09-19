@@ -124,15 +124,21 @@ def complete_fixture(store, identifier, run):
     director.advance()
     assert ambulance.get('patient_delivered')
     now = time.time()
-    for elapsed in (0, 46, 72, 118):
+    for elapsed in range(1, 181):
         director.scene.evolve(now + elapsed)
+        if director.scene.data['incidents'][identifier]['phase'] == 'releasing':
+            break
     assert director.scene.data['incidents'][identifier]['phase'] == 'releasing'
     director.scene.maintenance()
     assert all(a['status'] == 'returning' for a in director.state['assignments'].values())
+    assert all(5 <= a['travel_seconds'] <= 15 for a in director.state['assignments'].values())
+    director.operations.tick(store.payload())
+    assert director.operations.records[identifier]['reported']
+    assert director.state['assignments'], 'El informe debe estar disponible antes de llegar a base'
     for assignment in director.state['assignments'].values():
         assignment['started_at'] -= assignment['travel_seconds'] + 1
     director.advance()
-    director.scene.evolve(now + 120)
+    director.scene.evolve(now + elapsed + 1)
     assert director.scene.data['incidents'][identifier]['phase'] == 'closed'
     director.save()
     director.operations.tick(store.payload())
@@ -159,9 +165,9 @@ def main():
                 page.route('**/app.js', instrument_map)
                 page.goto(url)
                 assert page.locator('#calls-panel').count() == 0, 'El panel izquierdo de voces se retiró'
-                expect(page.locator('.witness-marker')).to_have_count(25)
+                expect(page.locator('.witness-marker')).to_have_count(6)
                 expect(page.locator('.witness-marker.real-call')).to_have_count(1)
-                expect(page.locator('.witness-marker.credibility-uncertain')).to_have_count(24)
+                expect(page.locator('.witness-marker.simulated.credibility-uncertain')).to_have_count(5)
                 expect(page.locator('.threat-surface')).to_have_count(1)
                 page.locator('#follow-toggle').click()
                 page.evaluate('window.__directorMap.setView([41.4035,2.1744],15,{animate:false})')
@@ -173,12 +179,11 @@ def main():
                 expect(page.locator('#brain-toggle')).to_be_visible()
                 page.screenshot(path=str(ROOT / '.local/presentation-calls.png'))
                 complete_fixture(store, identifier, run)
-                expect(page.locator('.witness-marker.has-report')).to_have_count(1, timeout=15000)
+                expect(page.locator('.witness-marker')).to_have_count(0, timeout=15000)
                 page.locator('#brain-toggle').click()
                 expect(page.locator('#brain-view')).to_be_visible()
-                expect(page.locator('.brain-notes button')).to_have_count(1)
-                page.locator('.brain-notes button').click()
-                expect(page.locator('.brain-article')).to_contain_text('Créditos de carbono')
+                page.locator('.brain-notes button', has_text='Operación ·').click()
+                expect(page.locator('.brain-article')).to_contain_text('sin esperar al regreso a base')
                 pdf = page.request.get(url + page.locator('.report-download').get_attribute('href'))
                 assert pdf.ok and pdf.body().startswith(b'%PDF-1.4')
                 assert list((Path(temporary) / 'vault').glob('*.md'))
@@ -189,12 +194,175 @@ def main():
                 expect(phone.locator('[data-number="112"]')).to_be_visible()
                 assert not errors, errors
                 browser.close()
-            print('Presentación verificada: 25 avisos, refuerzos, hospital, cierre, PDF, cerebro y 112 sin 123. Voz y LLM fixtures; rutas reales cacheadas; sin llamadas reales.')
+            print('Presentación verificada: 6 avisos, refuerzos, hospital, retirada inmediata, PDF antes de llegar a base, cerebro y 112 sin 123. Voz y LLM fixtures; rutas reales cacheadas; sin llamadas reales.')
     finally:
         if server:
             server.shutdown()
             server.server_close()
         store.demo.close()
+
+
+def camera_check():
+    from verify_director_ui import verify_evidence
+
+    store, identifier, _ = fixture_store()
+    server = None
+    try:
+        class CameraHandler(Handler):
+            pass
+        CameraHandler.store = store
+        server = ThreadingHTTPServer(('127.0.0.1', 0), CameraHandler)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        url = f'http://127.0.0.1:{server.server_port}'
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            verify_evidence(browser, url, store)
+            page = browser.new_page(viewport={'width': 1440, 'height': 1000}, reduced_motion='reduce')
+            errors, requests = [], []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            page.on('request', lambda request: requests.append(request.url))
+            state = {'session_id': 'camera-fixture', 'status': 'watching', 'sequence': 0, 'events': [], 'assignments': {}, 'alerts': {}}
+            base = deepcopy(next(iter(store.director.state['assignments'].values())))
+            for index, kind in enumerate(['fire_engine', 'ambulance', 'police', 'helicopter']):
+                assignment = deepcopy(base)
+                lat, lon = 41.40 + index * .01, 2.12 + index * .01
+                assignment.update(id=kind, status='transporting' if kind == 'ambulance' else 'enroute',
+                                  started_at=time.time(), travel_seconds=1000, route_revision=1)
+                assignment['resource'].update(id=kind, kind=kind, lat=lat, lon=lon)
+                assignment['route'].update(coordinates=[[lon, lat], [lon + .01, lat + .01]], cumulative_km=[0, 1], distance_km=1)
+                state['assignments'][kind] = assignment
+            page.route('**/app.js', instrument_map)
+            page.route('**/api/director', lambda route: route.fulfill(json=state | {'server_time': time.time()}))
+            page.goto(url)
+            expect(page.locator('.response-vehicle')).to_have_count(4)
+
+            def event(kind, resource=None):
+                state['sequence'] += 1
+                message = f'Cámara fixture {state["sequence"]}'
+                state['events'].append({'sequence': state['sequence'], 'at': time.time(), 'kind': kind,
+                                        'incident_id': identifier, 'resource_id': resource, 'message': message})
+                expect(page.locator('#agent-message')).to_have_text(message, timeout=15000)
+
+            for kind in ['fire_engine', 'ambulance', 'police', 'helicopter']:
+                event('dispatch' if kind == 'fire_engine' else 'vehicle', kind)
+                assignment = state['assignments'][kind]
+                expected = [assignment['resource']['lat'], assignment['resource']['lon'], 14 if kind == 'helicopter' else 15.5]
+                page.wait_for_function('([lat,lon,zoom]) => { const m=window.__directorMap, c=m.getCenter(); return Math.abs(c.lat-lat)<.00001 && Math.abs(c.lng-lon)<.00001 && m.getZoom()===zoom; }', arg=expected)
+            state['assignments']['fire_engine']['status'] = 'returning'
+            event('return', 'fire_engine')
+            page.wait_for_function('window.__directorMap.getZoom() === 15.5')
+            page.locator('#follow-toggle').click()
+            before = page.evaluate('[window.__directorMap.getZoom(), window.__directorMap.getCenter()]')
+            event('arrived')
+            assert page.evaluate('[window.__directorMap.getZoom(), window.__directorMap.getCenter()]') == before
+            page.locator('#follow-toggle').click()
+            event('arrived')
+            page.wait_for_function('Math.abs(window.__directorMap.getCenter().lng - 2.1744) < .01')
+            page.set_viewport_size({'width': 390, 'height': 844})
+            event('vehicle', 'ambulance')
+            expect(page.locator('.response-vehicle.ambulance')).to_have_count(1)
+            expect(page.locator('.traffic-canvas, .traffic-breakdown')).to_have_count(0)
+            assert not any('/traffic.js' in request or '/api/scenario/roads' in request for request in requests), requests
+            assert not errors, errors
+            browser.close()
+        print('Cámara verificada: avisos, viaje alejar/acercar, cuatro tipos de vehículo, traslado, regreso, llegada, control manual, reanudación y móvil. Sin capa ni consultas de coches; voz/LLM fixtures.')
+    finally:
+        if server:
+            server.shutdown()
+            server.server_close()
+        store.demo.close()
+
+
+def editor_check():
+    with tempfile.TemporaryDirectory() as temporary, patch('reports.MEMORY_ROOT', Path(temporary) / 'vault'), patch('reports.REPORT_ROOT', Path(temporary) / 'pdf'):
+        store, identifier, _ = fixture_store()
+        server = None
+        try:
+            class EditorHandler(Handler):
+                pass
+            EditorHandler.store = store
+            server = ThreadingHTTPServer(('127.0.0.1', 0), EditorHandler)
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            url = f'http://127.0.0.1:{server.server_port}'
+            errors = []
+            scene = store.director.scene
+            record = scene.data['incidents'][identifier]
+            observations = deepcopy(store.incidents)
+            routes = {key: deepcopy(a['route']) for key, a in store.director.state['assignments'].items()}
+            with sync_playwright() as playwright:
+                browser = playwright.chromium.launch()
+                page = browser.new_page(viewport={'width': 1440, 'height': 1000})
+                page.on('pageerror', lambda error: errors.append(str(error)))
+                page.route('**/*', lambda route: route.continue_() if route.request.url.startswith(url + '/') else route.abort())
+                page.goto(url)
+                pencil = page.locator('#scenario-edit-toggle')
+                expect(pencil).to_be_visible()
+                settings = page.locator('#settings-toggle')
+                left, right = pencil.bounding_box(), settings.bounding_box()
+                assert left['x'] + left['width'] < right['x']
+                await_box = page.locator('#scenario-edit-status')
+                pencil.click()
+                expect(page.locator('#scenario-edit-panel')).to_be_visible()
+                page.locator('#scenario-random-cut').click()
+                expect(await_box).to_contain_text('Corte creado', timeout=30000)
+                assert scene.data['closures']
+                changed = [a for key, a in store.director.state['assignments'].items() if a.get('previous_route') == routes[key]]
+                assert changed
+                for assignment in changed:
+                    assert assignment['status'] == 'blocked' or not set(assignment['route']['edge_ids']) & set(scene.data['closures'])
+                page.locator('#scenario-edit-wind').focus()
+                page.keyboard.press('End')
+                expect(await_box).to_contain_text('Cambio aplicado')
+                assert record['wind_to'] == 359
+                page.locator('#scenario-edit-power').focus()
+                page.keyboard.press('Home')
+                expect(page.locator('#scenario-edit-power-value')).to_contain_text('Apagar · 100 %')
+                expect(page.locator('#scenario-edit-power')).to_be_enabled()
+                assert record['fire_power'] == -100
+                before = record['radius_km']
+                scene.evolve(record['last_tick'] + 10)
+                assert record['radius_km'] < before
+                page.keyboard.press('End')
+                expect(page.locator('#scenario-edit-power-value')).to_contain_text('Avivar · 100 %')
+                expect(page.locator('#scenario-edit-power')).to_be_enabled()
+                assert record['fire_power'] == 100
+                before = record['radius_km']
+                scene.evolve(record['last_tick'] + 10)
+                assert record['radius_km'] > before
+                page.locator('#scenario-edit-normal').click()
+                expect(page.locator('#scenario-edit-power-value')).to_contain_text('Evolución normal')
+                assert record['fire_power'] == 0
+                assert store.incidents == observations
+                page.screenshot(path=str(ROOT / '.local/scenario-editor-desktop.png'))
+                page.keyboard.press('Escape')
+                expect(page.locator('#scenario-edit-panel')).to_be_hidden()
+                expect(pencil).to_be_focused()
+                settings.click()
+                expect(page.locator('#settings-panel')).to_be_visible()
+                pencil.click()
+                expect(page.locator('#settings-panel')).to_be_hidden()
+                settings.click()
+                expect(page.locator('#scenario-edit-panel')).to_be_hidden()
+                page.set_viewport_size({'width': 390, 'height': 844})
+                pencil.click()
+                box = page.locator('#scenario-edit-panel').bounding_box()
+                assert box['x'] >= 0 and box['x'] + box['width'] <= 390 and box['y'] >= 0
+                page.screenshot(path=str(ROOT / '.local/scenario-editor-mobile.png'))
+                page.locator('#scenario-edit-close').click()
+                expect(page.locator('#scenario-edit-panel')).to_be_hidden()
+                with store.director.lock:
+                    store.director.state['assignments'] = {}
+                pencil.click()
+                page.locator('#scenario-random-cut').click()
+                expect(await_box).to_contain_text('Hace falta una unidad')
+                assert not errors, errors
+                browser.close()
+            print('Editor verificado: escritorio/móvil, corte con A* local, viento, potencia progresiva, teclado, errores y datos originales intactos. Voz/LLM fixtures, sin llamadas reales.')
+        finally:
+            if server:
+                server.shutdown()
+                server.server_close()
+            store.demo.close()
 
 
 def cloud_check():
@@ -277,8 +445,14 @@ if __name__ == '__main__':
     parser.add_argument('--cloud', action='store_true', help='Consume una ejecución real del director, nunca llama a un teléfono')
     parser.add_argument('--phone', action='store_true', help='Llama a los contactos reales: requiere autorización específica del usuario')
     parser.add_argument('--cycles', type=int, default=1, choices=range(1, 6), help='Repite solo los ciclos de fixtures, nunca llamadas reales')
+    parser.add_argument('--editor', action='store_true', help='Verifica el editor con fixtures y rutas locales, sin llamadas reales')
+    parser.add_argument('--camera', action='store_true', help='Verifica seguimiento y ausencia de tráfico con fixtures, sin llamadas reales')
     args = parser.parse_args()
-    if args.phone:
+    if args.camera:
+        camera_check()
+    elif args.editor:
+        editor_check()
+    elif args.phone:
         phone_check()
     elif args.cloud:
         cloud_check()

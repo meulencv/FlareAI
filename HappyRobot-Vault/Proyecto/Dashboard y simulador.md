@@ -4,6 +4,58 @@ tags: [happyrobot, proyecto]
 
 # Dashboard y simulador
 
+## Retirada e informe rápidos (2026-09-20)
+
+Petición: «una vez se apague el incendio, que nos dé el informe rápido», para una demo breve.
+Se eliminaron 25 s hasta vigilancia y 45 s antes de retirada en ambos motores. Al alcanzar la
+extinción ilustrativa, las unidades regresan inmediatamente, con animación de 5–15 s. Un traslado
+sanitario ya iniciado termina primero; una carretera cortada sigue pudiendo impedir el regreso.
+
+El informe se genera al iniciar la retirada, no al acabar todos los viajes. Declara cuántas unidades
+siguen ocupadas en ese momento, sin fingir llegada a base ni alta del paciente. El cierre conserva
+su significado de unidades ya liberadas y no genera un segundo PDF. Se mantienen los datos NASA.
+
+Registro de sesión: primero fallaron tres regresiones con las esperas antiguas; después se cambió
+el ciclo, se adaptaron sus pruebas y el verificador de presentación. Pasaron 123 pruebas Python,
+36 JS, Ruff y el recorrido Chromium (Cerebro y PDF por HTTP, fixtures, sin llamadas reales).
+Reproducir: `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_presentation.py`.
+
+## Editor manual del escenario (2026-09-20)
+
+Petición: un lápiz rojo a la izquierda de Ajustes, con «Crear corte random», viento y potencia del fuego.
+A diferencia de los ensayos visuales descritos más abajo, estos controles **sí cambian el motor local**.
+Se reutilizó `/api/scenario` para conservar validación de origen, cerrojo, historial y persistencia.
+
+- El corte se escoge al azar por delante de una unidad terrestre, sobre aristas reales y sin cortar.
+  A* recalcula desde la posición interpolada de las unidades afectadas. Sin alternativa quedan detenidas;
+  no se inventa un desvío visual ni se consulta OSRM ignorando la barrera. Hace falta una unidad en marcha.
+- El selector de incendio delimita los sliders, no el corte compartido de carretera. Viento expresa
+  dirección **hacia** 0–359°, no procedencia NOAA. La potencia negativa apaga progresivamente, cero devuelve
+  la evolución normal y positiva aviva, manteniendo trabajo de medios y topes del simulador.
+- Se permite reactivar un incendio contenido/en vigilancia, no uno en retirada/cerrado. No cambia
+  observaciones NASA/NOAA ni workflows, contactos o telefonía. Los cambios constan como manuales/simulados.
+- El panel usa el estilo de Ajustes, cierre por botón/Escape y confirmaciones accesibles. Serializa cambios
+  al soltar el slider, no por cada píxel. Recupera foco tras guardar: desactivar el input durante el POST
+  lo hacía perder en Chromium e impedía continuar ajustando con teclado.
+
+### Registro de la sesión
+
+Primero se añadieron regresiones que fallaban con el contrato anterior; después se conectaron panel y
+motor y se probó el recorrido por HTTP en escritorio/móvil. El ensayo usa voz/LLM fixtures y la red local
+cacheada, sin llamadas reales ni ejecuciones cloud. Comprueba corte, desvío/detención, viento, reducción y
+avivado progresivos, teclado, errores y conservación de datos originales. Capturas en
+`.local/scenario-editor-desktop.png` y `.local/scenario-editor-mobile.png`; el visor del agente no pudo
+abrirlas por la política de archivos ignorados, aunque las comprobaciones DOM y de interacción pasaron.
+
+```bash
+.venv/bin/python -m unittest test_scene test_local_routes test_autodispatch test_director test_operations test_presentation
+.local/node-v22.19.0-darwin-arm64/bin/node --test test_operations.mjs test_scene.mjs test_director.mjs
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_presentation.py --editor
+```
+
+Para usar el contrato nuevo en un servidor que ya estaba ejecutándose hay que reiniciarlo y recargar
+la web. No se reinició la sala activa ni se restableció ninguna base de datos durante esta sesión.
+
 ## FlareAI actual: recálculos visuales esporádicos (2026-09-20)
 
 El usuario pidió dar algo de aleatoriedad al historial y representar visualmente algún recálculo,

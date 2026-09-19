@@ -58,6 +58,42 @@ class OutboundTests(unittest.TestCase):
 
 
 class ReportTests(unittest.TestCase):
+    def test_report_is_ready_during_return_and_created_only_once(self):
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+        from operations import Operations
+        from reports import finish_operation
+        with tempfile.TemporaryDirectory() as temporary, patch('reports.MEMORY_ROOT', Path(temporary) / 'memory'), patch('reports.REPORT_ROOT', Path(temporary) / 'pdf'):
+            db = Mock()
+            db.document.return_value = None
+            db.documents.return_value = []
+            db.director_history.return_value = {'events': []}
+            scene = {'phase': 'active', 'started_at': 100, 'peak_radius_km': .5}
+            record = {'id': 'fire', 'name': 'Barcelona', 'reported': False, 'requests': {}}
+            director = SimpleNamespace(db=db, session_id='fixture', scene=SimpleNamespace(data={'incidents': {'fire': scene}}),
+                state={'operations': {'fire': record}, 'events': [], 'assignments': {'truck': {'incident_id': 'fire', 'status': 'returning'}}},
+                store=SimpleNamespace(demo=SimpleNamespace(field_reports={})), event=Mock(), save=Mock())
+            operations = Operations.__new__(Operations)
+            operations.director, operations.db = director, db
+            operations.last_heartbeat = 0
+            operations.outbound, operations.reinforce, operations.context = Mock(), Mock(), Mock(return_value={})
+            director.operations = operations
+            with patch('reports.finish_operation', wraps=finish_operation) as finish:
+                operations.tick({})
+                finish.assert_not_called()
+                scene['phase'] = 'releasing'
+                operations.tick({})
+                self.assertTrue(record['reported'])
+                finish.assert_called_once()
+                report = next(call.args[2] for call in db.document.call_args_list if len(call.args) > 2 and call.args[1] == 'report')
+                self.assertIn('regreso', report['summary'])
+                self.assertEqual(report['pending_units'], 1)
+                self.assertTrue((Path(temporary) / 'pdf' / (report['id'] + '.pdf')).read_bytes().startswith(b'%PDF-1.4'))
+                scene['phase'] = 'closed'
+                operations.tick({})
+                finish.assert_called_once()
+
     def test_base_notes_are_linked_and_sent_to_decision_context(self):
         db = Mock()
         db.documents.return_value = []
