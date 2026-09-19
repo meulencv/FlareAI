@@ -63,3 +63,12 @@ CREATE TABLE IF NOT EXISTS flare_demo_calls (
 );
 CREATE INDEX IF NOT EXISTS flare_demo_calls_session ON flare_demo_calls (session_id);
 INSERT INTO flare_migrations(version) VALUES (3) ON CONFLICT DO NOTHING;
+CREATE TABLE IF NOT EXISTS flare_director_state (
+    session_id text PRIMARY KEY REFERENCES flare_demo_sessions(id),
+    updated_at timestamp NOT NULL DEFAULT (now() AT TIME ZONE 'UTC'), data jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS flare_director_events (
+    session_id text NOT NULL REFERENCES flare_demo_sessions(id), sequence int8 NOT NULL,
+    data jsonb NOT NULL, PRIMARY KEY (session_id, sequence)
+);
+INSERT INTO flare_migrations(version) VALUES (4) ON CONFLICT DO NOTHING;

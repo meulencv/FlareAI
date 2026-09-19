@@ -4,6 +4,7 @@ import { createStage, confirmedFire } from "./flames.js";
 import { rings } from "./flow.js";
 import { createContextView } from "./context.js";
 import { createInfrastructure } from "./infrastructure.js";
+import { createDirectorView } from "./director.js";
 
 const $ = id => document.getElementById(id);
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -40,6 +41,11 @@ const infrastructure = createInfrastructure({ map, L, document, fetch });
 const contextView = createContextView({ map, document, fetch, canvas: $("heat"), onContext: infrastructure.setContext, onFocus: () => {
   cancelZoom(); $("details").classList.remove("open");
 } });
+const directorView = createDirectorView({ map, L, document, fetch,
+  findIncident: id => data?.incidents.find(i => i.id === id),
+  focus: (incident, focus) => selectIncident(incident, focus),
+  clearContext: () => { if (document.body.classList.contains("map-only")) contextView.clear(); },
+});
 const views = {
   peninsula: [[35.6, -9.9], [44.1, 4.65]], baleares: [[38.5, .8], [40.4, 4.8]],
   canarias: [[27.4, -18.4], [29.5, -13.25]], ceuta: [[34.9, -6.2], [36.6, -2.1]],
@@ -102,19 +108,20 @@ function renderFires(incidents) {
       pane: "footprints", className: "fire-target",
       style: { color: "#00000000", weight: 12, fillColor: "#00000000", fillOpacity: 0 },
     }).on("click", () => selectIncident(i, true)).addTo(shapeLayer);
-    if (i.id === selected?.id) {
+    if (i.id === selected?.id && !document.body.classList.contains("map-only")) {
       target.bindTooltip(`${escapeHtml(i.name)} · ${i.source_kind === "call" ? "aviso webcall · demo" : `${i.observations} detecciones`}`,
         { permanent: true, direction: "right", offset: [14, 0], className: `fire-label ${confirmedFire(i) ? "confirmed" : "unconfirmed"}` }).openTooltip();
     }
   }
   stage.update(incidents, selected?.id || null);
+  infrastructure.setIncidents(incidents);
   contextView.setVisible(incidents.some(i => i.id === selected?.id));
 }
 
-function selectIncident(incident, focus = false) {
+function selectIncident(incident, focus = false, details = false) {
   stopPlay(); $("horizon").value = "0";
   selected = incident;
-  $("details").classList.toggle("open", !matchMedia("(max-width:650px)").matches);
+  $("details").classList.toggle("open", details || !document.body.classList.contains("map-only"));
   $("sidebar").classList.remove("open");
   $("detail-content").hidden = false;
   $("detail-name").textContent = incident.name;
@@ -152,7 +159,7 @@ function selectIncident(incident, focus = false) {
   $("simulate").disabled = to === null || incident.source_kind === "call";
   $("scenario-shortcut").disabled = $("simulate").disabled;
   renderList(); renderScenario();
-  loadPicture();
+  if ($("details").classList.contains("open")) loadPicture();
   contextView.load(incident, { focus });
 }
 
@@ -221,8 +228,9 @@ async function refresh() {
     if (data.demo?.session_id !== demoSession) { demoVersion = 0; demoSession = data.demo?.session_id; }
     const reported = data.demo && data.demo.version > demoVersion ? data.incidents.find(i => i.id === data.demo.latest_id) : null;
     demoVersion = data.demo?.version || 0;
-    const focusReport = reported && (!selected?.demo_report || selected.id !== reported.id || JSON.stringify(reported.demo_report?.location) !== JSON.stringify(selected.demo_report?.location));
+    const focusReport = previousData && reported && (!selected?.demo_report || selected.id !== reported.id || JSON.stringify(reported.demo_report?.location) !== JSON.stringify(selected.demo_report?.location));
     const latestCall = data.demo?.calls.at(-1);
+    if (previousData && JSON.stringify(latestCall) !== JSON.stringify(previousData.demo?.calls.at(-1))) directorView.call(latestCall);
     $("demo-notice").hidden = !latestCall;
     $("demo-notice").textContent = latestCall?.error || (latestCall?.state === "located" ? "Llamada recibida · aviso marcado en el mapa · DEMO" : latestCall?.state === "needs_location" ? "Webcall · pendiente de ubicación suficiente" : latestCall?.state === "not_fire" ? "Webcall · no se ha confirmado un incendio" : latestCall?.ended ? "Webcall finalizada · sin ubicación suficiente" : "Webcall iniciada · recogiendo datos");
     $("zone-count").textContent = data.incidents.length;
@@ -234,8 +242,9 @@ async function refresh() {
     $("feed-state").innerHTML = `<i></i>${data.status === "ready" ? "Fuentes conectadas" : data.status === "offline" ? "Muestra guardada" : "Datos sin actualizar"}`;
     $("error-banner").hidden = data.status === "ready";
     $("error-banner").textContent = data.status === "offline" ? "Modo sin conexión. Consulta las fechas de la muestra guardada." : "Alguna fuente no está actualizada. Conservamos los últimos datos con su fecha.";
-    const next = focusReport ? reported : data.incidents.find(i => i.id === selected?.id) || data.incidents[0];
+    const next = focusReport ? reported : data.incidents.find(i => i.id === selected?.id);
     if (focusReport) {
+      directorView.report(next);
       selectIncident(next, true);
     } else if (!selected || next?.id !== selected.id) {
       if (next) selectIncident(next);
@@ -326,12 +335,13 @@ $("map").addEventListener("wheel", event => {
   if (!delta) return;
   zoomTo((zoomTarget ?? map.getZoom()) - Math.sign(delta) * Math.min(.75, Math.abs(delta) / 120), map.mouseEventToContainerPoint(event));
 }, { passive: false });
-map.on("dragstart mousedown touchstart", cancelZoom);
+map.on("dragstart mousedown touchstart", () => { cancelZoom(); directorView.manual(); });
 $("zoom-in").onclick = () => zoomTo((zoomTarget ?? map.getZoom()) + 1);
 $("zoom-out").onclick = () => zoomTo((zoomTarget ?? map.getZoom()) - 1);
 $("motion-toggle").onclick = () => {
   animationPaused = !animationPaused;
   stage.setPaused(animationPaused);
+  directorView.setPaused(animationPaused);
   $("motion-toggle").setAttribute("aria-pressed", String(animationPaused));
   $("motion-toggle").setAttribute("aria-label", animationPaused ? "Reanudar animaciones" : "Pausar animaciones");
   $("motion-toggle").innerHTML = animationPaused ? svg("play") : '<span class="pause-icon">Ⅱ</span>';
@@ -340,6 +350,13 @@ $("reset-map").onclick = () => { closeSimulation(); setRegion(region); };
 $("wind-toggle").onclick = () => {
   windVisible = !windVisible; $("wind-toggle").classList.toggle("active", windVisible);
   $("wind-toggle").setAttribute("aria-pressed", String(windVisible)); stage.setWind(windVisible);
+};
+$("explore-toggle").onclick = () => {
+  const minimal = document.body.classList.toggle("map-only");
+  $("explore-toggle").setAttribute("aria-expanded", String(!minimal));
+  if (minimal) { $("details").classList.remove("open"); $("sidebar").classList.remove("open"); closeSimulation(); }
+  else if (selected) selectIncident(selected, false, true);
+  map.invalidateSize();
 };
 $("show-list").onclick = () => { $("sidebar").classList.toggle("open"); $("details").classList.remove("open"); };
 $("close-details").onclick = () => {

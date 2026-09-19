@@ -24,7 +24,8 @@ ROOT = Path(__file__).resolve().parent
 PG = ROOT / '.local/pg'
 CATALOG = ROOT / 'data/espana-en-directo/data/catalog.json'
 TABLES = ('sources', 'imports', 'grid', 'facilities', 'cameras', 'snapshots', 'incidents',
-          'observations', 'confirmations', 'assets', 'settings', 'camera_checks', 'demo_sessions', 'demo_calls')
+          'observations', 'confirmations', 'assets', 'settings', 'camera_checks', 'demo_sessions', 'demo_calls',
+          'director_state', 'director_events')
 
 
 def local_start() -> None:
@@ -74,6 +75,19 @@ class Database:
         with self.connect() as conn:
             conn.execute('SELECT pg_advisory_xact_lock(804021)')
             conn.execute((ROOT / 'schema.sql').read_text())
+
+    def director_setting(self, value: dict | None = None) -> dict:
+        with self.connect() as conn:
+            if value is not None:
+                conn.execute("INSERT INTO flare_settings VALUES ('director-workflow',%s) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data", (Jsonb(value),))
+            row = conn.execute("SELECT data FROM flare_settings WHERE id='director-workflow'").fetchone()
+            return row['data'] if row else {}
+
+    def save_director(self, session_id: str, state: dict) -> None:
+        with self.connect() as conn:
+            conn.execute("INSERT INTO flare_director_state(session_id,data) VALUES (%s,%s) ON CONFLICT(session_id) DO UPDATE SET data=EXCLUDED.data,updated_at=(now() AT TIME ZONE 'UTC')", (session_id, Jsonb(state)))
+            for event in state['events']:
+                conn.execute('INSERT INTO flare_director_events VALUES (%s,%s,%s) ON CONFLICT DO NOTHING', (session_id, event['sequence'], Jsonb(event)))
 
     def source(self, conn: Any, identifier: str, data: dict) -> None:
         conn.execute('INSERT INTO flare_sources VALUES (%s,%s) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data',
@@ -279,7 +293,9 @@ class Database:
             (directory / 'schema.sql').write_text((ROOT / 'schema.sql').read_text())
             for table in TABLES:
                 with conn.cursor(name='export_' + table) as cur, (directory / f'flare_{table}.jsonl').open('x') as output:
-                    cur.execute(f'SELECT * FROM flare_{table} ORDER BY id')
+                    order = {'director_state': 'session_id', 'director_events': 'session_id,sequence'}.get(table, 'id')
+                    columns = "id,data - 'hook_key' AS data" if table == 'settings' else '*'
+                    cur.execute(f'SELECT {columns} FROM flare_{table} ORDER BY {order}')
                     for row in cur:
                         output.write(json.dumps(row, ensure_ascii=False, default=lambda v: v.isoformat()) + '\n')
 

@@ -117,6 +117,15 @@ class PublishTests(unittest.TestCase):
 
 
 class DemoHTTPTests(unittest.TestCase):
+    def test_public_url_ignores_cloudflare_service_hosts(self):
+        import re
+        pattern = re.compile(r'https://(?!api\.)[a-z0-9]+(?:-[a-z0-9]+)+\.trycloudflare\.com')
+        for noise in ['Requesting new quick Tunnel on trycloudflare.com...',
+                      'ERR Request failed error="lookup api.trycloudflare.com" url=https://api.trycloudflare.com/tunnel']:
+            self.assertIsNone(pattern.search(noise), noise)
+        assigned = '|  https://skills-islands-plastic-changelog.trycloudflare.com   |'
+        self.assertEqual(pattern.search(assigned).group(0), 'https://skills-islands-plastic-changelog.trycloudflare.com')
+
     def test_mobile_isolation_ownership_and_map_update(self):
         import json
         import threading
@@ -151,7 +160,7 @@ class DemoHTTPTests(unittest.TestCase):
                     headers['Origin'] = origin
                 return urlopen(Request(base + path, data=json.dumps(body).encode() if body is not None else None, headers=headers), timeout=5)
             try:
-                for path in ['/api/data', '/api/demo/setup', '/schema.sql', '/112/../demo.py']:
+                for path in ['/api/data', '/api/demo/setup', '/api/director', '/director.py', '/schema.sql', '/112/../demo.py']:
                     with self.assertRaises(HTTPError) as error:
                         request(path)
                     self.assertEqual(error.exception.code, 404)

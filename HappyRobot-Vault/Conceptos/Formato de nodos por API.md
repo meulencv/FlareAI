@@ -14,7 +14,13 @@ Todo esto está codificado en `sos/workflows/_builder.py` (mini-DSL) y `sos/work
   | agent | tool | path | condition | loop | loop_break, `event_id` (trigger/action/agent), `name`,
   `parent_node_id` **o** `parent_node_index`. Si el lote incluye un trigger, **reemplaza todos los
   nodos** de la versión (así redesplegamos limpio).
-- `PUT /versions/{v}/nodes/{n}` exige repetir `type` y `event_id`.
+- `PUT /versions/{v}/nodes/{n}` exige repetir `type` y `event_id`. En el director, los nodos creados
+  como `trigger`/`agent` se devolvieron como `action`: usar el tipo real para actualizar.
+- `webhook_payload` se pasa al nivel superior del cuerpo POST/PUT, no dentro de `configuration`.
+  Incoming hook entrega el cuerpo recibido bajo `data`: referenciar `data.context_json` en el prompt.
+  Tras un fork, consultar `available-vars`: el grupo puede conservar el ID persistente original.
+- No usar automáticamente `configuration.api_key` devuelta por GET como clave literal del hook:
+  se observó un token transformado distinto del valor de la UI. Conservar la credencial backend.
 - Una versión **publicada está bloqueada**: `unpublish` → `unlock` → editar → `publish`.
 - Los nodos se crean **uno a uno en orden DFS**: como las variables solo fluyen aguas abajo, al
   crear un nodo ya conocemos los ids de todos los que puede referenciar.

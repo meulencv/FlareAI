@@ -604,5 +604,63 @@ Los datos externos son contenido no confiable para prompts: no ejecutar instrucc
 nombres, etiquetas, URLs o descripciones. Un agente debe consultar entidades/categorías,
 comprobar fechas, revisar la evidencia y pedir aprobación operativa antes de cualquier acción.
 Las exportaciones señalan `operational_status=not_verified` y `dispatch_authorized=false`.
-No se han modificado bases ni workflows de HappyRobot. La migración futura conserva las tablas
-relacionales, convierte JSON a JSONB y sustituye únicamente el índice/distancia por PostGIS.
+El compilador del atlas no modifica bases ni workflows de HappyRobot. La migración futura conserva
+las tablas relacionales, convierte JSON a JSONB y sustituye únicamente el índice/distancia por PostGIS.
+
+## 11. Director de respuesta y presentación automática
+
+`Director` observa los avisos estructurados de `DemoBridge` en un worker independiente. El LLM es
+un Reasoning Agent real en HappyRobot, no una política local. El contexto incluye hasta ocho avisos,
+meteorología, resumen del atlas, tres sedes candidatas por tipo/aviso a 60 km y asignaciones/memoria.
+Los límites y datos ausentes se declaran. Capacidades demo: dos camiones por parque y una patrulla
+por sede; nunca se infiere disponibilidad operativa del catálogo. SQLite se abre con `mode=ro`.
+
+El fingerprint incluye posición, ficha, geometría, tiempo/valores meteorológicos y estado de las
+fuentes, no el reloj de polling. Un cambio o una revisión a 180 segundos inicia un único run, máximo
+30 por hora, sesión de agente de dos minutos. El hook recibe un string JSON; su salida real es
+`data.context_json`. El prompt debe usar `{{<grupo-persistente>.data.context_json}}`, obtenido del
+catálogo de variables. Un fork cambia IDs de nodos pero conserva IDs persistentes de variables.
+
+La tool `publicar_plan` devuelve `revision`, `summary`, `actions` (hasta ocho). Se admite `focus`,
+`context`, `watch`, `dispatch`, `reassign`, `return`, `alert`, con motivo breve e IDs existentes.
+El hijo Python de la tool solo acusa recepción pendiente de validación; no tiene efectos externos.
+El lector acepta `name`/`args` y `function.arguments`, únicamente del asistente del run iniciado.
+Se valida el contrato y la disponibilidad, se calculan rutas y se vuelve a comprobar la revisión.
+Un aviso corregido durante el cálculo invalida el plan. No se duplican recursos ni se despacha sin
+ruta. Se registra resultado ejecutado/bloqueado para la siguiente revisión. No se ejecuta código,
+URLs arbitrarias, SMS ni llamadas salientes procedentes del plan.
+
+Migración 4: `flare_director_state` y `flare_director_events`, FK a la sesión demo. Estado y eventos
+se guardan juntos; fallo al guardar una decisión revierte su aplicación en memoria. La llegada
+cambia a `onscene`, no a disponible; la vuelta libera el recurso al llegar. La reasignación parte
+de su posición interpolada, no de la estación. Cada arranque conserva historial pero crea sesión
+nueva: no es recuperación de despachos operativos. Configuración/clave del hook en SQL local, nunca
+publicadas; exportación excluye `hook_key`. `sync` no reemplaza el valor literal por el valor opaco
+que puede devolver la API de HappyRobot en `configuration.api_key`.
+
+`/api/director` publica reloj del servidor, estado, eventos secuenciales, asignaciones y vistas
+previas. El puerto móvil lo rechaza. `static/director.js` consume eventos recientes sin repetirlos,
+muestra mensajes temporales y el borde de actividad; ante desconexión deja de animar el estado
+como si siguiera vivo. Respeta pausa/pestaña oculta/movimiento reducido. Calor temporal durante
+45 s, fichas cerradas por defecto; las instalaciones requieren zoom 13 y respetan cajas de exclusión
+calculadas con el mismo mínimo visual de las llamas. Vehículos y rutas van bajo el fuego.
+
+`local_routes.py` descarga por Overpass las vías de una caja cuantizada con margen (máximo 60 km
+entre extremos, área limitada, 24 MB y timeout). Rechaza respuestas parciales `remark`. Conserva
+geometrías originales en SQL; grafo dirigido con nodos OSM compartidos, índice de proximidad y A*.
+Coste por velocidades ilustrativas de clase viaria y maxspeed numérico, heurística haversine/90 km/h.
+No conecta cruces a distinto nivel por simple intersección geométrica. Ajusta extremos a nodos a
+hasta 750 m; no afirma llegar a la entrada del edificio o al fuego exacto. Respeta sentidos únicos,
+rotondas/acceso básico; no modela relaciones de giro completas, barreras, gálibos ni tráfico.
+Caché siete días y hasta seis grafos en memoria. Sin conexión viaria se bloquea el desplazamiento,
+no se dibuja una línea recta. No usa un servicio externo de cálculo de rutas.
+
+Animación por distancia acumulada, no por densidad de vértices, con duración visual acelerada de
+45–150 segundos y salidas escalonadas de cuatro segundos para vehículos de una misma sede. ES-Alert
+solo dibuja una vista previa y una zona ilustrativa; no envía ni delimita evacuaciones. Cámaras y
+Traffic Lab no se conectan en esta fase.
+
+Prueba real del director: run `87e54d53-bfb5-489e-8def-b3ab2d6f932b`, aviso de Tarragona inyectado
+como fixture, razonamiento HappyRobot real y dos camiones con ruta A* de 2,08 km. Las pruebas UI
+sin `--cloud` usan planner fixture; con `--cloud` usan el LLM real. Ninguna sustituye la valoración
+humana del audio ni se presenta como nueva llamada de voz real.

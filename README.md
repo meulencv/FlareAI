@@ -109,6 +109,47 @@ el polling de HappyRobot y PostgreSQL. La demo actual usa rutas relativas y cook
 origen: requiere un proxy `/112/api/*` hacia ese backend, o adaptar explícitamente esa separación.
 Publicar solo los estáticos no ejecuta `app.py` ni su adquisición en segundo plano.
 
+## Director autónomo de la demo
+
+El mapa arranca sin selección ni paneles abiertos. `flareai +` recupera la exploración manual.
+Gasolineras e instalaciones aparecen desde zoom 13 y se ocultan si tapan la huella del fuego.
+
+Cuando una llamada aporta un aviso localizado, un **Reasoning Agent de HappyRobot** recibe el
+contexto territorial, la meteorología fechada, los recursos y la memoria reciente. Decide mediante
+`publicar_plan`; el backend local valida la revisión, los IDs, la disponibilidad y las rutas antes
+de mostrar movimientos. No se sustituye el LLM por reglas locales. El workflow de voz no cambia.
+
+Mensajes breves, un borde multicolor de actividad, estaciones y vehículos muestran lo que ocurre.
+La flota es ficticia sobre sedes del atlas real; el discreto `modo demo` permanece visible. No se
+movilizan servicios reales, no hay SMS y ES-Alert es solo una vista previa. Las cámaras no intervienen
+todavía en las rutas. La memoria se conserva durante la sesión; reiniciar crea una nueva, sin borrar
+el historial SQL anterior.
+
+Las rutas se calculan **localmente con A\***: se descargan geometrías OSM acotadas vía Overpass y se
+cachean en PostgreSQL. No se llama a un servicio externo de routing. Se respetan sentidos únicos
+y acceso básico, pero no hay cortes/tráfico real, gálibos ni todas las restricciones de giro. Sin
+ruta conectada no se inventa un trayecto. La animación está acelerada, no representa una ETA real.
+
+```bash
+.venv/bin/python director_workflow.py status
+.venv/bin/python -m unittest test_director test_local_routes -v
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_director_ui.py
+```
+
+La prueba visual sin `--cloud` usa fixtures y requiere la ruta de Tarragona ya cacheada. Para
+verificar un razonamiento real con cuota, ejecutar expresamente:
+
+```bash
+.venv/bin/python verify_director.py --cloud
+PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_director_ui.py --cloud
+```
+
+Verificado el 19/09/2026: el LLM real decidió asignar dos camiones del parque de Tarragona y se
+aplicaron rutas locales de 2,08 km. El aviso de entrada era una fixture, no una nueva llamada de
+voz. El workflow nuevo está separado del marcador; credenciales solo en backend. `sync` conserva
+la clave literal del hook, pues el valor devuelto por la API puede estar transformado. Nunca
+copiar claves al frontend ni al repositorio. La exportación SQL omite la clave del hook.
+
 ## Qué puedes hacer
 
 - Seleccionar una superficie de calor o una zona de la lista.

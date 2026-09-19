@@ -49,6 +49,40 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## Director HappyRobot y rutas locales (19/09/2026)
+
+- `director.py` conecta avisos de DemoBridge con un Reasoning Agent independiente; no hay planner
+  determinista de respaldo en producción. SMS/Telegram quedan fuera. Cámaras/Traffic Lab, para después.
+- `director_workflow.py`: workflow `01a0b948-d14b-7883-bb58-2c9a014f27f4`; versión corregida
+  `01a0b969-9df4-7789-87b5-d2cea2da3cff`. No modificar el workflow de voz. `upgrade` prepara un fork;
+  HappyRobot exige despublicar la versión viva antes de publicar otra: pedir confirmación específica.
+- `Incoming hook` entrega `data.context_json`, NO `context_json` en la raíz. El prompt referencia
+  el ID persistente del grupo de `available-vars`, que puede diferir del ID del nodo tras un fork.
+  Las tool calls reales pueden contener `name`/`args` y además `function.arguments`: no detener la
+  búsqueda en el wrapper sin argumentos. Regresiones en `test_director.py`.
+- La credencial literal del webhook permanece en `flare_settings['director-workflow']`, solo backend.
+  El valor que devuelve `configuration.api_key` puede estar transformado: `sync` conserva la clave
+  literal, no la sustituye por ese valor. No imprimir credenciales ni pedir pegarlas en el chat.
+  `Database.export` elimina `hook_key`. API de cuenta y clave de hook son distintas.
+- Migración 4: estado y eventos en `flare_director_state`/`flare_director_events`. Nueva sesión en cada
+  arranque, histórico conservado. Un worker con advisory lock, revisión por cambios/cada 180 s,
+  hasta 30 runs/hora, ocho incidentes por contexto (exceso declarado), ocho acciones por plan.
+  Validar revisiones antes/después de calcular rutas; sin ruta no hay despacho. Flota ficticia,
+  sedes reales del SQLite en solo lectura. Llegar no libera el vehículo ni confirma extinción.
+- `local_routes.py`: A* local sobre geometrías OSM descargadas por zona vía Overpass, caché SQL.
+  No usa servicios de routing externos. Sentidos/acceso básicos, sin tráfico/gálibos/giros completos.
+  Máximo 60 km entre extremos, descarga 24 MB, caché siete días. Trayectos visuales acelerados.
+- UI inicial solo mapa, instalaciones desde zoom 13 y exclusión sobre huellas; cámaras desde 10.
+  `static/director.js`: decisiones temporales, borde de actividad y camiones por distancia acumulada.
+  ES-Alert es solo vista previa, sin envío. Dos vehículos de la misma sede salen escalonados.
+- Pruebas: `.venv/bin/python -m unittest test_director test_local_routes -v`;
+  `PLAYWRIGHT_BROWSERS_PATH="$PWD/.local/playwright-browsers" .venv/bin/python verify_director_ui.py`
+  (fixtures, ruta Tarragona debe estar cacheada). `verify_director.py --cloud` o el verificador UI
+  con `--cloud` consumen cuota real; no ejecutarlos automáticamente en CI.
+- Run real verificado `87e54d53-bfb5-489e-8def-b3ab2d6f932b`: contexto Tarragona, plan del LLM,
+  dos camiones y ruta local 2,08 km. Entrada de llamada fixture, NO nueva prueba de audio real.
+  Mypy global conserva un error previo ajeno en `sms_demo.py:271`; los archivos del director pasan.
+
 ## Traffic Lab de Lucía (aislado)
 
 - `traffic_lab/` conserva su propio servidor, frontend, dependencias, muestras y workflow.

@@ -388,7 +388,7 @@ def publish(port: int = 8112) -> None:
         if process.stdout is None:
             raise RuntimeError('No se pudo leer la dirección pública')
         for line in process.stdout:
-            match = re.search(r'https://[a-z0-9-]+\.trycloudflare\.com', line)
+            match = re.search(r'https://(?!api\.)[a-z0-9]+(?:-[a-z0-9]+)+\.trycloudflare\.com', line)
             if match:
                 data = {'url': match.group(0), 'pid': process.pid, 'port': port}
                 temporary = runtime.with_suffix('.tmp')

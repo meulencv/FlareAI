@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents } from "./static/infrastructure.js";
+import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, facilitiesVisible, fireExclusionBoxes, obscuresFire } from "./static/infrastructure.js";
+
+test("las instalaciones solo aparecen de cerca y nunca encima de una huella ampliada", () => {
+  assert.equal(facilitiesVisible(12.99), false);
+  assert.equal(facilitiesVisible(13), true);
+  const fire = { lat: 0, lon: 0, footprint: { type: "Polygon", coordinates: [[[-.01, -.01], [.01, -.01], [.01, .01], [-.01, -.01]]] } };
+  const boxes = fireExclusionBoxes([fire], ([lat, lon]) => ({ x: lon, y: lat }));
+  assert.equal(obscuresFire({ x: 25, y: 0 }, boxes), true);
+  assert.equal(obscuresFire({ x: 80, y: 0 }, boxes), false);
+  assert.equal(obscuresFire({ x: 0, y: 0 }, []), false);
+});
 
 test("las cámaras son invisibles en panorama y aparecen solo a escala local", () => {
   assert.equal(camerasVisible(6), false);

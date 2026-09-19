@@ -1,3 +1,24 @@
+import { fireDisplayScale } from "./flames.js";
+
+export const facilitiesVisible = zoom => zoom >= 13;
+
+export function fireExclusionBoxes(incidents, project) {
+  return incidents.map(incident => {
+    const geometry = incident.footprint;
+    const coordinates = geometry.type === "Polygon" ? geometry.coordinates.flat() : geometry.coordinates.flat(2);
+    const points = coordinates.map(([lon, lat]) => project([lat, lon]));
+    const center = project([incident.lat, incident.lon]);
+    const extent = Math.max(.0001, ...points.map(p => Math.hypot(p.x - center.x, p.y - center.y)));
+    const scale = fireDisplayScale(extent);
+    return { left: Math.min(...points.map(p => center.x + (p.x - center.x) * scale)) - 30,
+      right: Math.max(...points.map(p => center.x + (p.x - center.x) * scale)) + 30,
+      top: Math.min(...points.map(p => center.y + (p.y - center.y) * scale)) - 30,
+      bottom: Math.max(...points.map(p => center.y + (p.y - center.y) * scale)) + 30 };
+  });
+}
+
+export const obscuresFire = (p, boxes) => boxes.some(b => p.x >= b.left && p.x <= b.right && p.y >= b.top && p.y <= b.bottom);
+
 const CATEGORIES = {
   combustibles_quimica: ["Combustibles / química", "tank"], gasolinera: ["Gasolinera", "fuel"],
   central_combustion: ["Central de combustión", "power"], aeropuerto_aerodromo: ["Aeropuerto / aeródromo", "air"],
@@ -60,7 +81,7 @@ export function facilityDetails(poi, wind) {
 
 export function createInfrastructure({ map, L, document, fetch }) {
   const facilities = L.layerGroup().addTo(map), cameras = L.layerGroup().addTo(map);
-  let context = null, catalog = null, active = null, sequence = 0, timer = null, repaint = null;
+  let context = null, catalog = null, active = null, sequence = 0, timer = null, repaint = null, fires = [];
   const status = document.getElementById("infrastructure-status");
   const problems = new Map();
   function problem(key, message) {
@@ -190,10 +211,13 @@ export function createInfrastructure({ map, L, document, fetch }) {
   }
   function draw(points, layer, type) {
     layer.clearLayers();
+    if (type === "facility" && !facilitiesVisible(map.getZoom())) return;
     const bounds = map.getBounds().pad(.05);
-    const visible = points.filter(p => bounds.contains([p.lat, p.lon]));
+    const exclusions = fireExclusionBoxes(fires, p => map.latLngToContainerPoint(p));
+    const visible = points.filter(p => bounds.contains([p.lat, p.lon]) && !obscuresFire(map.latLngToContainerPoint([p.lat, p.lon]), exclusions));
     const groups = groupPlaces(visible, p => map.project(p, map.getZoom()), map.getZoom() >= 14 ? 0 : type === "camera" ? 76 : 42);
     for (const group of groups) {
+      if (obscuresFire(map.latLngToContainerPoint([group.lat, group.lon]), exclusions)) continue;
       const single = group.items.length === 1, item = group.items[0];
       const name = single ? item.name || CATEGORIES[item.category]?.[0] || "Instalación" : `${group.items.length} ${type === "camera" ? "cámaras" : "instalaciones"}`;
       const symbol = type === "camera" ? "camera" : facilityDetails(item, {}).icon;
@@ -217,6 +241,10 @@ export function createInfrastructure({ map, L, document, fetch }) {
   }
   map.createPane("infrastructure"); map.getPane("infrastructure").style.zIndex = 470;
   map.on("zoom", () => {
+    if (!facilitiesVisible(map.getZoom())) {
+      facilities.clearLayers();
+      if (active?.type === "facility") map.closePopup(active.popup);
+    }
     if (!camerasVisible(map.getZoom())) {
       cameras.clearLayers();
       if (active?.type === "camera") map.closePopup(active.popup);
@@ -255,6 +283,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
   }
   setInterval(() => { if (!document.hidden) loadCatalog(); }, 60000);
   return {
+    setIncidents(value) { fires = value; render(); },
     setContext(value) {
       context = value;
       if (active?.type === "facility") map.closePopup(active.popup);

@@ -10,7 +10,15 @@
     <script src="/vendor/leaflet.js" defer></script>
     <script type="module" src="/app.js"></script>
   </head>
-  <body>
+  <body class="map-only">
+    <div id="agent-aura" aria-hidden="true" hidden></div>
+    <section id="agent-card" role="status" aria-live="polite" hidden>
+      <span id="agent-label">FlareAI</span><strong id="agent-message"></strong><p id="agent-reason"></p>
+    </section>
+    <nav class="quiet-controls" aria-label="Controles del observatorio">
+      <button id="explore-toggle" aria-expanded="false" title="Explorar datos">flareai <span>＋</span></button>
+      <span class="demo-mode" title="Flota ficticia; no moviliza servicios ni envía alertas públicas">modo demo</span>
+    </nav>
     <svg class="symbols" aria-hidden="true">
       <defs>
         <symbol id="i-wind" viewBox="0 0 24 24">

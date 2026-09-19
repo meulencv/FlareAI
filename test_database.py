@@ -67,6 +67,27 @@ class DatabaseTests(unittest.TestCase):
                 self.assertFalse(any(i.get('demo_report') for i in fresh.payload()['incidents']))
                 self.assertEqual(conn.execute('SELECT count(*) AS n FROM flare_demo_calls WHERE id=%s', (run,)).fetchone()['n'], 1)
 
+    def test_director_audit_and_export_without_credentials(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from contextlib import nullcontext
+        from uuid import uuid4
+        session = str(uuid4())
+        state = {'events': [{'sequence': 1, 'kind': 'focus', 'message': 'Prueba'}]}
+        with self.db.connect() as conn, conn.transaction(force_rollback=True):
+            with patch.object(self.db, 'connect', side_effect=lambda: nullcontext(conn)):
+                self.db.start_demo(session)
+                self.db.save_director(session, state)
+                self.db.save_director(session, state)
+            count = conn.execute('SELECT count(*) AS n FROM flare_director_events WHERE session_id=%s', (session,)).fetchone()['n']
+            self.assertEqual(count, 1)
+        with tempfile.TemporaryDirectory() as temporary, patch('database.TABLES', ('settings', 'director_state', 'director_events')):
+            directory = Path(temporary) / 'export'
+            self.db.export(directory)
+            for line in (directory / 'flare_settings.jsonl').read_text().splitlines():
+                self.assertNotIn('hook_key', json.loads(line)['data'])
+
     def test_only_verified_integrable_recent_media_is_visible(self):
         from contextlib import nullcontext
         from datetime import timedelta

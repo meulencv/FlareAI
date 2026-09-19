@@ -20,6 +20,7 @@ import psycopg
 from context import ATLAS_ROOT, Atlas
 from database import Database, local_start
 from demo import DemoBridge, PHONE_ROOT
+from director import Director
 from territorial import Territorial
 from gfs import DATA, ROOT, Snapshot, iso, update, utcnow
 from incidents import Collection, Incident, assemble, refresh_fires
@@ -27,7 +28,7 @@ from satellite import picture
 
 
 class Store:
-    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False) -> None:
+    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False) -> None:
         self.offline = offline
         self.db = database
         self.territorial = Territorial(database, offline) if database else None
@@ -43,6 +44,7 @@ class Store:
         if self.db:
             self.db.save_incidents([dict(i) for i in self.incidents])
         self.demo = DemoBridge(database) if database and demo_enabled else None
+        self.director = Director(self) if self.demo and director_enabled and not offline else None
 
     def refresh_loop(self) -> None:
         next_fires = 0.0
@@ -254,6 +256,8 @@ class Handler(SimpleHTTPRequestHandler):
                 with self.store.demo.lock:
                     call = self.store.demo.calls[run_id]
                     self.send_json({'source': 'Llamada web de demostración, no confirmación oficial', 'summary': call['summary'], 'location': call['location']})
+            elif route.path == '/api/director':
+                self.send_json(self.store.director.public_state() if self.store.director else {'status': 'disabled', 'events': [], 'assignments': {}, 'alerts': {}})
             elif route.path == "/api/data":
                 self.send_json(self.store.payload(), download="download" in query)
             elif route.path == "/api/incidents.csv":
@@ -297,7 +301,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise KeyError('Cartografía no importada')
                 self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js",
+                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()
@@ -328,7 +332,9 @@ if __name__ == "__main__":
     if not database.url:
         local_start()
     database.bootstrap()
-    Handler.store = Store(options.offline, database, demo_enabled=not options.offline)
+    Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True)
+    if Handler.store.director:
+        threading.Thread(target=Handler.store.director.loop, daemon=True).start()
     if Handler.store.demo:
         threading.Thread(target=Handler.store.demo.loop, daemon=True).start()
         mobile = ThreadingHTTPServer(('127.0.0.1', options.mobile_port), MobileHandler)
