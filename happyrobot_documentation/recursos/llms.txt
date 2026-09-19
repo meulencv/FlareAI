@@ -1,0 +1,387 @@
+# HappyRobot
+
+- [Introduction](https://docs.happyrobot.ai/introduction.md)
+- [Platform overview](https://docs.happyrobot.ai/platform-overview.md): Architecture and key concepts of the HappyRobot platform
+- [Quickstart](https://docs.happyrobot.ai/quickstart.md): Build an outbound voice agent workflow and trigger it via API in 15 minutes
+- [Navigating the platform](https://docs.happyrobot.ai/navigating-the-platform.md): Find your way around the sidebar, tabs, and command menu
+- [Claude Desktop](https://docs.happyrobot.ai/claude-desktop.md): Use Claude Desktop to build and manage HappyRobot workflows conversationally
+- [Workflows Overview](https://docs.happyrobot.ai/workflows/overview.md): Introduction to HappyRobot workflows
+- [Creating a Workflow](https://docs.happyrobot.ai/workflows/creating-a-workflow.md): Step-by-step guide to building your first workflow
+- [Frontal AI assistant](https://docs.happyrobot.ai/workflows/frontal.md): Use the AI assistant to build and edit workflows through conversation
+- [Node Types](https://docs.happyrobot.ai/workflows/node-types.md): Understanding the different node types available in workflows
+- [Triggers](https://docs.happyrobot.ai/workflows/triggers.md): How to configure workflow triggers
+- [Signals](https://docs.happyrobot.ai/workflows/signals.md): Wake running agents with real-time, event-driven messages from your systems
+- [Variables](https://docs.happyrobot.ai/workflows/variables.md): Using variables and dynamic data in workflows
+- [Versions and Publishing](https://docs.happyrobot.ai/workflows/versions-and-publishing.md): Managing workflow versions and publishing changes
+- [Environments](https://docs.happyrobot.ai/workflows/environments.md): Configuring development, staging, and production environments
+- [Discussions](https://docs.happyrobot.ai/workflows/discussions.md): Leave comments on workflow nodes and collaborate with your team on the canvas
+- [Core Nodes Overview](https://docs.happyrobot.ai/core-nodes/overview.md): Built-in workflow nodes that don't require a third-party integration
+- [AI Extract](https://docs.happyrobot.ai/core-nodes/ai-extract.md): Extract structured data from unstructured text using AI
+- [AI Classify](https://docs.happyrobot.ai/core-nodes/ai-classify.md): Classify text into predefined categories using AI
+- [AI Generate](https://docs.happyrobot.ai/core-nodes/ai-generate.md): Generate text content using AI
+- [Custom Code](https://docs.happyrobot.ai/core-nodes/custom-code.md): Run Python code within your workflow
+- [Webhook](https://docs.happyrobot.ai/core-nodes/webhook.md): Send and receive HTTP requests in workflows
+- [Schedule](https://docs.happyrobot.ai/core-nodes/schedule.md): Add delays and timing control to workflows
+- [File Operations](https://docs.happyrobot.ai/core-nodes/file-operations.md): Upload, parse, search, and extract text from files in workflows
+- [Conditionals](https://docs.happyrobot.ai/core-nodes/conditionals.md): Add branching logic to your workflows
+- [Loops](https://docs.happyrobot.ai/core-nodes/loops.md): Iterate over collections or repeat actions a fixed number of times
+- [Module Change](https://docs.happyrobot.ai/core-nodes/module-change.md): Jump to a different module within a workflow
+- [Call Workflow](https://docs.happyrobot.ai/core-nodes/call-workflow.md): Invoke another workflow and wait for its response, or start it and continue
+- [Tools Overview](https://docs.happyrobot.ai/tools/overview.md): Introduction to tools in HappyRobot
+- [Creating Tools](https://docs.happyrobot.ai/tools/creating-tools.md): How to create and configure tools for your agents
+- [Tool Call Result](https://docs.happyrobot.ai/tools/tool-call-result.md): Preview and choose the payload a tool returns to the agent
+- [Built-in Tools](https://docs.happyrobot.ai/tools/built-in-tools.md): Default tools that come with voice and text agents
+- [MCP Tools](https://docs.happyrobot.ai/tools/mcp.md): Import tools from external Model Context Protocol servers into your workflows
+- [MCP Server Setup](https://docs.happyrobot.ai/tools/mcp-server.md): Connect external MCP servers to discover and use their tools in your workflows
+- [Voice Agents Overview](https://docs.happyrobot.ai/voice-agents/overview.md): Introduction to voice AI agents
+- [Inbound Calls](https://docs.happyrobot.ai/voice-agents/inbound-calls.md): Configure agents to handle incoming phone calls
+- [Outbound Calls](https://docs.happyrobot.ai/voice-agents/outbound-calls.md): Set up automated outbound calling campaigns
+- [Outbound with Callback](https://docs.happyrobot.ai/voice-agents/outbound-with-callback.md): Handle callbacks from missed outbound calls
+- [STT, TTS, and LLM Configuration](https://docs.happyrobot.ai/voice-agents/stt-tts-llm-configuration.md): Configure speech-to-text, text-to-speech, and language model settings
+- [Prompts and Tools](https://docs.happyrobot.ai/voice-agents/prompts-and-tools.md): Write prompts and attach tools to voice agents
+- [Forward call](https://docs.happyrobot.ai/voice-agents/forward-call.md): Send an incoming call straight to a phone number with no agent on the line
+- [Transfer popup](https://docs.happyrobot.ai/voice-agents/transfer-node-popup.md): Send a context popup to human agents when transferring a call
+- [Text Agents Overview](https://docs.happyrobot.ai/text-agents/overview.md): Introduction to text-based AI agents
+- [SMS](https://docs.happyrobot.ai/text-agents/sms.md): Deploy text agents over SMS
+- [WhatsApp](https://docs.happyrobot.ai/text-agents/whatsapp.md): Deploy text agents on WhatsApp
+- [Email](https://docs.happyrobot.ai/text-agents/email.md): Deploy text agents for email conversations
+- [Chatbot](https://docs.happyrobot.ai/text-agents/chatbot.md): Embed a chatbot widget on your website
+- [Microsoft Teams](https://docs.happyrobot.ai/text-agents/teams.md): Deploy text agents in Microsoft Teams chats and channels
+- [Slack](https://docs.happyrobot.ai/text-agents/slack.md): Deploy text agents in Slack channels and direct messages
+- [Apps Overview](https://docs.happyrobot.ai/apps/overview.md): Build, edit, and deploy custom web applications inside HappyRobot
+- [Creating an App](https://docs.happyrobot.ai/apps/creating-an-app.md): Start a new app from a template or import an existing GitHub repository
+- [Sandbox Editor](https://docs.happyrobot.ai/apps/sandbox-editor.md): Edit your app with a live preview and an AI coding agent
+- [Local development](https://docs.happyrobot.ai/apps/local-development.md): Clone an app and run it against your HappyRobot workspace
+- [Deploying](https://docs.happyrobot.ai/apps/deploying.md): Push your app live and watch the build run
+- [Build History and Versioning](https://docs.happyrobot.ai/apps/build-history.md): Browse past deployments, inspect logs, and roll back via Git
+- [Environment Variables](https://docs.happyrobot.ai/apps/environment-variables.md): Configure secrets and runtime values for your app
+- [Twin Overview](https://docs.happyrobot.ai/twin/overview.md): A managed PostgreSQL database for your organization, built into the platform
+- [Managing Tables](https://docs.happyrobot.ai/twin/managing-tables.md): Create tables, columns, foreign keys, and views in your Twin database
+- [Polling Tables](https://docs.happyrobot.ai/twin/polling-tables.md): Keep a Twin table automatically synced from an external HTTP endpoint
+- [Workflow Run Dumps](https://docs.happyrobot.ai/twin/workflow-run-dumps.md): Automatically persist workflow run outputs into a Twin table
+- [SQL Console and Capacity](https://docs.happyrobot.ai/twin/sql-console-and-capacity.md): Run SQL directly and configure your Twin database's instance class, storage, and gateway
+- [Using Twin in Apps](https://docs.happyrobot.ai/twin/using-in-apps.md): Consume Twin data from a HappyRobot App, and version your schema safely alongside App deploys
+- [Runs Overview](https://docs.happyrobot.ai/runs/overview.md): Monitor and manage workflow executions
+- [Run Statuses](https://docs.happyrobot.ai/runs/run-statuses.md): Understanding run lifecycle and status codes
+- [Transcripts and Messages](https://docs.happyrobot.ai/runs/transcripts-and-messages.md): View conversation transcripts and message history
+- [Recordings](https://docs.happyrobot.ai/runs/recordings.md): Access and manage call recordings
+- [Annotations](https://docs.happyrobot.ai/runs/annotations.md): Add annotations and notes to runs
+- [Experiments](https://docs.happyrobot.ai/experiments/overview.md): Run controlled A/B tests to compare workflow versions and configuration changes with statistical rigor
+- [Creating experiments](https://docs.happyrobot.ai/experiments/creating-experiments.md): Set up an A/B test with variants, traffic split, and metrics
+- [Experiment metrics](https://docs.happyrobot.ai/experiments/experiment-metrics.md): Default and custom metrics available for measuring experiment outcomes
+- [Analyzing results](https://docs.happyrobot.ai/experiments/analyzing-results.md): Read your experiment dashboard and make data-driven decisions
+- [A/B testing guide](https://docs.happyrobot.ai/experiments/ab-testing-guide.md): A practical guide to running reliable experiments, from core statistics to decision-making patterns
+- [Quality and evaluation overview](https://docs.happyrobot.ai/evaluate/overview.md): Define quality standards, automatically audit runs, and continuously improve agent behavior
+- [Northstars](https://docs.happyrobot.ai/evaluate/northstars.md): Define behavioral quality criteria for your agents
+- [Automated audits](https://docs.happyrobot.ai/evaluate/audits.md): Every run is automatically evaluated against your northstars
+- [Audio audits](https://docs.happyrobot.ai/evaluate/audio-audits.md): Analyze transcription accuracy, conversation quality, and acoustic metrics for voice agent calls
+- [Issues](https://docs.happyrobot.ai/evaluate/issues.md): Track and resolve quality problems surfaced by audits and flags
+- [Custom tests](https://docs.happyrobot.ai/evaluate/custom-tests.md): Create test cases with expected conversation flows and tool calls
+- [Adversarial tests](https://docs.happyrobot.ai/evaluate/adversarial-tests.md): Simulate a user challenging an agent across a full conversation and grade the result against northstars
+- [Test suites](https://docs.happyrobot.ai/evaluate/test-suites.md): Group prompt and adversarial tests into suites and run them together against a workflow version
+- [Analytics Overview](https://docs.happyrobot.ai/analytics/overview.md): Track performance and gain insights
+- [KPI Dashboard](https://docs.happyrobot.ai/analytics/kpi-dashboard.md): Monitor key performance indicators
+- [Workflow Metrics](https://docs.happyrobot.ai/analytics/workflow-metrics.md): Analyze workflow-level performance data
+- [Contacts Overview](https://docs.happyrobot.ai/contacts/overview.md): Manage your contact database
+- [Managing Contacts](https://docs.happyrobot.ai/contacts/managing-contacts.md): Create, update, and organize contacts
+- [Interaction History](https://docs.happyrobot.ai/contacts/interaction-history.md): View past interactions with contacts
+- [Memories](https://docs.happyrobot.ai/contacts/memories.md): How agents remember context across conversations
+- [Knowledge Bases](https://docs.happyrobot.ai/assets/knowledge-bases.md): Upload and manage documents for agent reference
+- [Components](https://docs.happyrobot.ai/assets/components.md): Reusable prompt components and templates
+- [Telephony](https://docs.happyrobot.ai/assets/telephony.md): Manage phone numbers, SIP trunks, and audio assets
+- [Voices](https://docs.happyrobot.ai/assets/voices.md): Browse and preview text-to-speech voices for your agents
+- [Models](https://docs.happyrobot.ai/assets/models.md): Reference for every language model available in HappyRobot workflows, voice agents, and text agents
+- [Integrations Overview](https://docs.happyrobot.ai/integrations/overview.md): Connect HappyRobot to your existing tools and services
+- [Credentials](https://docs.happyrobot.ai/integrations/credentials.md): Manage authentication for your integrations
+- [Integrations marketplace](https://docs.happyrobot.ai/integrations/marketplace.md): Browse and connect hundreds of integrations through a single connection flow
+- [Gmail](https://docs.happyrobot.ai/integrations/communication/gmail.md): Send and receive emails with Gmail
+- [Outlook](https://docs.happyrobot.ai/integrations/communication/outlook.md): Send and receive emails with Microsoft Outlook
+- [Slack](https://docs.happyrobot.ai/integrations/communication/slack.md): Send messages and receive events from Slack
+- [Microsoft Teams](https://docs.happyrobot.ai/integrations/communication/microsoft-teams.md): Send messages and monitor channels in Microsoft Teams
+- [Genesys Audio Connector](https://docs.happyrobot.ai/integrations/communication/genesys-audio-connector.md): Stream Genesys Cloud calls to a HappyRobot voice agent over WebSocket
+- [Twilio SMS](https://docs.happyrobot.ai/integrations/communication/twilio-sms.md): Send and receive SMS messages via Twilio
+- [Telnyx SMS](https://docs.happyrobot.ai/integrations/communication/telnyx-sms.md): Send and receive SMS messages via Telnyx
+- [WhatsApp](https://docs.happyrobot.ai/integrations/communication/whatsapp.md): Connect to WhatsApp Business API
+- [SendGrid](https://docs.happyrobot.ai/integrations/communication/sendgrid.md): Send transactional emails and run direct email agents via SendGrid
+- [HappyRobot Email](https://docs.happyrobot.ai/integrations/communication/happyrobot-email.md): Use HappyRobot's built-in email service
+- [McLeod TMS](https://docs.happyrobot.ai/integrations/business-systems/mcleod-tms.md): Integrate with McLeod LoadMaster TMS
+- [Turvo TMS](https://docs.happyrobot.ai/integrations/business-systems/turvo-tms.md): Integrate with Turvo TMS
+- [Mastery TMS](https://docs.happyrobot.ai/integrations/business-systems/mastery.md): Retrieve loads and carriers, submit offers, book carriers, and post tracking updates in Mastery
+- [TPro](https://docs.happyrobot.ai/integrations/business-systems/tpro.md): Integrate with TPro TMS
+- [3PL](https://docs.happyrobot.ai/integrations/business-systems/three-pl.md): Integrate with 3PL Warehouse Manager
+- [Custom TMS](https://docs.happyrobot.ai/integrations/business-systems/custom-tms.md): Connect to any TMS with a custom integration
+- [Broker App](https://docs.happyrobot.ai/integrations/business-systems/broker-app.md): Use the HappyRobot Broker App integration
+- [CXone](https://docs.happyrobot.ai/integrations/business-systems/cxone.md): Integrate with NICE CXone contact center platform
+- [Richpanel](https://docs.happyrobot.ai/integrations/business-systems/richpanel.md): Escalate text agent conversations to human agents in Richpanel
+- [Google Sheets](https://docs.happyrobot.ai/integrations/data/google-sheets.md): Read and write data to Google Sheets
+- [Snowflake](https://docs.happyrobot.ai/integrations/data/snowflake.md): Query data from your Snowflake data warehouse
+- [Redis](https://docs.happyrobot.ai/integrations/data/redis.md): Use Redis for caching and key-value storage
+- [Kafka](https://docs.happyrobot.ai/integrations/data/kafka.md): Publish messages to Apache Kafka topics from a workflow
+- [Google Maps](https://docs.happyrobot.ai/integrations/data/google-maps.md): Geographic utilities for your workflows
+- [Salesforce](https://docs.happyrobot.ai/integrations/data/salesforce.md): Query, create, update, and delete Salesforce CRM records from workflows
+- [Twin database](https://docs.happyrobot.ai/integrations/data/twin.md): Read from and write to your organization's managed database
+- [AWS](https://docs.happyrobot.ai/integrations/data/aws.md): Generate presigned S3 URLs for secure, time-limited object access
+- [Organization](https://docs.happyrobot.ai/settings/organization.md): Manage your organization settings
+- [Members and Access](https://docs.happyrobot.ai/settings/team-members-and-roles.md): Manage members, invitations, roles, and access grants
+- [Custom Roles](https://docs.happyrobot.ai/settings/custom-roles.md): Create reusable roles from HappyRobot access actions
+- [Scope Tags](https://docs.happyrobot.ai/settings/scope-tags.md): Organize resources and limit roles to matching tagged resources
+- [SSO Access](https://docs.happyrobot.ai/settings/sso-access.md): Configure SSO login and resolve identity-provider groups into access grants
+- [API Keys](https://docs.happyrobot.ai/settings/api-keys.md): Generate and manage API keys for the HappyRobot API
+- [Bring your own keys](https://docs.happyrobot.ai/settings/bring-your-own-keys.md): Run HappyRobot AI features on your organization's own OpenAI, Anthropic, or Gemini credentials
+- [Environment Variables](https://docs.happyrobot.ai/settings/environment-variables.md): Configure environment variables for your workflows
+- [Usage and Billing](https://docs.happyrobot.ai/settings/billing.md): Monitor your organization's usage and credit consumption
+- [Workflow Settings](https://docs.happyrobot.ai/settings/workflow-settings.md): Configure settings for individual workflows
+- [SLA and service status](https://docs.happyrobot.ai/settings/sla.md): Review measured platform availability, live incidents, and how uptime is calculated
+- [EU AI Act and GDPR requirements](https://docs.happyrobot.ai/compliance/eu-ai-act-and-gdpr.md): Disclosure and recording requirements for agents that interact with people in the EU
+- [MCP servers](https://docs.happyrobot.ai/developer-tools/mcp.md): Connect to HappyRobot from AI coding assistants, Claude Desktop, or your own services
+- [Frontal MCP](https://docs.happyrobot.ai/developer-tools/mcp-frontal.md): Build and edit workflows through conversation from your own MCP client
+- [Workflows MCP](https://docs.happyrobot.ai/developer-tools/mcp-workflows.md): Available tools and prompts for the Workflows MCP server
+- [Twin MCP](https://docs.happyrobot.ai/developer-tools/mcp-twin.md): Available tools for the Twin database MCP server
+- [TypeScript SDK](https://docs.happyrobot.ai/developer-tools/sdk/overview.md): Install and configure the HappyRobot TypeScript SDK to manage workflows, voice agents, and integrations programmatically
+- [Quickstart](https://docs.happyrobot.ai/developer-tools/sdk/quickstart.md): Trigger a workflow run and read the results in under five minutes
+- [Voice agent tutorial](https://docs.happyrobot.ai/developer-tools/sdk/voice-agent-tutorial.md): Create a voice agent, trigger an outbound call, and stream live messages with the TypeScript SDK
+- [Voice call tutorial](https://docs.happyrobot.ai/developer-tools/sdk/voice-call-tutorial.md): Build a browser voice call UI with the TypeScript SDK using React, LiveKit, and Express
+- [Chatbot tutorial](https://docs.happyrobot.ai/developer-tools/sdk/chatbot-tutorial.md): Build a custom chat UI with the TypeScript SDK using React and Express
+- [Workflows](https://docs.happyrobot.ai/developer-tools/sdk/workflows.md): Manage workflows, versions, nodes, runs, and folders with the TypeScript SDK
+- [Sessions and messages](https://docs.happyrobot.ai/developer-tools/sdk/sessions-and-messages.md): Read session details, fetch messages, and stream live conversation events with the TypeScript SDK
+- [Telephony](https://docs.happyrobot.ai/developer-tools/sdk/telephony.md): Manage phone numbers and SIP trunks with the TypeScript SDK
+- [Integrations](https://docs.happyrobot.ai/developer-tools/sdk/integrations.md): Discover integrations and access Google Sheets, Slack, Teams, Twilio SMS, and WhatsApp sub-resources
+- [Resources](https://docs.happyrobot.ai/developer-tools/sdk/resources.md): Manage contacts, knowledge bases, variables, MCP servers, apps, billing, voices, and API keys
+- [Quality and testing](https://docs.happyrobot.ai/developer-tools/sdk/quality.md): Run test suites and adversarial tests, manage northstar criteria, custom evals, issues, and audit remarks
+- [Helpers](https://docs.happyrobot.ai/developer-tools/sdk/helpers.md): Use pagination patterns and high-level helper utilities in the TypeScript SDK
+- [Error handling](https://docs.happyrobot.ai/developer-tools/sdk/error-handling.md): Handle errors and configure retry behavior in the TypeScript SDK
+- [Describe the current API key](https://docs.happyrobot.ai/api-reference/api-keys/describe-the-current-api-key.md): Returns metadata for the API key used in the Authorization header.
+- [[Legacy] List runs](https://docs.happyrobot.ai/api-reference/runs/[legacy]-list-runs.md): Lists runs for a use case. **Deprecated**: prefer GET /workflows/:workflow_id/runs instead.
+- [Cancel a run](https://docs.happyrobot.ai/api-reference/runs/cancel-a-run.md): Cancels a running or scheduled run for the caller's org by proxying to the workflows service.
+- [Get recordings for a run](https://docs.happyrobot.ai/api-reference/runs/get-recordings-for-a-run.md): Returns signed URLs for call recordings associated with a run. Optionally filter by session_id.
+- [List run sessions](https://docs.happyrobot.ai/api-reference/runs/list-run-sessions.md): Returns paginated sessions for a run, ordered by timestamp.
+- [Get run](https://docs.happyrobot.ai/api-reference/runs/get-run.md): Returns metadata for a single run. Use /runs/:run_id/nodes for node summaries, /runs/:run_id/outputs/:output_id for a full node output payload, /runs/:run_id/sessions for session data, and /runs/:run_id/flags for issues.
+- [List run nodes](https://docs.happyrobot.ai/api-reference/runs/list-run-nodes.md): Returns lightweight run node execution records in timestamp order.
+- [Get run output](https://docs.happyrobot.ai/api-reference/runs/get-run-output.md): Returns the full payload for a single output execution in a run.
+- [Mark run annotation](https://docs.happyrobot.ai/api-reference/runs/mark-run-annotation.md): Marks a run as correct, incorrect, or critical. When marked as incorrect or critical with a correction message, an issue is automatically created.
+- [List run flags](https://docs.happyrobot.ai/api-reference/runs/list-run-flags.md): Returns paginated flags (issues) for a run, ordered by creation date.
+- [List audit remarks for a run](https://docs.happyrobot.ai/api-reference/runs/list-audit-remarks-for-a-run.md): Returns all northstar audit remarks for a specific run, showing per-criterion pass/fail grades.
+- [Get usage totals](https://docs.happyrobot.ai/api-reference/billing/get-usage-totals.md): Returns the authenticated organization's total voice minutes, emails, and text messages between the inclusive start and end datetimes. Use Get usage details for the same usage grouped by workflow.
+- [Get usage details](https://docs.happyrobot.ai/api-reference/billing/get-usage-details.md): Returns the authenticated organization's voice minutes, emails, and text messages grouped by workflow between the inclusive start and end datetimes. Filter by one or more workflow IDs using repeated use_case_id parameters or a comma-separated list; omit the filter to include all workflows.
+- [Get credits](https://docs.happyrobot.ai/api-reference/billing/get-credits.md): Returns the authenticated organization's billable credit consumption by workflow for an inclusive date range, grouped daily, weekly, or monthly. Each row includes the period, full folder path, workflow identity, total credits, and the same L1 → L2 → L3 component breakdown shown in Settings → Usage,…
+- [Get run credits](https://docs.happyrobot.ai/api-reference/billing/get-run-credits.md): Returns credit consumption for a single run, broken down with the same L1 -> L2 -> L3 component taxonomy as Get credits (category -> subcomponents). Scoped to the authenticated organization via API key.
+- [[Legacy] List use cases](https://docs.happyrobot.ai/api-reference/use-cases/[legacy]-list-use-cases.md): Returns use cases for the authenticated org along with the live production version if available (or the most recent version as fallback). **Deprecated**: prefer GET /workflows instead.
+- [Lookup contact by identifier](https://docs.happyrobot.ai/api-reference/contacts/lookup-contact-by-identifier.md): Returns contact if found by type and value. Returns 404 if not found. Does not create new contacts.
+- [List contacts](https://docs.happyrobot.ai/api-reference/contacts/list-contacts.md): Returns paginated contacts for the organization. Uses cursor-based pagination.
+- [Get contact](https://docs.happyrobot.ai/api-reference/contacts/get-contact.md): Returns a single contact with interaction and memory counts
+- [List contact interactions](https://docs.happyrobot.ai/api-reference/contacts/list-contact-interactions.md): Returns paginated communication events for a contact
+- [List contact memories](https://docs.happyrobot.ai/api-reference/contacts/list-contact-memories.md): Returns paginated memories for a contact
+- [Get knowledge bases](https://docs.happyrobot.ai/api-reference/knowledge-bases/get-knowledge-bases.md): List all knowledge bases for the organization.
+- [Post knowledge bases](https://docs.happyrobot.ai/api-reference/knowledge-bases/post-knowledge-bases.md): Create a new knowledge base for the organization.
+- [Get knowledge bases files](https://docs.happyrobot.ai/api-reference/knowledge-bases/get-knowledge-bases-files.md): List all files in a knowledge base. Use this endpoint to check file processing status after triggering chunking via POST /:kbId/trigger-chunking.
+- [Post knowledge bases upload urls](https://docs.happyrobot.ai/api-reference/knowledge-bases/post-knowledge-bases-upload-urls.md): Step 1 of the file upload flow. Creates file records in the database and returns presigned object-storage URLs (valid for 3 minutes). Upload each file using uploadUrl and send uploadHeaders when present, then call POST /:kbId/trigger-chunking with the returned fileIds to start processing.
+- [Post knowledge bases trigger chunking](https://docs.happyrobot.ai/api-reference/knowledge-bases/post-knowledge-bases-trigger-chunking.md): Step 2 of the file upload flow. Call this endpoint after uploading files to object storage using the presigned URLs and any uploadHeaders from POST /:kbId/upload-urls. Triggers embedding generation for the specified files. Files will be available in the knowledge base within 10-15 minutes. Use GET /…
+- [Delete knowledge bases](https://docs.happyrobot.ai/api-reference/knowledge-bases/delete-knowledge-bases.md): Delete a knowledge base and all associated files and chunks. This action is irreversible.
+- [Delete knowledge bases files](https://docs.happyrobot.ai/api-reference/knowledge-bases/delete-knowledge-bases-files.md): Delete a file from a knowledge base. This removes the file from storage and deletes all associated chunks. This action is irreversible.
+- [List workflows](https://docs.happyrobot.ai/api-reference/workflows/list-workflows.md): Returns paginated workflows for the authenticated organization. Each workflow includes its latest version info (live production version preferred, otherwise most recent). Supports searching by name and filtering by folder.
+- [Create a workflow](https://docs.happyrobot.ai/api-reference/workflows/create-a-workflow.md): Creates a new workflow in the authenticated organization. Supports three creation modes:
+- [Get a workflow](https://docs.happyrobot.ai/api-reference/workflows/get-a-workflow.md): Returns a single workflow by UUID or slug, including its latest version info (live production version preferred, otherwise most recent).
+- [Delete a workflow](https://docs.happyrobot.ai/api-reference/workflows/delete-a-workflow.md): Soft-deletes a workflow by UUID or slug. The workflow must not have any live versions — unpublish all versions before deleting.
+- [Update a workflow](https://docs.happyrobot.ai/api-reference/workflows/update-a-workflow.md): Updates workflow metadata and settings. Accepts a workflow UUID or slug as the path parameter. Set `folder_id` to `null` to move the workflow to the root level. Use `settings` to update configuration such as webhooks, out-of-office hours, approval process, data retention, and audits. This endpoint d…
+- [List workflow versions](https://docs.happyrobot.ai/api-reference/workflows/list-workflow-versions.md): Returns paginated versions for a workflow. Supports searching by version number or version name.
+- [List workflow templates](https://docs.happyrobot.ai/api-reference/workflows/list-workflow-templates.md): Returns a paginated list of available workflow templates. Each template includes a description and the inputs it accepts (marked as required or optional). Use a template's name in the `from_template.template` field when creating a workflow.
+- [Duplicate a workflow](https://docs.happyrobot.ai/api-reference/workflows/duplicate-a-workflow.md): Creates a copy of a workflow including all its nodes and configurations. The duplicated workflow is created as a new unpublished workflow with version number 1. If the source uses workflow engine v2, the duplicate remains an editable v2 draft and cannot be published through the public API until upgr…
+- [Publish a workflow](https://docs.happyrobot.ai/api-reference/workflows/publish-a-workflow.md): Publishes the latest version of the specified workflow to make it live. Before publishing, all action nodes are checked for test errors and untested status. If untested nodes exist (with no errors), a synchronous test-all is triggered first. If any node has test errors, the publish is blocked and er…
+- [Unpublish a workflow](https://docs.happyrobot.ai/api-reference/workflows/unpublish-a-workflow.md): Finds the currently live version for the workflow and unpublishes it. The version is taken offline and unlocked for editing. Returns 400 if no version is currently live. Accepts a workflow UUID or slug as the path parameter.
+- [List workflow runs](https://docs.happyrobot.ai/api-reference/workflows/list-workflow-runs.md): Returns paginated runs for a workflow. Supports filtering by status, date ranges, and annotation.
+- [Trigger a workflow run](https://docs.happyrobot.ai/api-reference/workflows/trigger-a-workflow-run.md): Starts a new run for a workflow by proxying to the hooks service. Accepts either a JSON body with payload/environment fields, or a multipart/form-data request with a file and optional form fields (pass environment as a query param for multipart). Supports targeting different environments (production…
+- [List workflow sessions](https://docs.happyrobot.ai/api-reference/workflows/list-workflow-sessions.md): Returns paginated sessions for a workflow across all runs, ordered by timestamp.
+- [Cancel active workflow runs](https://docs.happyrobot.ai/api-reference/workflows/cancel-active-workflow-runs.md): Cancels all current and queued runs for the workflow. By default, the currently live workflow version is also unpublished. Set unpublish_workflow to false to keep the workflow published after cancellation. Accepts a workflow UUID or slug as the path parameter.
+- [List workflow variables](https://docs.happyrobot.ai/api-reference/workflow-variables/list-workflow-variables.md): Returns paginated variables scoped to a specific workflow. Accepts a workflow UUID or slug as the path parameter.
+- [Create a workflow variable](https://docs.happyrobot.ai/api-reference/workflow-variables/create-a-workflow-variable.md): Creates a new variable scoped to the specified workflow. Accepts a workflow UUID or slug as the path parameter.
+- [Delete a workflow variable](https://docs.happyrobot.ai/api-reference/workflow-variables/delete-a-workflow-variable.md): Permanently deletes a variable from a workflow. This action cannot be undone.
+- [Update a workflow variable](https://docs.happyrobot.ai/api-reference/workflow-variables/update-a-workflow-variable.md): Updates one or more fields on a variable. Only the fields provided in the request body are updated.
+- [List northstar audits for a workflow](https://docs.happyrobot.ai/api-reference/audits/list-northstar-audits-for-a-workflow.md): Returns paginated northstar audit results for a workflow, showing pass/fail rates per behavioral criterion.
+- [List audit remarks for a northstar](https://docs.happyrobot.ai/api-reference/audits/list-audit-remarks-for-a-northstar.md): Returns cursor-paginated audit remarks for a specific northstar criterion, optionally filtered by grade.
+- [List audit remarks for a workflow](https://docs.happyrobot.ai/api-reference/audits/list-audit-remarks-for-a-workflow.md): Returns cursor-paginated behavioral audit remarks across all northstar criteria for a workflow. Optionally filter by northstar, grade, or status.
+- [List node errors for a workflow](https://docs.happyrobot.ai/api-reference/audits/list-node-errors-for-a-workflow.md): Returns paginated node execution errors for a workflow, grouped by node and error type.
+- [Get audit stats for the live workflow version](https://docs.happyrobot.ai/api-reference/audits/get-audit-stats-for-the-live-workflow-version.md): Returns aggregate audit statistics for the live (or most recently audited) version of a workflow.
+- [List audited versions for a workflow](https://docs.happyrobot.ai/api-reference/audits/list-audited-versions-for-a-workflow.md): Returns all versions of a workflow that have audit data, indicating which is the live version.
+- [Get an audit remark by ID](https://docs.happyrobot.ai/api-reference/audits/get-an-audit-remark-by-id.md): Returns a single behavioral audit remark, including its northstar criterion, grade, correction, evaluated messages, and status.
+- [Get feedback for an audit remark](https://docs.happyrobot.ai/api-reference/audits/get-feedback-for-an-audit-remark.md): Returns the current caller's feedback for an audit remark, or null if none exists. Supports user-level and org-level API keys.
+- [Submit feedback for an audit remark](https://docs.happyrobot.ai/api-reference/audits/submit-feedback-for-an-audit-remark.md): Submit a thumbs up/down for an audit remark. Supports user-level and org-level API keys. A thumbs-up automatically adds the remark as a northstar example.
+- [Delete feedback for an audit remark](https://docs.happyrobot.ai/api-reference/audits/delete-feedback-for-an-audit-remark.md): Removes the current caller's feedback for an audit remark. Supports user-level and org-level API keys.
+- [List issues for a workflow](https://docs.happyrobot.ai/api-reference/issues/list-issues-for-a-workflow.md): Returns paginated quality issues (flags) for a workflow, optionally filtered by status or source.
+- [Update issue status](https://docs.happyrobot.ai/api-reference/issues/update-issue-status.md): Updates the status of a quality issue (flag).
+- [Duplicate an app](https://docs.happyrobot.ai/api-reference/apps/duplicate-an-app.md): Creates a copy of a managed custom app, including source code and custom environment variables.
+- [Get a version with nodes summary](https://docs.happyrobot.ai/api-reference/versions/get-a-version-with-nodes-summary.md): Returns a single version by UUID or slug with metadata, node count, node counts by type, and the list of events (action node types) used.
+- [Update a version](https://docs.happyrobot.ai/api-reference/versions/update-a-version.md): Updates version metadata (name and/or description). Accepts a version UUID or slug as the path parameter.
+- [Fork a version](https://docs.happyrobot.ai/api-reference/versions/fork-a-version.md): Creates a new version by copying all nodes from the specified version. The new version gets the next available version number and is unlocked/unpublished. If the source uses workflow engine v2, the fork remains an editable v2 draft and cannot be published through the public API until upgraded to v3.…
+- [Publish a version](https://docs.happyrobot.ai/api-reference/versions/publish-a-version.md): Publishes the specified version to make it live. Before publishing, node configuration completeness is validated. If untested nodes exist, a synchronous test-all is triggered automatically. Test errors do not block publishing (matching UI behavior) but are returned as informational warnings in the `…
+- [Lock a version](https://docs.happyrobot.ai/api-reference/versions/lock-a-version.md): Locks the specified version, preventing further edits to its nodes. Accepts a version UUID or slug as the path parameter.
+- [Unlock a version](https://docs.happyrobot.ai/api-reference/versions/unlock-a-version.md): Unlocks the specified version, allowing edits to its nodes. A version that is currently live cannot be unlocked — use unpublish instead. Accepts a version UUID or slug as the path parameter.
+- [Unpublish a version](https://docs.happyrobot.ai/api-reference/versions/unpublish-a-version.md): Unpublishes the version (takes it offline) and unlocks it for editing. The version will no longer be live and its published lock is removed, allowing further modifications. The version must currently be live. Accepts a version UUID or slug as the path parameter.
+- [List version nodes](https://docs.happyrobot.ai/api-reference/versions/list-version-nodes.md): Returns all workflow nodes belonging to the specified version. The version can be identified by its UUID or slug.
+- [Add nodes to a version](https://docs.happyrobot.ai/api-reference/versions/add-nodes-to-a-version.md): Adds one or more nodes to the specified version. Nodes are processed sequentially in array order, so later nodes can reference earlier ones via `parent_node_index` (0-based index into this array) or existing DB nodes via `parent_node_id`. Each node must include a `type` discriminator: `"trigger"`, `…
+- [Get a single node](https://docs.happyrobot.ai/api-reference/versions/get-a-single-node.md): Returns the full details of a single node including its configuration. For webhook trigger nodes (INCOMING_HOOK or PREDEFINED_REQUEST), the response also includes production, staging, development, and test webhook URLs.
+- [Update a node](https://docs.happyrobot.ai/api-reference/versions/update-a-node.md): Updates the specified node. The request body must include a `type` discriminator matching the node type. Updatable fields depend on the type: - **trigger**: `name`, `configuration`, `webhook_payload` - **action**: `name`, `configuration`, `webhook_payload` - **agent**: `name`, `configuration`, `prom…
+- [Delete a node](https://docs.happyrobot.ai/api-reference/versions/delete-a-node.md): Deletes the specified node. For tool, condition, and paths-root nodes, owned child nodes are also cascade-deleted. For action, prompt, and module-change nodes, children are reparented to the deleted node's parent so the workflow chain is preserved. Agent nodes delete their internal children (prompt…
+- [List available variables for a node](https://docs.happyrobot.ai/api-reference/versions/list-available-variables-for-a-node.md): Returns all variable groups available to the specified node, including system variables, environment variables, and upstream node outputs.
+- [Get config schema for a node](https://docs.happyrobot.ai/api-reference/versions/get-config-schema-for-a-node.md): Returns the configuration schema for the node's event, including field types, required fields, current values, defaults, and validation status. Only works for action nodes (nodes with an event_id).
+- [Set custom node output](https://docs.happyrobot.ai/api-reference/versions/set-custom-node-output.md): Sets a custom JSON object as the node's output for testing purposes. This upserts the node's generated output schema, marking the node as complete. Useful for defining output schemas on trigger nodes, webhooks, or any node where you want to manually specify the output shape without running the actua…
+- [Test a single node](https://docs.happyrobot.ai/api-reference/versions/test-a-single-node.md): Triggers a test run for a single node in the specified version. The node must have a complete configuration and the version must not be published. Returns the generated node output (schema) on success.
+- [Test all nodes in a version](https://docs.happyrobot.ai/api-reference/versions/test-all-nodes-in-a-version.md): Triggers a synchronous test-all run for every testable node in the specified version. Nodes are executed in dependency waves — independent nodes run in parallel. If a node fails, dependent nodes are skipped. The endpoint blocks until all nodes have been tested and returns per-node results.
+- [Inspect a tool's Tool Call Result](https://docs.happyrobot.ai/api-reference/versions/inspect-a-tools-tool-call-result.md): Returns the current Tool Call Result and acks the tool.
+- [Sync a tool's Tool Call Result](https://docs.happyrobot.ai/api-reference/versions/sync-a-tools-tool-call-result.md): Generates only untested or out-of-date testable nodes.
+- [Generate a tool's Tool Call Result](https://docs.happyrobot.ai/api-reference/versions/generate-a-tools-tool-call-result.md): Generates every testable node.
+- [Set Tool Call Result visibility](https://docs.happyrobot.ai/api-reference/versions/set-tool-call-result-visibility.md): Replaces the complete list of generated leaf fields one branch node exposes to the agent.
+- [List prompt issues](https://docs.happyrobot.ai/api-reference/versions/list-prompt-issues.md): Returns prompt quality issues for all prompt nodes in the specified version. Issues are generated asynchronously by the platform's prompt analysis system. Each prompt node includes its current prompt text, issue generation status, and any open (non-rejected) issues with recommendations.
+- [List workflow folders](https://docs.happyrobot.ai/api-reference/workflow-folders/list-workflow-folders.md): Returns paginated workflow folders for the authenticated organization. Supports searching by name.
+- [Create a workflow folder](https://docs.happyrobot.ai/api-reference/workflow-folders/create-a-workflow-folder.md): Creates a new workflow folder in the authenticated organization. Optionally nest it under a parent folder.
+- [Get a workflow folder](https://docs.happyrobot.ai/api-reference/workflow-folders/get-a-workflow-folder.md): Returns a single workflow folder by UUID or slug.
+- [Update a workflow folder](https://docs.happyrobot.ai/api-reference/workflow-folders/update-a-workflow-folder.md): Updates the name of a workflow folder identified by UUID or slug.
+- [Delete a workflow folder](https://docs.happyrobot.ai/api-reference/workflow-folders/delete-a-workflow-folder.md): Deletes a workflow folder by UUID or slug. Workflows inside the folder are moved to the folder specified by `move_to`, or to the parent folder if `move_to` is omitted. Sub-folders are also moved to the same destination.
+- [List phone numbers](https://docs.happyrobot.ai/api-reference/phone-numbers/list-phone-numbers.md): Returns all phone numbers for the authenticated organization, including Twilio, Telnyx, and SIP trunk numbers with caller ID information.
+- [Purchase a phone number](https://docs.happyrobot.ai/api-reference/phone-numbers/purchase-a-phone-number.md): Purchases a new phone number from Twilio or Telnyx. For toll-free numbers (US/CA only), also submits toll-free verification. Rate limited to one purchase every 10 minutes per organization. Send force=true in the body to bypass this limit (use with caution — each number has a recurring monthly cost).
+- [Validate toll-free numbers for TextAgent](https://docs.happyrobot.ai/api-reference/phone-numbers/validate-toll-free-numbers-for-textagent.md): Validates toll-free phone numbers for use with TextAgent SMS. Outbound numbers are always valid. Inbound numbers are blocked if a live inbound TextAgent already uses them.
+- [Delete a toll-free verification](https://docs.happyrobot.ai/api-reference/phone-numbers/delete-a-toll-free-verification.md): Deletes a toll-free verification request by its SID.
+- [Free up a phone number](https://docs.happyrobot.ai/api-reference/phone-numbers/free-up-a-phone-number.md): Removes a phone number from all workflows it is assigned to. The phone number must not be used in any live version.
+- [Delete a phone number](https://docs.happyrobot.ai/api-reference/phone-numbers/delete-a-phone-number.md): Permanently deletes a phone number. The phone number must not be in use by any workflow.
+- [Get phone number usage](https://docs.happyrobot.ai/api-reference/phone-numbers/get-phone-number-usage.md): Returns usage information for a phone number across all workflows and versions.
+- [Remove phone number from a workflow](https://docs.happyrobot.ai/api-reference/phone-numbers/remove-phone-number-from-a-workflow.md): Removes a phone number from a specific workflow and version. The version must not be live.
+- [Get toll-free verification status](https://docs.happyrobot.ai/api-reference/phone-numbers/get-toll-free-verification-status.md): Returns toll-free verification status and submitted data for a phone number. Returns 204 when no verification exists.
+- [Submit toll-free verification](https://docs.happyrobot.ai/api-reference/phone-numbers/submit-toll-free-verification.md): Submits a toll-free verification request for a phone number. Requires business_name, notification_email, and sms_url.
+- [Create and attach SIP trunk](https://docs.happyrobot.ai/api-reference/phone-numbers/create-and-attach-sip-trunk.md): Creates a SIP trunk and attaches it to a Twilio phone number. Sets up both inbound and outbound trunks in LiveKit.
+- [Update a phone number](https://docs.happyrobot.ai/api-reference/phone-numbers/update-a-phone-number.md): Updates the display name and caller ID setting for a phone number.
+- [List SIP trunks](https://docs.happyrobot.ai/api-reference/sip-trunks/list-sip-trunks.md): Returns all SIP trunks for the organization.
+- [Create a SIP trunk](https://docs.happyrobot.ai/api-reference/sip-trunks/create-a-sip-trunk.md): Creates a new SIP trunk with inbound and outbound LiveKit trunks. Rate limited to one creation every 10 minutes per organization. Send force=true in the body to bypass this limit (use with caution — each trunk has a recurring monthly cost).
+- [Get SIP trunk options](https://docs.happyrobot.ai/api-reference/sip-trunks/get-sip-trunk-options.md): Returns trunk options for UI (id, name, number).
+- [Create multiple SIP trunks](https://docs.happyrobot.ai/api-reference/sip-trunks/create-multiple-sip-trunks.md): Creates multiple SIP trunks from a shared configuration. Returns the successfully created trunks. Rate limited to one creation every 10 minutes per organization. Send force=true in the body to bypass this limit (use with caution — each trunk has a recurring monthly cost).
+- [Get a SIP trunk](https://docs.happyrobot.ai/api-reference/sip-trunks/get-a-sip-trunk.md): Returns a single SIP trunk by ID.
+- [Update a SIP trunk](https://docs.happyrobot.ai/api-reference/sip-trunks/update-a-sip-trunk.md): Updates a SIP trunk by ID.
+- [Delete a SIP trunk](https://docs.happyrobot.ai/api-reference/sip-trunks/delete-a-sip-trunk.md): Deletes a SIP trunk by ID. Fails if the trunk is still in use by a workflow.
+- [List integrations](https://docs.happyrobot.ai/api-reference/integrations/list-integrations.md): Returns available integrations with optional events and credentials. Delegated providers (CRM, HRIS, ATS, etc.) are expanded into individual entries. Supports filtering by category, provider, and search. Paginated (default: 20 per page).
+- [List integration categories with providers](https://docs.happyrobot.ai/api-reference/integrations/list-integration-categories-with-providers.md): Returns a unified map of categories to their available providers. Includes both internal integration groups (Communications, Data, etc.) and delegated provider categories (CRM, HRIS, ATS, etc.).
+- [Get an integration](https://docs.happyrobot.ai/api-reference/integrations/get-an-integration.md): Returns a single integration by ID, including its events and the organization's connected credentials. Supports both native integration UUIDs and delegated provider composite IDs (e.g. {uuid}--{provider_slug}).
+- [Create a credential for an integration](https://docs.happyrobot.ai/api-reference/integrations/create-a-credential-for-an-integration.md): Creates a new credential for a form-based integration. OAuth integrations are not supported via API — use the HappyRobot platform UI instead.
+- [Update a credential for an integration](https://docs.happyrobot.ai/api-reference/integrations/update-a-credential-for-an-integration.md): Replaces an existing form-based credential's title and data while preserving its ID and workflow references. Send the same complete payload as credential creation, including all required data fields. If credential_type is omitted, the integration's default type is used; send it explicitly for a non-…
+- [List WhatsApp message templates](https://docs.happyrobot.ai/api-reference/integration-resources/list-whatsapp-message-templates.md): Returns all approved WhatsApp message templates for the given credential and business account.
+- [List WhatsApp businesses](https://docs.happyrobot.ai/api-reference/integration-resources/list-whatsapp-businesses.md): Returns all WhatsApp businesses associated with the organization's credentials.
+- [List WhatsApp business accounts](https://docs.happyrobot.ai/api-reference/integration-resources/list-whatsapp-business-accounts.md): Returns all WhatsApp business accounts for a given business ID.
+- [List WhatsApp phone numbers](https://docs.happyrobot.ai/api-reference/integration-resources/list-whatsapp-phone-numbers.md): Returns all WhatsApp phone numbers for a given business account ID.
+- [List Slack channels](https://docs.happyrobot.ai/api-reference/integration-resources/list-slack-channels.md): Returns all Slack channels accessible with the organization's credentials.
+- [List Slack users](https://docs.happyrobot.ai/api-reference/integration-resources/list-slack-users.md): Returns all Slack users accessible with the organization's credentials.
+- [List Google Sheets spreadsheets](https://docs.happyrobot.ai/api-reference/integration-resources/list-google-sheets-spreadsheets.md): Returns Google Sheets spreadsheets accessible with the organization's credentials. Supports search and cursor-based pagination.
+- [List Google Sheets worksheets](https://docs.happyrobot.ai/api-reference/integration-resources/list-google-sheets-worksheets.md): Returns all worksheets (tabs) within a Google Sheets spreadsheet.
+- [List Google Sheets columns](https://docs.happyrobot.ai/api-reference/integration-resources/list-google-sheets-columns.md): Returns all column headers from a specific worksheet within a Google Sheets spreadsheet.
+- [List Google Sheets rows](https://docs.happyrobot.ai/api-reference/integration-resources/list-google-sheets-rows.md): Returns all rows from a specific worksheet within a Google Sheets spreadsheet.
+- [List Microsoft Teams teams](https://docs.happyrobot.ai/api-reference/integration-resources/list-microsoft-teams-teams.md): Returns all Microsoft Teams teams accessible with the organization's credentials.
+- [List Microsoft Teams channels](https://docs.happyrobot.ai/api-reference/integration-resources/list-microsoft-teams-channels.md): Returns all Microsoft Teams channels. Optionally filter by team ID.
+- [List Microsoft Teams users](https://docs.happyrobot.ai/api-reference/integration-resources/list-microsoft-teams-users.md): Returns all Microsoft Teams users accessible with the organization's credentials.
+- [List Twilio SMS phone numbers](https://docs.happyrobot.ai/api-reference/integration-resources/list-twilio-sms-phone-numbers.md): Returns all Twilio SMS phone numbers available for the organization.
+- [List Telnyx SMS phone numbers](https://docs.happyrobot.ai/api-reference/integration-resources/list-telnyx-sms-phone-numbers.md): Returns all Telnyx SMS phone numbers available for the organization.
+- [List sessions by caller ID](https://docs.happyrobot.ai/api-reference/sessions/list-sessions-by-caller-id.md): Returns paginated sessions whose caller phone number matches caller_id, ordered by timestamp. Optionally filter by session timestamp with start_date and/or end_date (ISO 8601). Resolves the phone number to a contact, so a session is only returned if it produced a communication event. Use the session…
+- [Stream session messages (SSE)](https://docs.happyrobot.ai/api-reference/sessions/stream-session-messages-sse.md): Opens a Server-Sent Events stream for a single session. Optionally backfills the most recent messages. The stream emits `message` events in real-time and closes when the session ends.
+- [Get session](https://docs.happyrobot.ai/api-reference/sessions/get-session.md): Returns metadata for a single session.
+- [List session messages](https://docs.happyrobot.ai/api-reference/sessions/list-session-messages.md): Returns paginated messages for a session, ordered by timestamp.
+- [List message flags](https://docs.happyrobot.ai/api-reference/messages/list-message-flags.md): Returns paginated flags (issues) for a specific message, ordered by creation date.
+- [Create message flag](https://docs.happyrobot.ai/api-reference/messages/create-message-flag.md): Creates a new flag (issue) on a specific message. The flag is linked to the message and its parent run.
+- [Get current organization](https://docs.happyrobot.ai/api-reference/organization/get-current-organization.md): Returns basic information about the authenticated organization.
+- [List members of the current organization](https://docs.happyrobot.ai/api-reference/organization/list-members-of-the-current-organization.md): Returns members of the authenticated organization, including public profile information and each member's workspace-wide role. The role is null when a member only has scoped access.
+- [Add a member to the current organization](https://docs.happyrobot.ai/api-reference/organization/add-a-member-to-the-current-organization.md): Adds a member to the authenticated organization by email. Internal users are added immediately; everyone else receives an email invitation to accept. Role must be editor or viewer (owners cannot be assigned via the API); defaults to viewer.
+- [Remove a member from the current organization](https://docs.happyrobot.ai/api-reference/organization/remove-a-member-from-the-current-organization.md): Removes a member from the authenticated organization, identified by email or user_id. Owners cannot be removed via the API.
+- [List MCP servers](https://docs.happyrobot.ai/api-reference/mcp-servers/list-mcp-servers.md): Returns paginated MCP servers for the authenticated organization.
+- [Create MCP server](https://docs.happyrobot.ai/api-reference/mcp-servers/create-mcp-server.md): Creates a new MCP server connection. Tests connectivity and discovers available tools before saving.
+- [Refresh MCP server tools](https://docs.happyrobot.ai/api-reference/mcp-servers/refresh-mcp-server-tools.md): Re-connects to an existing MCP server and refreshes the list of discovered tools.
+- [List authorized organizations](https://docs.happyrobot.ai/api-reference/mcp-servers/list-authorized-organizations.md): Returns the organizations this MCP token is authorized to act on.
+- [List northstars for a prompt node](https://docs.happyrobot.ai/api-reference/northstars/list-northstars-for-a-prompt-node.md): Returns all northstars for a prompt node along with AI generation and coverage assessment statuses.
+- [Create a northstar for a prompt node](https://docs.happyrobot.ai/api-reference/northstars/create-a-northstar-for-a-prompt-node.md): Create a new northstar evaluation criterion for this prompt node.
+- [Generate northstars for a prompt node](https://docs.happyrobot.ai/api-reference/northstars/generate-northstars-for-a-prompt-node.md): Generate northstars for this node using AI. If northstars already exist they are force-regenerated.
+- [Batch toggle northstars](https://docs.happyrobot.ai/api-reference/northstars/batch-toggle-northstars.md): Enable or disable all northstars for this prompt node at once.
+- [Iterate northstars for a prompt node](https://docs.happyrobot.ai/api-reference/northstars/iterate-northstars-for-a-prompt-node.md): Rewrite existing northstars to reflect recent changes made to the prompt node.
+- [Assess northstar coverage for a prompt node](https://docs.happyrobot.ai/api-reference/northstars/assess-northstar-coverage-for-a-prompt-node.md): Trigger an AI assessment of how well current northstars cover the prompt's expected behaviors.
+- [Create a northstar folder for a prompt node](https://docs.happyrobot.ai/api-reference/northstars/create-a-northstar-folder-for-a-prompt-node.md): Create a folder for organizing this prompt node's northstars. File northstars into it via folder_id on create or update.
+- [Get a northstar by ID](https://docs.happyrobot.ai/api-reference/northstars/get-a-northstar-by-id.md)
+- [Delete a northstar](https://docs.happyrobot.ai/api-reference/northstars/delete-a-northstar.md)
+- [Update a northstar](https://docs.happyrobot.ai/api-reference/northstars/update-a-northstar.md): Update any subset of: name, description, category, examples, enabled state, priority, or folder_id.
+- [Get northstar history](https://docs.happyrobot.ai/api-reference/northstars/get-northstar-history.md): Fetch the full regeneration chain — every version this northstar was derived from, oldest first.
+- [Submit northstar feedback](https://docs.happyrobot.ai/api-reference/northstars/submit-northstar-feedback.md): Submit a correctness rating (-2 = strongly wrong, +2 = strongly correct). One entry per API key/user.
+- [Delete northstar feedback](https://docs.happyrobot.ai/api-reference/northstars/delete-northstar-feedback.md): Remove your feedback on a northstar.
+- [List custom evals for a prompt node](https://docs.happyrobot.ai/api-reference/custom-evals/list-custom-evals-for-a-prompt-node.md)
+- [Create a custom eval for a prompt node](https://docs.happyrobot.ai/api-reference/custom-evals/create-a-custom-eval-for-a-prompt-node.md)
+- [Get available tools for custom evals](https://docs.happyrobot.ai/api-reference/custom-evals/get-available-tools-for-custom-evals.md): Available tool/function definitions for this node — for building expected_tool_calls.
+- [Get default variables for custom evals](https://docs.happyrobot.ai/api-reference/custom-evals/get-default-variables-for-custom-evals.md): Merged default variable values available at runtime (org + use-case + workflow levels).
+- [Extract custom eval from a run](https://docs.happyrobot.ai/api-reference/custom-evals/extract-custom-eval-from-a-run.md): Build a custom eval from an existing run. Auto-extracts messages, variables, and suggests a name.
+- [Create a shared Tests folder in a prompt node’s workflow](https://docs.happyrobot.ai/api-reference/custom-evals/create-a-shared-tests-folder-in-a-prompt-node’s-workflow.md): Create a workflow-wide Tests folder. The node resolves the workflow; folder placement is independent of prompt or agent ownership. File top-level tests and suites via folder_id on update.
+- [Get a custom eval by ID](https://docs.happyrobot.ai/api-reference/custom-evals/get-a-custom-eval-by-id.md)
+- [Delete a custom eval](https://docs.happyrobot.ai/api-reference/custom-evals/delete-a-custom-eval.md)
+- [Update a custom eval](https://docs.happyrobot.ai/api-reference/custom-evals/update-a-custom-eval.md)
+- [Run a custom eval](https://docs.happyrobot.ai/api-reference/custom-evals/run-a-custom-eval.md): Execute the eval asynchronously. Poll /custom-evals/:eval_id/runs for results.
+- [List custom eval runs](https://docs.happyrobot.ai/api-reference/custom-evals/list-custom-eval-runs.md)
+- [List adversarial tests for a node](https://docs.happyrobot.ai/api-reference/adversarial-tests/list-adversarial-tests-for-a-node.md)
+- [Get an adversarial test by ID](https://docs.happyrobot.ai/api-reference/adversarial-tests/get-an-adversarial-test-by-id.md)
+- [List adversarial test runs](https://docs.happyrobot.ai/api-reference/adversarial-tests/list-adversarial-test-runs.md)
+- [Get adversarial test run by ID](https://docs.happyrobot.ai/api-reference/adversarial-tests/get-adversarial-test-run-by-id.md): Full status and audit remarks for a single test run.
+- [Get adversarial test run messages](https://docs.happyrobot.ai/api-reference/adversarial-tests/get-adversarial-test-run-messages.md): The full conversation that took place during this adversarial test run.
+- [Get the resolved audit scope for an adversarial test](https://docs.happyrobot.ai/api-reference/adversarial-tests/get-the-resolved-audit-scope-for-an-adversarial-test.md): Returns the northstar categories that BEA will grade against when this test runs. Generated tests inherit the suite's scope; standalone tests carry their own. Use this to display 'currently grading against tags: [...]' without re-implementing the resolution.
+- [List adversarial suites for a node](https://docs.happyrobot.ai/api-reference/adversarial-suites/list-adversarial-suites-for-a-node.md)
+- [Get an adversarial suite by ID](https://docs.happyrobot.ai/api-reference/adversarial-suites/get-an-adversarial-suite-by-id.md): Returns the suite and the mermaid workflow graph if already generated.
+- [List adversarial suite runs](https://docs.happyrobot.ai/api-reference/adversarial-suites/list-adversarial-suite-runs.md)
+- [Get adversarial suite run by ID](https://docs.happyrobot.ai/api-reference/adversarial-suites/get-adversarial-suite-run-by-id.md): Full status and aggregate counts for a suite run.
+- [List test runs in a suite run](https://docs.happyrobot.ai/api-reference/adversarial-suites/list-test-runs-in-a-suite-run.md): All individual adversarial test results within this suite run.
+- [Get e2e scenarios](https://docs.happyrobot.ai/api-reference/e2e-scenarios/get-e2e-scenarios.md)
+- [Post e2e scenarios](https://docs.happyrobot.ai/api-reference/e2e-scenarios/post-e2e-scenarios.md)
+- [Get e2e scenarios 1](https://docs.happyrobot.ai/api-reference/e2e-scenarios/get-e2e-scenarios-1.md)
+- [Delete e2e scenarios](https://docs.happyrobot.ai/api-reference/e2e-scenarios/delete-e2e-scenarios.md)
+- [Patch e2e scenarios](https://docs.happyrobot.ai/api-reference/e2e-scenarios/patch-e2e-scenarios.md)
+- [Post e2e scenarios run](https://docs.happyrobot.ai/api-reference/e2e-scenarios/post-e2e-scenarios-run.md)
+- [Get e2e scenarios runs](https://docs.happyrobot.ai/api-reference/e2e-scenarios/get-e2e-scenarios-runs.md)
+- [Get test suites](https://docs.happyrobot.ai/api-reference/test-suites/get-test-suites.md)
+- [Post test suites](https://docs.happyrobot.ai/api-reference/test-suites/post-test-suites.md)
+- [Get test suitescandidates](https://docs.happyrobot.ai/api-reference/test-suites/get-test-suitescandidates.md)
+- [Get test suites 1](https://docs.happyrobot.ai/api-reference/test-suites/get-test-suites-1.md)
+- [Delete test suites](https://docs.happyrobot.ai/api-reference/test-suites/delete-test-suites.md)
+- [Patch test suites](https://docs.happyrobot.ai/api-reference/test-suites/patch-test-suites.md)
+- [Get test suites members](https://docs.happyrobot.ai/api-reference/test-suites/get-test-suites-members.md)
+- [Patch test suites members](https://docs.happyrobot.ai/api-reference/test-suites/patch-test-suites-members.md)
+- [Post test suites generate](https://docs.happyrobot.ai/api-reference/test-suites/post-test-suites-generate.md)
+- [Post test suites run](https://docs.happyrobot.ai/api-reference/test-suites/post-test-suites-run.md)
+- [Get test suites runs](https://docs.happyrobot.ai/api-reference/test-suites/get-test-suites-runs.md)
+- [Get test suitesruns](https://docs.happyrobot.ai/api-reference/test-suites/get-test-suitesruns.md)
+- [Post test suitesruns cancel](https://docs.happyrobot.ai/api-reference/test-suites/post-test-suitesruns-cancel.md)
+- [Get config schema for an event](https://docs.happyrobot.ai/api-reference/events/get-config-schema-for-an-event.md): Returns the configuration schema for an event, including field types, required fields, defaults, and available options. Use this to inspect what an event expects before creating a node.
+- [Get Twin database schema](https://docs.happyrobot.ai/api-reference/twin/get-twin-database-schema.md)
+- [Create a Twin table](https://docs.happyrobot.ai/api-reference/twin/create-a-twin-table.md)
+- [Get Twin table data](https://docs.happyrobot.ai/api-reference/twin/get-twin-table-data.md)
+- [Drop a Twin table](https://docs.happyrobot.ai/api-reference/twin/drop-a-twin-table.md)
+- [Insert a row into a Twin table](https://docs.happyrobot.ai/api-reference/twin/insert-a-row-into-a-twin-table.md)
+- [Delete rows from a Twin table](https://docs.happyrobot.ai/api-reference/twin/delete-rows-from-a-twin-table.md)
+- [Update a row in a Twin table](https://docs.happyrobot.ai/api-reference/twin/update-a-row-in-a-twin-table.md)
+- [Execute SQL on Twin database](https://docs.happyrobot.ai/api-reference/twin/execute-sql-on-twin-database.md)
+- [Create a Twin workflow dump table](https://docs.happyrobot.ai/api-reference/twin/create-a-twin-workflow-dump-table.md): Creates a Twin table plus a dump config that maps workflow run values into its columns. Unlike POST /twin/tables (a bare table), the server resolves the workflow's variable catalog and binds each column to a variable, so completed runs populate the table automatically. Captures every variable by def…
+- [Delete a Twin workflow dump](https://docs.happyrobot.ai/api-reference/twin/delete-a-twin-workflow-dump.md): Deletes the workflow dump run-capture config for a table. Set dropTable=true to also drop the physical table and all its data.
+- [Create a chat client token](https://docs.happyrobot.ai/api-reference/chat/create-a-chat-client-token.md): Generates a scoped JWT for browser-side chat operations. Call this from your backend with your API key, then pass the token to the frontend.
+- [Create a chat session](https://docs.happyrobot.ai/api-reference/chat/create-a-chat-session.md): Creates a new chat session for the workflow scoped in the client token.
+- [Send a chat message](https://docs.happyrobot.ai/api-reference/chat/send-a-chat-message.md): Sends a user message to the chat session. The AI response will arrive via WebSocket.
+- [Close a chat session](https://docs.happyrobot.ai/api-reference/chat/close-a-chat-session.md): Ends the chat session, stopping the AI agent. The session cannot be resumed after this call.
+- [Get chat session history](https://docs.happyrobot.ai/api-reference/chat/get-chat-session-history.md): Retrieves message history for a chat session. Useful for page reloads or reconnects.
+- [Get presigned upload URL](https://docs.happyrobot.ai/api-reference/chat/get-presigned-upload-url.md): Returns a presigned S3 URL for direct file upload from the browser. After uploading, call POST /chat/upload/complete to register the artifact.
+- [Complete file upload](https://docs.happyrobot.ai/api-reference/chat/complete-file-upload.md): Registers an uploaded artifact after direct S3 upload. Call this after uploading the file to the presigned URL.
+- [Create a realtime client token](https://docs.happyrobot.ai/api-reference/realtime/create-a-realtime-client-token.md): Generates a scoped JWT for browser-side realtime connections.
+- [Create artifact download URLs](https://docs.happyrobot.ai/api-reference/artifacts/create-artifact-download-urls.md): Returns fresh presigned URLs after verifying each artifact against its server-authored message and the caller's workflow permissions.
+- [[Deprecated] Resolve artifact download URLs](https://docs.happyrobot.ai/api-reference/artifacts/[deprecated]-resolve-artifact-download-urls.md): This endpoint is deprecated and is scheduled to stop working on October 15, 2026 at 12:00 UTC. Migrate to POST /artifacts/download-urls and provide each artifact's message_id.
+- [List available voices](https://docs.happyrobot.ai/api-reference/voice/list-available-voices.md): Returns the voice catalog available to the authenticated workspace in this HappyRobot cluster. Use the returned id in workflow agent.voices configuration.
+- [Create a voice call token](https://docs.happyrobot.ai/api-reference/voice/create-a-voice-call-token.md): Generates a LiveKit token for browser-side voice calls with AI agents. Call this from your backend with your API key, then pass the token to the frontend. Use workflow_id to start a new call, or session_id to silently listen to an in-progress call. Set should_takeover to true to take over the call i…
+- [List signal keys for the org](https://docs.happyrobot.ai/api-reference/signals/list-signal-keys-for-the-org.md): Returns all configured custom signal keys for nodes in the API key org.
+- [Add a custom signal key to node](https://docs.happyrobot.ai/api-reference/signals/add-a-custom-signal-key-to-node.md): Appends a custom signal key to the target node configuration in all environments.
+- [Delete a custom signal key from node](https://docs.happyrobot.ai/api-reference/signals/delete-a-custom-signal-key-from-node.md): Removes a custom signal key from the target node configuration in all environments.
+- [Publish an immediate signal](https://docs.happyrobot.ai/api-reference/signals/publish-an-immediate-signal.md): Publishes a signal to internal signal service. payload.org_id is always derived from API key org. Built-in keys (org., usecase., session.) are allowed for targeting active sessions.
+- [Schedule a delayed signal](https://docs.happyrobot.ai/api-reference/signals/schedule-a-delayed-signal.md): Schedules a delayed signal in internal signal service. payload.org_id is always derived from API key org.
+- [Delete a scheduled signal](https://docs.happyrobot.ai/api-reference/signals/delete-a-scheduled-signal.md): Cancels a scheduled signal.
+- [Patch a scheduled signal](https://docs.happyrobot.ai/api-reference/signals/patch-a-scheduled-signal.md): Updates a scheduled signal. When payload is provided, payload.org_id is always derived from API key org.
+- [Carrier Event](https://docs.happyrobot.ai/bridge-api-reference/our-api/ingest-carrier.md): Create or update a carrier in the system
+- [Load Event](https://docs.happyrobot.ai/bridge-api-reference/our-api/ingest-load.md): Create one or more loads in the system. This endpoint accepts either a single load object or an array of load objects. The response will match the input format - if you send a single object, you'll receive a single object; if you send an array, you'll receive an array.
+- [Get Carrier](https://docs.happyrobot.ai/bridge-api-reference/your-api/find-carrier.md): Get details for a specific carrier
+- [Get Load](https://docs.happyrobot.ai/bridge-api-reference/your-api/find-load.md): Get details for a specific load
+- [Get Loads](https://docs.happyrobot.ai/bridge-api-reference/your-api/find-loads.md): Search for loads matching the given criteria
+- [Log Offer](https://docs.happyrobot.ai/bridge-api-reference/your-api/log-offer.md): Record a carrier's offer for a specific load
+- [Release notes](https://docs.happyrobot.ai/release-notes.md)
+
+## OpenAPI Specs
+
+- [json](https://platform.happyrobot.ai/api/v2/docs/json)
