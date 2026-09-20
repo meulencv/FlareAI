@@ -299,7 +299,9 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   `path`). `database.py seed` lo regenera desde la base local; `bootstrap()` → `import_seed()` lo carga una
   vez por contenido (`flare_imports` `seed:<sha256>`, lock 804027) con `ON CONFLICT DO NOTHING`: nunca pisa
   cachés más recientes. **`flare_settings` (hook_key) no va al repo**; presentación los lee de Twin.
-  Regresión `test_database.test_seed_assets_load_once_and_never_overwrite`. Al cambiar grafos/rutas en local
+  Primer deploy real: el INSERT jsonb del grafo (43 MB JSON) tiró la conexión en Postgres 256 MB; ahora las filas
+  > `SEED_INLINE_LIMIT` (4 MB) no se insertan y `get_asset()` cae a `seed_asset()` (lectura del archivo) si la
+  base no tiene la fila. Regresión `test_database.test_seed_assets_load_once_and_never_overwrite`. Al cambiar grafos/rutas en local
   y querer que viajen: `seed` y versionar el archivo.
 - `database.py push --url <destino>` queda como opción: upsert idempotente de `flare_sources`, `flare_settings`
   (solo necesarios en `--hackathon`), activos `PUSH_ASSET_KINDS` y comprobaciones de cámaras vigentes con

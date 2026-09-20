@@ -34,6 +34,37 @@ PUSH_ASSET_KINDS = ('demo_road_graph', 'demo_road_tile', 'local_road_graph', 'di
 # `bootstrap()` la carga en cualquier base vacía, así el despliegue no depende de copiar la base local.
 SEED = ROOT / 'data/seed/assets.jsonl.gz'
 SEED_ASSET_KINDS = ('demo_road_graph', 'local_road_graph', 'director_route', 'geocoding', 'player')
+# Filas de la semilla mayores que esto (grafos de decenas de MB) no se insertan: parsearlas a jsonb agota la
+# memoria de un PostgreSQL pequeño (Render 256 MB cerró la conexión). Se sirven desde el archivo por `get_asset`.
+SEED_INLINE_LIMIT = 4_000_000
+_seed_large: dict[str, int] | None = None
+
+
+def seed_large_ids() -> dict[str, int]:
+    """Identificadores de las filas grandes de la semilla (una lectura por proceso)."""
+    global _seed_large
+    if _seed_large is None:
+        found: dict[str, int] = {}
+        if SEED.is_file():
+            with gzip.open(SEED, 'rt', encoding='utf-8') as stream:
+                for line in stream:
+                    if len(line) > SEED_INLINE_LIMIT:
+                        found[json.loads(line)['id']] = len(line)
+        _seed_large = found
+    return _seed_large
+
+
+def seed_asset(identifier: str) -> dict | None:
+    if identifier not in seed_large_ids():
+        return None
+    prefix = json.dumps({'id': identifier}, ensure_ascii=False, separators=(',', ':'))[:-1] + ','
+    with gzip.open(SEED, 'rt', encoding='utf-8') as stream:
+        for line in stream:
+            if line.startswith(prefix):
+                row = json.loads(line)
+                if row['kind'] in SEED_ASSET_KINDS and not row.get('path'):
+                    return row
+    return None
 
 
 def local_start() -> None:
@@ -181,6 +212,8 @@ class Database:
             count = 0
             with gzip.open(SEED, 'rt', encoding='utf-8') as stream, conn.cursor() as cur:
                 for line in stream:
+                    if len(line) > SEED_INLINE_LIMIT:
+                        continue
                     row = json.loads(line)
                     if row['kind'] not in SEED_ASSET_KINDS or row.get('path'):
                         raise ValueError('Semilla de activos no válida')
@@ -313,7 +346,9 @@ class Database:
 
     def get_asset(self, identifier: str) -> dict | None:
         with self.connect() as conn:
-            return conn.execute('SELECT * FROM flare_assets WHERE id=%s', (identifier,)).fetchone()
+            row = conn.execute('SELECT * FROM flare_assets WHERE id=%s', (identifier,)).fetchone()
+        # La base manda; solo las filas grandes de la semilla que no se insertaron se leen del archivo.
+        return row if row is not None else seed_asset(identifier)
 
     def bootstrap(self) -> None:
         self.migrate()

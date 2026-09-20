@@ -73,6 +73,10 @@ La semilla se regenera desde la base local con `python database.py seed` (gzip r
 mismo SHA-256 si no cambian los activos). `import_seed()` se ejecuta una sola vez por contenido (marca
 `seed:<sha256>` en `flare_imports`) e inserta con `ON CONFLICT DO NOTHING`: una caché más reciente en la
 base nunca se pisa. Rechaza semillas con activos fuera de `SEED_ASSET_KINDS` o con `path`.
+Las filas de más de 4 MB (el grafo de Barcelona, 43 MB de JSON, y cinco grafos zonales) **no se insertan**:
+parsearlas a `jsonb` agotó la memoria del plan `0.1c-256mb` en el primer despliegue real (`SSL error:
+unexpected eof`). `get_asset()` las lee del archivo cuando la base no las tiene (índice de ids una vez por
+proceso, ~1 s; carga del grafo ~0,6 s, luego cacheado por el router). La base sigue mandando si existe la fila.
 
 `push` sigue disponible y es idempotente (upserts): `{"sources": 11, "settings": 3, "assets": 255,
 "camera_checks": 2884}` en la prueba. Las filas grandes (14,6 MB del grafo) se envían con `statement_timeout=0`.
