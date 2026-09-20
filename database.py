@@ -102,7 +102,7 @@ class Database:
     @contextmanager
     def connect(self) -> Iterator[Any]:
         options: dict[str, Any] = {'row_factory': dict_row, 'connect_timeout': 5,
-                                  'options': '-c statement_timeout=20000 -c timezone=UTC'}
+                                  'options': '-c statement_timeout=0 -c timezone=UTC'}
         if self.url:
             conn = psycopg.connect(self.url, **options)
         else:

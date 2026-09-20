@@ -8,7 +8,6 @@ services:
     region: frankfurt                    # misma región que la base; HappyRobot/Twin están en la plataforma EU
     plan: 1c-2g                          # el proceso de presentación ocupa ~650 MB de RAM; 512 MB no bastan
     buildCommand: pip install --upgrade pip && pip install -r requirements.txt
-    preDeployCommand: python database.py import   # esquema + atlas + catálogo + cartografía; idempotente
     startCommand: python app.py --presentation --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz            # responde solo cuando datos, escenario y director están cargados
     maxShutdownDelaySeconds: 60          # el cierre ordenado libera la sala Twin y espera al director (≤25 s)
