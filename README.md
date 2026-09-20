@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://flareai.onrender.com/"><b>🌐 Demo en vivo</b></a> ·
-  <a href="TU-ENLACE-AL-VIDEO"><b>🎬 Vídeo completo</b></a> ·
+  <a href="https://www.youtube.com/watch?v=zfJo7_ptvDI"><b>🎬 Vídeo completo</b></a> ·
   <a href="docs/IMPLEMENTACION.md">📐 Arquitectura técnica</a>
 </p>
 
@@ -134,7 +134,7 @@ Entendemos que no vas a poder hacer las llamadas al 112, así que en ese desplie
 
 **Es posible que los mapas no te carguen bien.** Las APIs que usamos tienen limitaciones y se saturan. Nosotros hemos hecho un sistema local que lo carga mucho más rápido, pero por las limitaciones del hosting gratuito no hemos podido desplegarlo del todo bien.
 
-Si necesitas probarlo en condiciones, **escríbenos a (mail no disponible)** y te pasamos la URL de un túnel a nuestro ordenador en un momento. O míralo en el **vídeo**: ahí se ve bien cómo funciona todo y cómo reacciona a las llamadas y a los distintos inputs.
+Si necesitas probarlo en condiciones, **escríbenos a (mail no disponible)** y te pasamos la URL de un túnel a nuestro ordenador en un momento. O míralo en el **[vídeo](https://www.youtube.com/watch?v=zfJo7_ptvDI)**: ahí se ve bien cómo funciona todo y cómo reacciona a las llamadas y a los distintos inputs.
 
 ## Ejecutar en local
 
