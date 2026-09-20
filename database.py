@@ -388,6 +388,7 @@ class Database:
 
     def stats(self) -> dict:
         with self.connect() as conn:
+            conn.execute('SET LOCAL statement_timeout=0')  # count(*) de la rejilla supera 20 s en bases pequeñas
             return {table: conn.execute(f'SELECT count(*) AS n FROM flare_{table}').fetchone()['n'] for table in TABLES}
 
     def push(self, target: Database) -> dict:
