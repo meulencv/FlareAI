@@ -107,6 +107,17 @@ flowchart LR
 
 **Impacto económico.** Cada operación cierra con un balance: superficie preservada, CO₂ evitado y su valor en tres escenarios de precio del carbono (10/30/60 €/t). Es la puerta a un modelo donde aseguradoras y bonos de carbono financian la detección temprana.
 
+## Lo que pedía el reto, resuelto
+
+| Requisito | Cómo lo hace FlareAI |
+|---|---|
+| **Sistema agéntico** — decide y actúa solo | No hay chatbot. El director recibe avisos y decide por sí mismo qué medios enviar, desde qué parques, si hace falta helicóptero, cuándo llamar al mando, cuándo proponer una alerta y cuándo retirar. Nadie le pregunta nada: actúa. |
+| **Escenario dinámico** — la crisis cambia en ejecución | El fuego crece con el tiempo, el viento gira, aparecen cortes de vía, llegan partes que dicen que empeora, entran nuevos incendios. El agente recalcula rutas desde la posición actual de cada vehículo y rehace el plan en el mismo tick. Cualquiera puede introducir estos giros desde el editor del dashboard. |
+| **Respuesta multipaso** — cadena de acciones | Llamada → contraste con satélite → priorización → despacho → ruta real → llegada → llamada de vuelta al bombero → parte → refuerzo o alerta → extinción → regreso → informe → memoria. Cada paso depende del anterior y persigue un objetivo: apagar el fuego sin poner a nadie en peligro. |
+| **Interacción de verdad** — llamadas, datos, sistemas | Voz entrante 112 y **voz saliente real** al mando de bomberos con HappyRobot (validada con llamadas telefónicas reales). Todo el estado se escribe y se lee en **HappyRobot Twin** (base de datos relacional). Rutas contra OSM/OSRM, datos de NASA, NOAA, IGN e INE. |
+| **Human-in-the-loop** — dashboard y control con 1 clic | El mapa muestra en todo momento qué hace la IA y por qué (marco de "pensando", decisiones con su razón, evidencias fechadas). El operador puede **pausar**, **vetar una ES-Alert con un clic en 3 segundos**, reanudar el seguimiento y meter giros al escenario. |
+| **BONUS · aprende de interacciones** | Al cerrar cada operación, el agente revisa lo ocurrido —llamadas, partes, tiempos, refuerzos, alertas— y lo condensa en memorias que entran en su contexto en la siguiente decisión. Ajusta su comportamiento de forma autónoma; Cerebro lo hace visible. |
+
 ## Stack
 
 - **Backend:** Python 3.13, servidor HTTP stdlib, sin frameworks. PostgreSQL para atlas territorial e histórico; SQLite + RTree para el atlas de emergencias (parques, hospitales, comisarías, helipuertos).
