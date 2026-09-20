@@ -303,9 +303,9 @@ test('la ronda sigue ambulancias en traslado y regresos, pero no unidades ya en 
 });
 
 test("interrumpir un viaje cancela el siguiente fotograma; movimiento reducido no anima", () => {
-  let callback, views = [], canceled = 0;
+  let callback, views = [], canceled = 0, fired = [];
   const map = { getCenter: () => ({ lat: 41, lng: 1 }), getZoom: () => 13, getMinZoom: () => 4,
-    getMaxZoom: () => 16, getSize: () => point(1000, 800), stop() {},
+    getMaxZoom: () => 16, getSize: () => point(1000, 800), stop() {}, fire: name => fired.push(name),
     getBoundsZoom: () => 8, project: p => point(p.lng, p.lat), unproject: p => [p.y, p.x],
     setView: (center, zoom) => views.push({ center, zoom }) };
   const L = { latLngBounds: () => ({}), point, latLng: p => Array.isArray(p) ? { lat: p[0], lng: p[1] } : p };
@@ -318,10 +318,15 @@ test("interrumpir un viaje cancela el siguiente fotograma; movimiento reducido n
   assert.equal(views.length, 1, "un fotograma ya cancelado no recupera el control");
   assert.equal(canceled, 1);
   assert.equal(tour.moving(), false);
-  views = [];
+  assert.deepEqual(fired, ["flare:zoomstart", "flare:zoomend"], "el viaje congela las teselas de carreteras y las libera al cancelar");
+  views = []; fired = [];
   tour.go([42, 2], 12, true);
   assert.deepEqual(views, [{ center: [42, 2], zoom: 12 }]);
   assert.equal(tour.moving(), false);
+  assert.deepEqual(fired, [], "con movimiento reducido no hay zoom continuo que congelar");
+  tour.go([42, 2], 12);
+  for (let t = 0; tour.moving() && t < 100000; t += 50) callback(t);
+  assert.deepEqual(fired, ["flare:zoomstart", "flare:zoomend"], "un viaje completo libera las teselas al llegar");
 });
 
 function evidenceHarness(fetch, incidents = [], cameras = []) {

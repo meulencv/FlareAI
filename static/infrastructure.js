@@ -63,6 +63,39 @@ export function roadEvents(events) {
   return stable;
 }
 
+// Congelada, la rejilla de carreteras solo cambia de nivel al cruzar un zoom entero.
+export function frozenLevelChange(zoom, tileZoom) {
+  return Math.round(zoom) !== tileZoom;
+}
+
+// Capa de teselas IGN estable: excluye `viewprereset` (el zoom continuo destruía las teselas) y,
+// durante el zoom continuo (rueda o viaje de la IA), no recalcula la rejilla en cada fotograma:
+// escala por CSS los niveles ya cargados y solo pide teselas al cruzar un zoom entero, sin podar.
+// Al descongelar recoloca la rejilla y poda como en un zoom normal. `base` es L.TileLayer.prototype.
+export function roadLayerMixin(base) {
+  return {
+    getEvents() { return roadEvents(base.getEvents.call(this)); },
+    freeze() { this._frozen = true; },
+    thaw() {
+      if (!this._frozen) return;
+      this._frozen = false;
+      if (this._map) this._resetView();
+    },
+    _setView(center, zoom, noPrune, noUpdate) {
+      if (this._frozen && this._map && this._tileZoom !== undefined) {
+        if (frozenLevelChange(zoom, this._tileZoom)) base._setView.call(this, center, zoom, true, noUpdate);
+        else this._setZoomTransforms(center, zoom);
+        return;
+      }
+      base._setView.call(this, center, zoom, noPrune, noUpdate);
+    },
+    _onMoveEnd() {
+      if (this._frozen) return;
+      base._onMoveEnd.call(this);
+    },
+  };
+}
+
 export function camerasVisible(zoom) {
   return zoom >= 10;
 }
@@ -270,9 +303,7 @@ export function createInfrastructure({ map, L, document, fetch }) {
   });
   map.on("moveend zoomend resize", () => { clearTimeout(repaint); repaint = setTimeout(render, 100); });
   map.createPane("roads"); map.getPane("roads").style.zIndex = 403; map.getPane("roads").style.pointerEvents = "none";
-  const StableRoadLayer = L.TileLayer.extend({
-    getEvents() { return roadEvents(L.TileLayer.prototype.getEvents.call(this)); },
-  });
+  const StableRoadLayer = L.TileLayer.extend(roadLayerMixin(L.TileLayer.prototype));
   const roads = new StableRoadLayer("/roads/{z}/{x}/{y}.png", { pane: "roads", opacity: .48, minZoom: 4, maxZoom: 16,
     bounds: [[27, -19], [44.5, 5]], noWrap: true, updateWhenIdle: true,
     attribution: 'Carreteras © <a href="https://www.scne.es" target="_blank" rel="noopener">SCNE/IGN</a> · CC BY 4.0' });
@@ -281,6 +312,8 @@ export function createInfrastructure({ map, L, document, fetch }) {
   roads.on("tileerror", () => { tileFailed = true; problem("roads", "Carreteras: cobertura no disponible en parte de esta vista"); });
   roads.on("load", () => { if (!tileFailed) problem("roads", null); });
   roads.addTo(map);
+  map.on("flare:zoomstart", () => roads.freeze());
+  map.on("flare:zoomend", () => roads.thaw());
   let loadingCatalog = false, attributed = false, catalogAt = 0;
   async function loadCatalog() {
     if (loadingCatalog) return;

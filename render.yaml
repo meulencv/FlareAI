@@ -1,0 +1,38 @@
+# Blueprint de Render para FlareAI · https://render.com/docs/blueprint-spec
+# Despliega el centro Python (app.py --presentation) con una base PostgreSQL gestionada.
+# Guía completa y pasos previos (push de la red de Barcelona, secretos): docs/DESPLIEGUE_RENDER.md
+services:
+  - type: web
+    name: flareai
+    runtime: python                      # versión fijada en .python-version (3.13: ruedas binarias para todas las dependencias)
+    region: frankfurt                    # misma región que la base; HappyRobot/Twin están en la plataforma EU
+    plan: 1c-2g                          # el proceso de presentación ocupa ~650 MB de RAM; 512 MB no bastan
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    preDeployCommand: python database.py import   # esquema + atlas + catálogo + cartografía; idempotente
+    startCommand: python app.py --presentation --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz            # responde solo cuando datos, escenario y director están cargados
+    maxShutdownDelaySeconds: 60          # el cierre ordenado libera la sala Twin y espera al director (≤25 s)
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: FLAREAI_DATABASE_URL       # URL interna de la base creada abajo
+        fromDatabase:
+          name: flareai-db
+          property: connectionString
+      - key: FLAREAI_PUBLIC_CONTROLS    # tras el proxy de Render no existe loopback: habilita editor/reset del escenario
+        value: "1"
+      - key: FLAREAI_ALLOW_OUTBOUND     # "1" equivale a --allow-outbound: llamadas telefónicas reales a flare_contacts
+        value: "0"
+      - key: HAPPYROBOT_API_KEY         # se introduce en el panel de Render al crear el Blueprint (nunca en el repo)
+        sync: false
+      - key: FLAREAI_TWIN_API_KEY       # credencial Twin con acceso SQL (la de .env.presentation local)
+        sync: false
+
+databases:
+  - name: flareai-db
+    region: frankfurt
+    plan: 0.1c-256mb                     # ~1 GB de datos (rejilla 1 km² con JSON completo); ampliar si hace falta
+    postgresMajorVersion: "17"           # misma versión mayor que el PostgreSQL local (.local/pg, 17.x)
+    databaseName: flareai
+    user: flareai
+    diskSizeGB: 5                        # la base local ocupa ~1 GB; 1 o múltiplo de 5

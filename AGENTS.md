@@ -280,6 +280,66 @@ anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
   desconexión, nueva sesión o revisión de ruta. Movimiento reducido conserva resaltado sin animación.
 - Regresiones: `.local/node-v22.19.0-darwin-arm64/bin/node --test test_director.mjs test_scene.mjs`.
 
+## Despliegue en Render (20/09/2026, preparado sin commit)
+
+- `render.yaml` (validado contra `https://render.com/schema/render.yaml.json`): web `flareai` Python, plan
+  `1c-2g` Frankfurt, `preDeployCommand: python database.py import`, `startCommand: python app.py
+  --presentation --host 0.0.0.0 --port $PORT`, `healthCheckPath: /healthz`; base `flareai-db` Postgres 17
+  `0.1c-256mb`, 5 GB. `.python-version` = 3.13: numpy 2.2.6/shapely 2.1.1 no tienen ruedas cp314 y se
+  compilarían en Render. `requirements.txt` fija `eccodeslib==2.48.3.28` (la instalada en `.venv`; 2.48.2.27
+  no existe para macOS). Guía: `docs/DESPLIEGUE_RENDER.md`. Nada de esto se ha desplegado todavía.
+- `app.py`: `--port` toma `PORT`; `FLAREAI_ALLOW_OUTBOUND=1` ≡ `--allow-outbound`; `SIGTERM` → `KeyboardInterrupt`
+  (cierre ordenado, libera lease Twin); `GET /healthz`; `FLAREAI_PUBLIC_CONTROLS=1` sustituye la exigencia de
+  loopback en `/api/scenario`, `cancel-alert`, `admin/reset` y `/api/demo/setup` (tras el proxy no hay loopback;
+  queda la comprobación `Origin == Host`). Sin la variable el comportamiento es el anterior. `/api/demo/setup`
+  enlaza `/112/` sobre `RENDER_EXTERNAL_URL`/`FLAREAI_PUBLIC_URL` cuando no hay túnel ni App alojada.
+- Petición expresa (mañana del 20/09/2026): los datos estáticos viajan con el código, sin clonar la base.
+  `data/seed/assets.jsonl.gz` (17 MB, versionado, gzip `mtime=0` reproducible) contiene `SEED_ASSET_KINDS`
+  (red Barcelona, `local_road_graph`, `director_route`, `geocoding`, `player`; sin teselas de preparación ni
+  `path`). `database.py seed` lo regenera desde la base local; `bootstrap()` → `import_seed()` lo carga una
+  vez por contenido (`flare_imports` `seed:<sha256>`, lock 804027) con `ON CONFLICT DO NOTHING`: nunca pisa
+  cachés más recientes. **`flare_settings` (hook_key) no va al repo**; presentación los lee de Twin.
+  Regresión `test_database.test_seed_assets_load_once_and_never_overwrite`. Al cambiar grafos/rutas en local
+  y querer que viajen: `seed` y versionar el archivo.
+- `database.py push --url <destino>` queda como opción: upsert idempotente de `flare_sources`, `flare_settings`
+  (solo necesarios en `--hackathon`), activos `PUSH_ASSET_KINDS` y comprobaciones de cámaras vigentes con
+  catálogo presente. No copia atlas/catálogo ni medios con `path`. Rechaza origen == destino.
+  `SET LOCAL statement_timeout=0` para la fila de 14,6 MB.
+- Verificado en local con copia de solo archivos versionados + CPython 3.13.15 (`.local/py313`, descarga
+  python-build-standalone) contra bases vacías `flareai_render`/`flareai_render2` del clúster local: import
+  40 s con semilla (0,6 s la segunda vez), push 255 activos, servidor `--hackathon` en 0.0.0.0 con
+  `PORT`/`FLAREAI_PUBLIC_CONTROLS`/`RENDER_EXTERNAL_URL` desde IP de red local (también sobre base sembrada
+  solo por `import`, sin push), cierre por SIGTERM. No se probó `--presentation` para no
+  competir por el lease Twin ni consumir cuota. Ruff/mypy pasan. Puertos 10001/10002 en este Mac los ocupa
+  un proceso Java en loopback: usar puertos altos para pruebas.
+- Un solo director por sala Twin: con el local en `--presentation`, Render queda en `standby` (y viceversa).
+  Disco de Render efímero (cachés se rehacen); sin disco persistente porque ocultaría `data/` versionado.
+  Playwright no va en `requirements.txt`: la verificación de vídeo queda pendiente en Render, las imágenes sí.
+
+## Rendimiento del mapa (20/09/2026, petición expresa de fluidez)
+
+- Perfil real (Chromium headless, rueda de zoom): >55 % de la CPU era Leaflet reproyectando y recortando en
+  SVG los ~111.000 vértices de `spain/neighbors/provinces.geojson` en cada fotograma. Ahora los dibuja
+  `static/cartography.js` en un solo canvas: proyección una vez a coordenadas de mundo (zoom 0, relativas
+  a un origen para no perder precisión en float32), un `Path2D` por entidad y nivel de detalle
+  (Douglas-Peucker, `LEVELS`: zoom ≤7, ≤10, completo), islotes subpíxel omitidos en niveles gruesos, recorte
+  por caja de la vista y una transformación afín por fotograma. No se tocan los GeoJSON ni `incident.footprint`.
+  España y vecinos cargan antes del primer fotograma; las provincias (3,4 MB) llegan después sin bloquear.
+- Los GeoJSON se sirven desde SQL serializados/gzip una vez por proceso (`app.py::Cartography`), con `ETag`,
+  `304` y `Cache-Control: public, max-age=86400`; el resto de la API sigue `no-store`.
+- Teselas IGN: `infrastructure.js::roadLayerMixin` congela la rejilla durante el zoom continuo (eventos
+  `flare:zoomstart`/`flare:zoomend` que emiten `zoomTo` de `app.js` y `createCameraTour` de `director.js`):
+  solo escala por CSS los niveles cargados, pide teselas al cruzar un zoom entero sin podar y poda al
+  descongelar. Quien añada otro zoom programático por fotograma debe emitir esos eventos (y `zoomend` al
+  cancelar), o las teselas quedarán congeladas.
+- `/api/director` devuelve solo los últimos `PUBLIC_EVENTS` (200) eventos; el historial completo sigue en
+  `/api/director/history`. Chispas sin `shadowBlur` (halo como disco tenue); tarjetas del escenario solo se
+  reconstruyen si cambia su texto; etiquetas de lugar y rótulo del mapa no se reescriben si no cambian.
+- Regresiones: `node --test test_cartography.mjs test_infrastructure.mjs test_director.mjs`. Medir con
+  Playwright + CDP `Profiler` antes de optimizar: las cifras absolutas en headless (SwiftShader) no son las
+  del navegador real, pero el reparto de tiempo sí. `verify_director_ui.py` falla desde el dispositivo
+  automático (locator `.response-vehicle` estricto con seis vehículos), no por estos cambios.
+
 ## Bomberos 123, ES-Alert móvil y manos libres (19/09/2026)
 
 - Mismo marcador `/112/`: 112 ciudadano y **123 ficticio** bomberos. El 123 exige seleccionar aviso

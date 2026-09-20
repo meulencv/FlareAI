@@ -594,6 +594,23 @@ procedencia y fechas al redistribuir; el acceso público no implica SLA. Más de
 
 ## Implantación
 
+### Render (centro Python en la nube)
+
+`render.yaml` describe un web service Python (`app.py --presentation`, plan `1c-2g`, Frankfurt) y una base
+Render Postgres 17 (`0.1c-256mb`, 5 GB). `.python-version` fija 3.13, la versión con ruedas binarias para
+todas las dependencias. Al crear el Blueprint, Render pide `HAPPYROBOT_API_KEY` y `FLAREAI_TWIN_API_KEY`;
+el pre-deploy `python database.py import` construye atlas, catálogo y cartografía desde el repositorio y
+carga la semilla versionada `data/seed/assets.jsonl.gz` (red viaria de Barcelona, grafos, rutas y
+geocodificación cacheados; se regenera con `python database.py seed`). No hay que copiar la base local;
+`database.py push --url …` queda como opción para ajustes de `--hackathon` y comprobaciones de cámaras.
+
+`FLAREAI_PUBLIC_CONTROLS=1` habilita el editor del escenario y el enlace 112 tras el proxy (cualquiera con
+la URL puede usarlos, como el marcador); `FLAREAI_ALLOW_OUTBOUND=1` sustituye a `--allow-outbound`. Solo
+puede haber un director por sala Twin: parar el servidor local antes de presentar desde Render. Guía
+completa, tabla de variables y límites en `docs/DESPLIEGUE_RENDER.md`.
+
+### Consideraciones generales
+
 Este servidor es un prototipo reproducible con la biblioteca estándar de Python. Para servicio público persistente, ejecutar un único proceso de adquisición, almacenar cachés y evidencias en un volumen persistente y servir los recursos mediante un proxy HTTPS. Configurar límites de concurrencia y peticiones en el proxy; para tráfico alto, trasladar el servidor a un framework de producción. Evitar iniciar varios escritores sobre el mismo directorio `data/`.
 
 Probado localmente en macOS arm64 con PostgreSQL 17.11. No se han validado Windows ni cargas de

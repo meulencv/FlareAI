@@ -240,9 +240,13 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
       const life = live[i].age / live[i].life;
       const lift = (flicker(live[i].seed, time, 1.4) + 1) / 2;
       const size = Math.max(.45, (1.6 - life) * scale * (.55 + lift * .5));
-      ctx.globalAlpha = Math.max(0, Math.sin(Math.PI * Math.min(1, life)) * .95);
+      const glow = Math.max(0, Math.sin(Math.PI * Math.min(1, life)) * .95);
+      // Halo como disco tenue en vez de shadowBlur: el desenfoque por chispa era el trazo más caro del canvas.
+      ctx.globalAlpha = glow * .28;
+      ctx.fillStyle = fireTint(incident, 255, 148, 54);
+      ctx.beginPath(); ctx.arc(spot.x, spot.y, size + 2.2, 0, 2 * Math.PI); ctx.fill();
+      ctx.globalAlpha = glow;
       ctx.fillStyle = life < .45 ? fireTint(incident, 255, 217, 161) : fireTint(incident, 242, 118, 74);
-      ctx.shadowColor = fireTint(incident, 255, 148, 54); ctx.shadowBlur = 4;
       ctx.beginPath(); ctx.arc(spot.x, spot.y, size, 0, 2 * Math.PI); ctx.fill();
       if (wind?.from != null) {
         const tail = windStroke(live[i], wind, mpp, (1 - life) * 5 * scale)[0];
@@ -253,7 +257,6 @@ export function createStage({ map, canvas, sampleWind, random = Math.random }) {
         }
       }
     }
-    ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
     embers.set(incident.id, live);
     return live.length;

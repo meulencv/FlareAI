@@ -26,6 +26,7 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parent
 ACTION_TYPES = {'focus', 'context', 'dispatch', 'reassign', 'return', 'alert', 'watch'}
+PUBLIC_EVENTS = 200
 
 
 def digest(value: Any) -> str:
@@ -361,7 +362,10 @@ class Director:
 
     def public_state(self) -> dict:
         with self.lock:
-            return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'events', 'assignments', 'alerts')}) | {'server_time': time.time(), 'stations': self.station_inventory(),
+            # El sondeo del mapa llega cada 500 ms: solo viajan los últimos eventos; el historial completo
+            # sigue en /api/director/history (SQL) y el panel lo carga al abrirse.
+            return deepcopy({k: self.state[k] for k in ('session_id', 'mode', 'status', 'sequence', 'assignments', 'alerts')}) | {
+                'events': deepcopy(self.state['events'][-PUBLIC_EVENTS:]), 'server_time': time.time(), 'stations': self.station_inventory(),
                 'scenario': deepcopy(self.scene.data) if self.scene else None, 'pending_alerts': deepcopy(self.state.get('pending_alerts', {})),
                 'operations': self.operations.public_state() if self.operations else None, 'auto': self.auto.public_state()}
 

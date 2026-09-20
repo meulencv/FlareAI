@@ -26,6 +26,14 @@ CATALOG = ROOT / 'data/espana-en-directo/data/catalog.json'
 TABLES = ('sources', 'imports', 'grid', 'facilities', 'cameras', 'snapshots', 'incidents',
           'observations', 'confirmations', 'assets', 'settings', 'camera_checks', 'demo_sessions', 'demo_calls',
           'director_state', 'director_events')
+# Activos que no se derivan del repositorio ni de archivos en disco: red viaria precargada de Barcelona,
+# grafos/rutas/geocodificación cacheados y reproductores de cámaras. Los que tienen `path` (teselas IGN,
+# imágenes de cámaras, satélite) se vuelven a descargar en destino y no se copian.
+PUSH_ASSET_KINDS = ('demo_road_graph', 'demo_road_tile', 'local_road_graph', 'director_route', 'geocoding', 'player')
+# Semilla versionada con los activos que el arranque necesita (sin teselas de preparación, ~17 MB gzip):
+# `bootstrap()` la carga en cualquier base vacía, así el despliegue no depende de copiar la base local.
+SEED = ROOT / 'data/seed/assets.jsonl.gz'
+SEED_ASSET_KINDS = ('demo_road_graph', 'local_road_graph', 'director_route', 'geocoding', 'player')
 
 
 def local_start() -> None:
@@ -144,6 +152,43 @@ class Database:
                             count += 1
                 conn.execute('INSERT INTO flare_imports(id,source_id,rows) VALUES (%s,%s,%s)', (source, source, count))
                 self.asset(f'import:{source}', 'source_archive', {'sha256': digest(path), 'rows': count}, path, source, conn)
+
+    def export_seed(self) -> dict:
+        """Vuelca a `SEED` los activos `SEED_ASSET_KINDS` de esta base, ordenados y con gzip reproducible.
+        No incluye ajustes ni credenciales (`flare_settings` queda fuera del repositorio), ni medios en disco."""
+        SEED.parent.mkdir(parents=True, exist_ok=True)
+        counts: dict[str, int] = {}
+        with self.connect() as conn, conn.cursor(name='export_seed') as cur, gzip.GzipFile(SEED, 'wb', mtime=0) as output:
+            cur.execute('SELECT id,kind,source_id,path,data FROM flare_assets WHERE kind = ANY(%s) ORDER BY id', (list(SEED_ASSET_KINDS),))
+            for row in cur:
+                output.write((json.dumps(row, ensure_ascii=False, separators=(',', ':')) + '\n').encode())
+                counts[row['kind']] = counts.get(row['kind'], 0) + 1
+        return counts
+
+    def import_seed(self) -> int:
+        """Carga `SEED` una sola vez por contenido (marca `seed:<sha256>` en `flare_imports`), sin pisar
+        activos ya presentes: una caché más reciente en la base prevalece sobre la semilla."""
+        if not SEED.is_file():
+            return 0
+        marker = 'seed:' + digest(SEED)
+        with self.connect() as conn:
+            conn.execute('SELECT pg_advisory_xact_lock(804027)')
+            if conn.execute('SELECT 1 FROM flare_imports WHERE id=%s', (marker,)).fetchone():
+                return 0
+            conn.execute('SET LOCAL statement_timeout=0')
+            self.source(conn, 'seed-assets', {'path': str(SEED.relative_to(ROOT)), 'kinds': list(SEED_ASSET_KINDS),
+                                              'description': 'Activos precargados desde el repositorio; no se copian ajustes ni credenciales'})
+            count = 0
+            with gzip.open(SEED, 'rt', encoding='utf-8') as stream, conn.cursor() as cur:
+                for line in stream:
+                    row = json.loads(line)
+                    if row['kind'] not in SEED_ASSET_KINDS or row.get('path'):
+                        raise ValueError('Semilla de activos no válida')
+                    cur.execute('INSERT INTO flare_assets VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO NOTHING',
+                                (row['id'], row['kind'], row['source_id'], None, Jsonb(row['data'])))
+                    count += 1
+            conn.execute('INSERT INTO flare_imports(id,source_id,rows) VALUES (%s,%s,%s)', (marker, 'seed-assets', count))
+        return count
 
     def import_catalog(self) -> None:
         with self.connect() as conn:
@@ -274,6 +319,7 @@ class Database:
         self.migrate()
         self.import_atlas()
         self.import_catalog()
+        self.import_seed()
         for kind, path in [('fires', ROOT / 'data/firms/focos_espana.geojson'), ('weather', ROOT / 'data/latest.json')]:
             if self.snapshot(kind) is None:
                 self.save_snapshot(kind, json.loads(path.read_text()))
@@ -309,6 +355,40 @@ class Database:
         with self.connect() as conn:
             return {table: conn.execute(f'SELECT count(*) AS n FROM flare_{table}').fetchone()['n'] for table in TABLES}
 
+    def push(self, target: Database) -> dict:
+        """Copia a otra base PostgreSQL (p. ej. la de Render) el estado local que `bootstrap()` no puede
+        reconstruir desde el repositorio: fuentes, ajustes (incluidas las credenciales del director), los
+        activos de `PUSH_ASSET_KINDS` y las comprobaciones de cámaras vigentes cuyo catálogo ya exista en
+        destino. El atlas, el catálogo y la cartografía los importa `bootstrap()` en destino (pre-deploy);
+        los medios en disco no se copian. Idempotente: puede repetirse antes o después del despliegue."""
+        if target.url == self.url:
+            raise ValueError('Origen y destino son la misma base')
+        target.migrate()
+        counts: dict[str, int] = {}
+        with self.connect() as source, target.connect() as remote, remote.cursor() as cur:
+            cur.execute('SET LOCAL statement_timeout=0')
+            rows = source.execute('SELECT id,data FROM flare_sources ORDER BY id').fetchall()
+            cur.executemany('INSERT INTO flare_sources VALUES (%s,%s) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data',
+                            [(row['id'], Jsonb(row['data'])) for row in rows])
+            counts['sources'] = len(rows)
+            rows = source.execute('SELECT id,data FROM flare_settings ORDER BY id').fetchall()
+            cur.executemany('INSERT INTO flare_settings VALUES (%s,%s) ON CONFLICT (id) DO UPDATE SET data=EXCLUDED.data',
+                            [(row['id'], Jsonb(row['data'])) for row in rows])
+            counts['settings'] = len(rows)
+            counts['assets'] = 0
+            with source.cursor(name='push_assets') as assets:
+                assets.execute('SELECT id,kind,source_id,path,data FROM flare_assets WHERE kind = ANY(%s) ORDER BY id', (list(PUSH_ASSET_KINDS),))
+                for row in assets:
+                    cur.execute('INSERT INTO flare_assets VALUES (%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET kind=EXCLUDED.kind,source_id=EXCLUDED.source_id,path=EXCLUDED.path,data=EXCLUDED.data',
+                                (row['id'], row['kind'], row['source_id'], row['path'], Jsonb(row['data'])))
+                    counts['assets'] += 1
+            cameras = {row['id'] for row in cur.execute('SELECT id FROM flare_cameras')}
+            rows = [row for row in source.execute("SELECT * FROM flare_camera_checks WHERE valid_until > (now() AT TIME ZONE 'UTC') ORDER BY id") if row['id'] in cameras]
+            cur.executemany('INSERT INTO flare_camera_checks VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (id) DO UPDATE SET status=EXCLUDED.status,checked_at=EXCLUDED.checked_at,valid_until=EXCLUDED.valid_until,media_kind=EXCLUDED.media_kind,data=EXCLUDED.data',
+                            [(row['id'], row['status'], row['checked_at'], row['valid_until'], row['media_kind'], Jsonb(row['data'])) for row in rows])
+            counts['camera_checks'] = len(rows)
+        return counts
+
     def export(self, directory: Path) -> None:
         directory.mkdir(parents=True, exist_ok=False)
         with self.connect() as conn:
@@ -325,8 +405,9 @@ class Database:
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('command', choices=['start', 'import', 'stats', 'export'])
+    parser.add_argument('command', choices=['start', 'import', 'stats', 'export', 'push', 'seed'])
     parser.add_argument('--directory', type=Path)
+    parser.add_argument('--url', help='push: URL PostgreSQL de destino (p. ej. la URL externa de Render, con sslmode=require)')
     args = parser.parse_args()
     db = Database()
     if args.command == 'start':
@@ -336,6 +417,12 @@ if __name__ == '__main__':
         print(json.dumps(db.stats(), indent=2))
     elif args.command == 'stats':
         print(json.dumps(db.stats(), indent=2))
+    elif args.command == 'seed':
+        print(json.dumps(db.export_seed(), indent=2))
+    elif args.command == 'push':
+        if not args.url:
+            parser.error('push requiere --url de la base de destino')
+        print(json.dumps(db.push(Database(args.url)), indent=2))
     elif args.directory is None:
         parser.error('export requiere --directory nuevo')
     else:

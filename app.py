@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gzip
+import hashlib
 import io
 import json
 import os
 import re
+import signal
 import socket
 import threading
 import time
@@ -29,6 +32,37 @@ from incidents import Collection, Incident, assemble, refresh_fires
 from satellite import picture
 
 
+CARTOGRAPHY = {'/spain.geojson', '/neighbors.geojson', '/provinces.geojson', '/places.json'}
+# Despliegue tras un proxy (Render): las órdenes de sala llegan con la dirección del proxy, no loopback.
+# Con FLAREAI_PUBLIC_CONTROLS=1 se aceptan de cualquier cliente; queda la comprobación de origen del mismo host.
+PUBLIC_CONTROLS = os.environ.get('FLAREAI_PUBLIC_CONTROLS') == '1'
+# URL pública del propio servicio (Render la publica en RENDER_EXTERNAL_URL) para enlazar el 112 sin túnel.
+PUBLIC_URL = (os.environ.get('FLAREAI_PUBLIC_URL') or os.environ.get('RENDER_EXTERNAL_URL') or '').rstrip('/')
+
+
+class Cartography:
+    """Cartografía estática servida desde SQL: se serializa y comprime una sola vez por proceso.
+    Antes cada carga de página volvía a serializar 3,4 MB de provincias sin caché HTTP."""
+
+    def __init__(self, database) -> None:
+        self.db = database
+        self.lock = threading.Lock()
+        self.entries: dict[str, tuple[str, bytes, bytes]] = {}
+
+    def entry(self, path: str) -> tuple[str, bytes, bytes]:
+        with self.lock:
+            cached = self.entries.get(path)
+            if cached:
+                return cached
+            asset = self.db.get_asset('map:' + path[1:])
+            if asset is None:
+                raise KeyError('Cartografía no importada')
+            raw = json.dumps(asset['data']['places'] if path == '/places.json' else asset['data'], ensure_ascii=False, allow_nan=False).encode()
+            entry = ('"' + hashlib.sha256(raw).hexdigest()[:24] + '"', raw, gzip.compress(raw, 6))
+            self.entries[path] = entry
+            return entry
+
+
 class Store:
     def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False, hackathon: bool = False, presentation: bool = False, allow_outbound: bool = False) -> None:
         self.offline = offline
@@ -37,6 +71,7 @@ class Store:
         self.hackathon = hackathon or presentation
         self.db = database
         self.territorial = Territorial(database, offline) if database else None
+        self.cartography = Cartography(database) if database else None
         self.lock = threading.Lock()
         self.atlas_lock = threading.Lock()
         self.atlas: Atlas | None = None
@@ -157,6 +192,10 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; connect-src 'self' wss://*.happyrobot.ai https://*.happyrobot.ai; style-src 'self'; media-src 'self' blob:; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'")
         super().end_headers()
 
+    def local_client(self) -> bool:
+        """Órdenes de sala y configuración del 112: solo loopback, salvo despliegue tras proxy (ver PUBLIC_CONTROLS)."""
+        return PUBLIC_CONTROLS or self.client_address[0] in {'127.0.0.1', '::1'}
+
     def browser_token(self) -> str:
         cookie: SimpleCookie = SimpleCookie()
         cookie.load(self.headers.get('Cookie', ''))
@@ -174,7 +213,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
         if path in {'/api/scenario', '/api/director/cancel-alert', '/api/admin/reset'}:
-            if self.mobile_only or self.client_address[0] not in {'127.0.0.1', '::1'}:
+            if self.mobile_only or not self.local_client():
                 self.send_error(404)
                 return
             try:
@@ -273,6 +312,30 @@ class Handler(SimpleHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass
 
+    def send_cartography(self, etag: str, raw: bytes, compressed: bytes) -> None:
+        if self.headers.get('If-None-Match') == etag:
+            self.send_response(304)
+            self.send_header('ETag', etag)
+            self.send_header('Cache-Control', 'public, max-age=86400')
+            self.end_headers()
+            return
+        gzipped = 'gzip' in self.headers.get('Accept-Encoding', '')
+        body = compressed if gzipped else raw
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(body)))
+        self.send_header('Cache-Control', 'public, max-age=86400')
+        self.send_header('ETag', etag)
+        self.send_header('Vary', 'Accept-Encoding')
+        self.send_header('X-Content-Type-Options', 'nosniff')
+        if gzipped:
+            self.send_header('Content-Encoding', 'gzip')
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def send_json(self, data: object, status: int = 200, download: bool = False) -> None:
         self.send_bytes(json.dumps(data, ensure_ascii=False, allow_nan=False).encode(), "application/json; charset=utf-8", status, download)
 
@@ -286,6 +349,14 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if self.mobile_only and not route.path.startswith('/112/'):
             self.send_error(404)
+            return
+        if route.path == '/healthz':
+            # Sonda de la plataforma (Render): el servidor solo atiende una vez cargados datos y escenario.
+            director = self.store.director
+            if director:
+                with director.lock:
+                    status = str(director.state['status'])
+            self.send_json({'ok': True, 'director': status if director else 'disabled'})
             return
         try:
             if route.path in {'/112/alerts/', '/112/alerts.html', '/112/alerts.js', '/112/alerts.css'}:
@@ -317,7 +388,7 @@ class Handler(SimpleHTTPRequestHandler):
             elif route.path == '/112/api/brief' and self.store.demo:
                 self.send_json(self.store.demo.brief(query.get('run_id', [''])[0], self.browser_token()))
             elif route.path == '/api/demo/setup' and self.store.demo:
-                if self.client_address[0] not in {'127.0.0.1', '::1'}:
+                if not self.local_client():
                     raise PermissionError('Configuración solo desde el ordenador local')
                 runtime = ROOT / '.local/demo-public.json'
                 tunnel = json.loads(runtime.read_text()).get('url') if runtime.exists() else None
@@ -336,6 +407,10 @@ class Handler(SimpleHTTPRequestHandler):
                         alert_url = hosted + '/112/alerts/' + fragment
                 if not phone_url and tunnel:
                     phone_url, alert_url = tunnel + '/112/', tunnel + '/112/alerts/'
+                if not phone_url and PUBLIC_URL.startswith('https://'):
+                    # Sin túnel ni App alojada, el propio servicio publicado sirve /112/ y /112/alerts/.
+                    public = public or PUBLIC_URL
+                    phone_url, alert_url = PUBLIC_URL + '/112/', PUBLIC_URL + '/112/alerts/'
                 self.send_json({'public_url': public, 'phone_url': phone_url, 'alert_url': alert_url, 'cloud': hosted_app, 'local_url': '/112/',
                                 'ready': bool(self.store.demo.provider.ready), 'session_id': self.store.demo.session_id})
             elif route.path.startswith('/api/demo/report/') and self.store.demo:
@@ -405,11 +480,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(result)
             elif re.fullmatch(r"/satellite/[a-f0-9]{24}\.png", route.path):
                 self.send_bytes((DATA / "satellite" / route.path.rsplit("/", 1)[1]).read_bytes(), "image/png")
-            elif route.path in {'/spain.geojson', '/neighbors.geojson', '/provinces.geojson', '/places.json'} and self.store.db:
-                asset = self.store.db.get_asset('map:' + route.path[1:])
-                if asset is None:
-                    raise KeyError('Cartografía no importada')
-                self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
+            elif route.path in CARTOGRAPHY and self.store.cartography:
+                self.send_cartography(*self.store.cartography.entry(route.path))
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
                                 "/flow.js", "/flames.js", "/cartography.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js", "/operations.js", "/aura.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
@@ -433,7 +505,8 @@ class MobileHandler(Handler):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8090)
+    # PORT lo fija la plataforma de despliegue (Render usa 10000); en local sigue siendo 8090.
+    parser.add_argument("--port", type=int, default=int(os.environ.get('PORT') or 8090))
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--offline", action="store_true")
     parser.add_argument('--mobile-port', type=int, default=8112)
@@ -443,6 +516,14 @@ if __name__ == "__main__":
     options = parser.parse_args()
     if options.presentation and options.offline:
         parser.error('--presentation necesita Twin y HappyRobot online')
+    # FLAREAI_ALLOW_OUTBOUND=1 equivale a --allow-outbound cuando el comando de arranque es fijo (Render).
+    allow_outbound = options.allow_outbound or os.environ.get('FLAREAI_ALLOW_OUTBOUND') == '1'
+
+    def terminate(signum: int, frame: object) -> None:
+        # Las plataformas detienen el proceso con SIGTERM: se trata como Ctrl-C para liberar la sala y cerrar ordenadamente.
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, terminate)
     with ThreadingHTTPServer((options.host, options.port), Handler) as server:
         mobile = None
         worker = None
@@ -456,7 +537,7 @@ if __name__ == "__main__":
                 local_start()
             database.bootstrap()
             store = Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True,
-                hackathon=options.hackathon, presentation=options.presentation, allow_outbound=options.allow_outbound)
+                hackathon=options.hackathon, presentation=options.presentation, allow_outbound=allow_outbound)
             if store.director:
                 worker = threading.Thread(target=store.director.loop, daemon=True)
                 worker.start()

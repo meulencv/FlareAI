@@ -1,5 +1,5 @@
 eccodes==2.43.0
-eccodeslib==2.48.2.27; platform_system != "Windows"
+eccodeslib==2.48.3.28; platform_system != "Windows"
 numpy==2.2.6
 shapely==2.1.1
 Pillow==11.3.0

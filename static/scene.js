@@ -78,7 +78,7 @@ export function threatOutline(record, footprint, marginKm = THREAT_MARGIN_KM) {
 export function createSceneView({ map, L, document, fetch, focus, findIncident = () => null }) {
   const $ = id => document.getElementById(id);
   const hospitals = L.layerGroup(), cuts = L.layerGroup().addTo(map), hazards = L.layerGroup().addTo(map);
-  let state = null, session = null, offset = 0, renderedSequence = -1, mapKey = '', events = new Map(), historyLoading = false;
+  let state = null, session = null, offset = 0, renderedSequence = -1, mapKey = '', summaryKey = '', events = new Map(), historyLoading = false;
   let visualEvents = [];
   const toggle = $('history-toggle'), panel = $('decision-panel');
   function node(tag, text, className = '') {
@@ -151,11 +151,17 @@ export function createSceneView({ map, L, document, fetch, focus, findIncident =
     $('scene-status').textContent = !scene ? 'Observatorio · escenario de sala desactivado' : state.status === 'unconfigured' || state.status === 'auth_required' ? 'Director no conectado · sin nuevas decisiones IA' : `Director: ${{ thinking: 'decidiendo', watching: 'vigilando', idle: 'vigilando', error: 'reintentando', limited: 'límite de cuota' }[state.status] || state.status} · escenario simulado`;
     if (!scene) return;
     const records = Object.values(scene.incidents).filter(r => !r.linked_call_id);
-    $('scene-summary').replaceChildren();
-    for (const record of records) {
-      const card = node('button', '', 'scene-incident-card');
-      card.append(node('strong', record.name), node('span', priorityLine(record)), node('small', `${record.source === 'sensor' ? 'Sensor FIRMS' : record.source === 'call' ? 'Llamada 112' : 'Ejercicio simulado'} · ${{ active: 'Intervención', contained: 'Contenido', watching: 'Vigilancia', releasing: 'Retirada', closed: 'Cerrado' }[record.phase]}`), node('small', extinctionLine(record)), node('small', record.contrast.label));
-      card.onclick = () => focus(record.id); $('scene-summary').append(card);
+    // Las tarjetas solo se reconstruyen cuando cambia su texto: el sondeo llega cada 500 ms.
+    const cards = records.map(record => [record.id, record.name, priorityLine(record), record.source, record.phase, extinctionLine(record), record.contrast.label]);
+    const cardsKey = JSON.stringify(cards);
+    if (cardsKey !== summaryKey) {
+      summaryKey = cardsKey;
+      $('scene-summary').replaceChildren();
+      for (const [id, name, priority, source, phase, extinction, contrast] of cards) {
+        const card = node('button', '', 'scene-incident-card');
+        card.append(node('strong', name), node('span', priority), node('small', `${source === 'sensor' ? 'Sensor FIRMS' : source === 'call' ? 'Llamada 112' : 'Ejercicio simulado'} · ${{ active: 'Intervención', contained: 'Contenido', watching: 'Vigilancia', releasing: 'Retirada', closed: 'Cerrado' }[phase]}`), node('small', extinction), node('small', contrast));
+        card.onclick = () => focus(id); $('scene-summary').append(card);
+      }
     }
     const engaged = engagedHospitals(scene, state.assignments);
     const key = JSON.stringify([engaged, scene.closures, records.map(r => [r.id, Math.round(r.radius_km * 30), r.phase, r.wind_to, Boolean(findIncident(r.id)?.scenario?.footprint)])]);

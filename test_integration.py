@@ -118,6 +118,44 @@ class IntegrationTests(unittest.TestCase):
                 server.shutdown()
                 thread.join()
 
+    def test_deployment_probe_and_proxy_controls(self) -> None:
+        """Render: sonda /healthz y órdenes de sala solo desde loopback salvo FLAREAI_PUBLIC_CONTROLS=1."""
+        import app
+        from urllib.error import HTTPError
+        from urllib.request import Request, urlopen
+        store = Store(offline=True)
+        store.fires, store.weather, store.incidents = self.collection, self.weather, self.incidents
+        Handler.store = store
+        with ThreadingHTTPServer(("127.0.0.1", 0), Handler) as server:
+            thread = threading.Thread(target=server.serve_forever)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with urlopen(base + "/healthz") as response:
+                    self.assertEqual(json.loads(response.read()), {"ok": True, "director": "disabled"})
+                order = Request(base + "/api/scenario", data=b"{}", method="POST",
+                                headers={"Content-Type": "application/json", "Origin": base})
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(order)
+                # Desde loopback la orden llega al escenario (ausente en offline): 400, no 404.
+                self.assertEqual(caught.exception.code, 400)
+                self.assertIn("hackathon", json.loads(caught.exception.read())["error"])
+            finally:
+                server.shutdown()
+                thread.join()
+        probe = Handler.__new__(Handler)
+        probe.client_address = ("203.0.113.9", 4321)
+        self.assertFalse(probe.local_client())
+        with patch.object(app, "PUBLIC_CONTROLS", True):
+            self.assertTrue(probe.local_client())
+        probe.client_address = ("::1", 4321)
+        self.assertTrue(probe.local_client())
+
+    def test_push_rejects_same_database(self) -> None:
+        from database import Database
+        with self.assertRaises(ValueError):
+            Database("postgresql://x").push(Database("postgresql://x"))
+
 
 if __name__ == "__main__":
     unittest.main()

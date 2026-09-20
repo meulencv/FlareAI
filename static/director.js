@@ -17,7 +17,12 @@ export function cinematicFrame(start, end, overview, progress) {
 
 export function createCameraTour({ map, L, now = () => performance.now(), requestFrame = requestAnimationFrame, cancelFrame = cancelAnimationFrame }) {
   let frame = 0, generation = 0;
-  function cancel() { generation++; if (frame) cancelFrame(frame); frame = 0; if (Number.isFinite(map.getZoom())) map.stop(); }
+  function cancel() {
+    generation++;
+    if (frame) { cancelFrame(frame); map.fire("flare:zoomend"); }
+    frame = 0;
+    if (Number.isFinite(map.getZoom())) map.stop();
+  }
   function go(center, zoom, reduced = false) {
     cancel();
     const target = L.latLng(center), origin = map.getCenter();
@@ -30,6 +35,7 @@ export function createCameraTour({ map, L, now = () => performance.now(), reques
       : Math.max(map.getMinZoom(), Math.min(start.zoom, zoom, map.getBoundsZoom(L.latLngBounds([origin, target]), false, L.point(160, 180))) - .7);
     const duration = distance < 80 ? 900 : 2400, token = generation;
     let previous = now(), elapsed = 0, lastPaint = -Infinity;
+    map.fire("flare:zoomstart");
     function tick(timestamp) {
       if (token !== generation) return;
       elapsed += Math.max(0, Math.min(50, timestamp - previous)); previous = timestamp;
@@ -43,6 +49,7 @@ export function createCameraTour({ map, L, now = () => performance.now(), reques
         lastPaint = timestamp;
       }
       frame = progress < 1 ? requestFrame(tick) : 0;
+      if (!frame) map.fire("flare:zoomend");
     }
     frame = requestFrame(tick);
   }

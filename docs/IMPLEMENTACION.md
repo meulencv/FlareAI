@@ -108,6 +108,18 @@ y reproducir pruebas.
 
 ## 2. Contrato HTTP
 
+### `GET /healthz`
+
+Sonda de despliegue (Render `healthCheckPath`). Responde `{"ok": true, "director": <estado>}` una vez que
+el proceso sirve peticiones, es decir, tras cargar datos, escenario y grafo; antes, la conexión queda
+en cola. `director` es `disabled` sin director, o su estado (`idle`, `standby` si otra instancia tiene
+el lease de la sala Twin, `unconfigured`, `thinking`, `error`, `auth_required`).
+
+Las rutas restringidas a loopback (`POST /api/scenario`, `/api/director/cancel-alert`, `/api/admin/reset`
+y `GET /api/demo/setup`) se abren a cualquier cliente con `FLAREAI_PUBLIC_CONTROLS=1`, necesario tras un
+proxy inverso que oculta la dirección real; se conserva la exigencia de `Origin` del mismo host.
+Véase `docs/DESPLIEGUE_RENDER.md`.
+
 ### `GET /api/data`
 
 Devuelve:
@@ -263,6 +275,26 @@ defecto (`_invalidateAll`) destruía todas las imágenes. Solo esta capa elimina
 mantiene `viewreset`, `zoom`, `moveend`, transformaciones y retención de padres/hijos. Una prueba
 real conservó 12/12 nodos de teselas en zoom fraccional y siempre hubo teselas cargadas durante
 el paso al siguiente nivel. No se descargan teselas fuera del viewport para disimular el problema.
+
+Además, durante el zoom continuo (rueda, botones o viaje de la IA) la capa se **congela**
+(`roadLayerMixin`): `zoomTo` y `createCameraTour` emiten `flare:zoomstart`/`flare:zoomend` en el
+mapa; mientras dura el zoom solo se escalan por CSS los niveles ya cargados, se piden teselas
+únicamente al cruzar un zoom entero (sin podar) y al terminar se recoloca la rejilla y se poda.
+Así un viaje de zoom 6 a 13 no recalcula la rejilla en cada uno de sus fotogramas.
+
+### Cartografía base en canvas
+
+`spain.geojson`, `neighbors.geojson` y `provinces.geojson` suman ~111.000 vértices. Como capas
+GeoJSON de Leaflet (SVG), cada fotograma de zoom fraccional los reproyectaba y recortaba en
+JavaScript: más de la mitad del tiempo de CPU medido con el `Profiler` de Chromium. Ahora
+`static/cartography.js` los dibuja en un canvas propio: proyección Web Mercator una sola vez a
+coordenadas de mundo (zoom 0, relativas a un origen para conservar precisión en float32), un
+`Path2D` por entidad y nivel de detalle (Douglas-Peucker con tolerancias `LEVELS` para zoom ≤7,
+≤10 y completo), islotes menores que dos tolerancias omitidos en niveles gruesos, recorte por caja
+de la vista y una única transformación afín por fotograma con grosor de línea compensado. Los
+GeoJSON originales no se modifican. España y vecinos se cargan antes del primer fotograma; las
+provincias (3,4 MB) se piden después sin bloquear el arranque. El servidor las sirve serializadas y
+comprimidas una vez por proceso, con `ETag`/`304` y caché HTTP de un día.
 
 ### PostgreSQL local y compatibilidad con Twin
 

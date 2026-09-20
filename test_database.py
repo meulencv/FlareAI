@@ -28,6 +28,20 @@ class DatabaseTests(unittest.TestCase):
             total = conn.execute('SELECT sum(population) AS n FROM flare_grid').fetchone()['n']
             self.assertEqual(total, 47400134)
 
+    def test_seed_assets_load_once_and_never_overwrite(self):
+        from database import SEED, SEED_ASSET_KINDS
+        self.assertTrue(SEED.is_file())
+        self.db.import_seed()
+        self.assertEqual(self.db.import_seed(), 0)
+        graph = self.db.get_asset('barcelona-demo-road-v1')
+        self.assertIsNotNone(graph)
+        self.assertEqual(graph['kind'], 'demo_road_graph')
+        self.assertIn('demo_road_graph', SEED_ASSET_KINDS)
+        self.assertNotIn('demo_road_tile', SEED_ASSET_KINDS)
+        with self.db.connect() as conn:
+            self.assertTrue(conn.execute("SELECT 1 FROM flare_imports WHERE id LIKE 'seed:%%'").fetchone())
+            self.assertFalse(conn.execute("SELECT 1 FROM flare_assets WHERE kind = ANY(%s) AND path IS NOT NULL", (list(SEED_ASSET_KINDS),)).fetchone())
+
     def test_sql_bounding_queries_match_full_atlas(self):
         for incident in self.store.incidents[:3]:
             local = self.db.nearby_atlas(dict(incident))

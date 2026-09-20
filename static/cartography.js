@@ -67,12 +67,21 @@ export function intersects(a, b) {
   return a.left <= b.right && a.right >= b.left && a.top <= b.bottom && a.bottom >= b.top;
 }
 
-function toPath(polygons, Path2D) {
+// Anillos cuya caja no llega a dos veces la tolerancia son motas subpíxel a esa escala
+// (islotes, rocas): se omiten en ese nivel. España tiene ~4.900 anillos así.
+export function visibleRing(ring, tolerance) {
+  if (!(tolerance > 0)) return true;
+  const box = boundsOf([[ring]]);
+  return box.right - box.left >= tolerance * 2 || box.bottom - box.top >= tolerance * 2;
+}
+
+function toPath(polygons, tolerance, Path2D) {
   const path = new Path2D();
   for (const polygon of polygons) for (const ring of polygon) {
-    if (ring.length < 3) continue;
-    path.moveTo(ring[0].x, ring[0].y);
-    for (let i = 1; i < ring.length; i++) path.lineTo(ring[i].x, ring[i].y);
+    if (ring.length < 3 || !visibleRing(ring, tolerance)) continue;
+    const points = simplify(ring, tolerance);
+    path.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) path.lineTo(points[i].x, points[i].y);
     path.closePath();
   }
   return path;
@@ -86,7 +95,7 @@ export function buildLayer(features, project, { Path2D = globalThis.Path2D, leve
     const polygons = projectRings(feature.geometry, project);
     if (!polygons.length) continue;
     vertices += polygons.reduce((sum, polygon) => sum + polygon.reduce((s, ring) => s + ring.length, 0), 0);
-    items.push({ bounds: boundsOf(polygons), paths: levels.map(level => toPath(polygons.map(polygon => polygon.map(ring => simplify(ring, level.tolerance))), Path2D)) });
+    items.push({ bounds: boundsOf(polygons), paths: levels.map(level => toPath(polygons, level.tolerance, Path2D)) });
   }
   return { items, bounds: boundsOf(items.map(item => [[{ x: item.bounds.left, y: item.bounds.top }, { x: item.bounds.right, y: item.bounds.bottom }]])), vertices };
 }

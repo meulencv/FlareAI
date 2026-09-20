@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, facilitiesVisible, fireExclusionBoxes, obscuresFire, relevantFacilities, FACILITY_LIMIT, FACILITY_TOTAL } from "./static/infrastructure.js";
+import { groupPlaces, facilityDetails, safeLink, camerasVisible, roadEvents, roadLayerMixin, frozenLevelChange, facilitiesVisible, fireExclusionBoxes, obscuresFire, relevantFacilities, FACILITY_LIMIT, FACILITY_TOTAL } from "./static/infrastructure.js";
 
 test("las instalaciones solo aparecen de cerca y nunca encima de una huella ampliada", () => {
   assert.equal(facilitiesVisible(12.99), false);
@@ -27,6 +27,38 @@ test("las carreteras conservan teselas durante resets de zoom sin perder reproye
   assert.equal(events.zoom, handlers.zoom);
   assert.equal(events.moveend, handlers.moveend);
   assert.ok(handlers.viewprereset, "no altera otras capas");
+});
+
+test("congelada durante el zoom continuo, la rejilla de carreteras solo se recalcula al cruzar un zoom entero", () => {
+  const calls = [];
+  const base = {
+    getEvents() { return { viewprereset() {}, zoom() {} }; },
+    _setView(center, zoom, noPrune, noUpdate) { calls.push(["setView", zoom, noPrune, noUpdate]); this._tileZoom = Math.round(zoom); },
+    _onMoveEnd() { calls.push(["moveend"]); },
+  };
+  const layer = Object.assign(Object.create(roadLayerMixin(base)), {
+    _map: { getCenter: () => [0, 0], getZoom: () => 8.4 }, _tileZoom: 8,
+    _setZoomTransforms(center, zoom) { calls.push(["transform", zoom]); },
+    _resetView() { calls.push(["reset"]); this._setView([0, 0], this._map.getZoom()); },
+  });
+  assert.deepEqual(Object.keys(layer.getEvents()), ["zoom"]);
+  assert.equal(frozenLevelChange(8.4, 8), false); assert.equal(frozenLevelChange(8.6, 8), true);
+  layer._setView([0, 0], 8.2); layer._onMoveEnd();
+  assert.deepEqual(calls, [["setView", 8.2, undefined, undefined], ["moveend"]], "sin congelar se comporta como Leaflet");
+  calls.length = 0; layer.freeze();
+  layer._setView([0, 0], 8.3); layer._onMoveEnd(); layer._setView([0, 0], 8.45);
+  assert.deepEqual(calls, [["transform", 8.3], ["transform", 8.45]], "misma tesela: solo transformación CSS, sin pedir ni podar");
+  calls.length = 0;
+  layer._setView([0, 0], 8.7);
+  assert.deepEqual(calls, [["setView", 8.7, true, undefined]], "al cruzar un zoom entero pide teselas sin podar el nivel anterior");
+  assert.equal(layer._tileZoom, 9);
+  calls.length = 0; layer.thaw(); layer.thaw();
+  assert.deepEqual(calls, [["reset"], ["setView", 8.4, undefined, undefined]], "descongelar recoloca y poda una sola vez");
+  calls.length = 0; layer._onMoveEnd();
+  assert.deepEqual(calls, [["moveend"]]);
+  const fresh = Object.assign(Object.create(roadLayerMixin(base)), { _map: { getZoom: () => 5 } });
+  fresh.freeze(); fresh._setView([0, 0], 5.5);
+  assert.deepEqual(calls.at(-1), ["setView", 5.5, undefined, undefined], "sin nivel inicial, la primera vista carga teselas aunque esté congelada");
 });
 
 const project = ([lat, lon]) => ({ x: lon * 100, y: lat * 100 });

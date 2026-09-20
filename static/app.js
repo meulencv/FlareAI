@@ -334,7 +334,7 @@ document.querySelectorAll("[data-image]").forEach(b => b.addEventListener("click
 }));
 $("search").addEventListener("input", () => { closeSimulation(); renderList(); });
 function cancelZoom() {
-  if (zoomFrame) cancelAnimationFrame(zoomFrame);
+  if (zoomFrame) { cancelAnimationFrame(zoomFrame); map.fire("flare:zoomend"); }
   zoomFrame = 0; zoomTarget = null;
 }
 
@@ -347,6 +347,7 @@ function zoomTo(zoom, anchor = null) {
   const duration = matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220;
   const end = zoomTarget;
   let lastPaint = -Infinity;
+  if (!zoomFrame) map.fire("flare:zoomstart");
   const tick = timestamp => {
     const progress = duration ? Math.min(1, (timestamp - began) / duration) : 1;
     if (progress === 1 || timestamp - lastPaint >= 32) {
@@ -357,7 +358,7 @@ function zoomTo(zoom, anchor = null) {
       lastPaint = timestamp;
     }
     if (progress < 1) zoomFrame = requestAnimationFrame(tick);
-    else { zoomFrame = 0; zoomTarget = null; }
+    else { zoomFrame = 0; zoomTarget = null; map.fire("flare:zoomend"); }
   };
   zoomFrame = requestAnimationFrame(tick);
 }
