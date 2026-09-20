@@ -743,13 +743,27 @@ def proximity(db: sqlite3.Connection, lat: float, lon: float, radius_km: float, 
         west, east = -180, 180
     if not any(row[0] == "distance_km" and row[4] == 4 for row in db.execute("PRAGMA function_list")):
         db.create_function("distance_km", 4, distance_km, deterministic=True)
-    cursor = db.execute("""
-        SELECT f.*,distance_km(?,?,f.lat,f.lon) AS distance_km FROM facility_rtree r
-        JOIN facilities f ON f.pk=r.pk
-        WHERE r.max_lon>=? AND r.min_lon<=? AND r.max_lat>=? AND r.min_lat<=?
+    parameters = (lat, lon, west, east, lat - delta_lat, lat + delta_lat,
+                  category, category, lat, lon, radius_km, limit)
+    filters = """
         AND (? IS NULL OR EXISTS(SELECT 1 FROM facility_categories c WHERE c.facility_id=f.id AND c.category_id=?))
         AND distance_km(?,?,f.lat,f.lon)<=? ORDER BY distance_km,f.id LIMIT ?
-    """, (lat, lon, west, east, lat - delta_lat, lat + delta_lat, category, category, lat, lon, radius_km, limit))
+    """
+    try:
+        cursor = db.execute("""
+            SELECT f.*,distance_km(?,?,f.lat,f.lon) AS distance_km FROM facility_rtree r
+            JOIN facilities f ON f.pk=r.pk
+            WHERE r.max_lon>=? AND r.min_lon<=? AND r.max_lat>=? AND r.min_lat<=?
+        """ + filters, parameters)
+    except sqlite3.OperationalError as exc:
+        if "no such module: rtree" not in str(exc).lower():
+            raise
+        # Some hosted Python builds omit SQLite RTree. Read the same atlas without
+        # its optional spatial accelerator; never rewrite the read-only database.
+        cursor = db.execute("""
+            SELECT f.*,distance_km(?,?,f.lat,f.lon) AS distance_km FROM facilities f
+            WHERE f.lon>=? AND f.lon<=? AND f.lat>=? AND f.lat<=?
+        """ + filters, parameters)
     fields = [col[0] for col in cursor.description]
     return [dict(zip(fields, row)) for row in cursor]
 
