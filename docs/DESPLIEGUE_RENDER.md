@@ -13,7 +13,8 @@ Twin ni llamadas telefónicas. Las cámaras y NASA se muestran como imágenes re
 no como directo ni evidencia del incendio ficticio. Las fuentes están en `static/visual-evidence/manifest.json`.
 El servicio conserva PostgreSQL y los datos territoriales del deployment. No comparte avisos con el local.
 
-Validación: 71 pruebas Python, 38 JavaScript, Ruff y mypy. Ciclo con grafo real y persistencia en memoria.
+Validación: 71 pruebas Python, 38 JavaScript, Ruff y mypy. Ciclo con grafo real y persistencia en memoria. Chromium: siete vehículos incluido helicóptero,
+zoom automático a 15,5, paneles NASA/cámara cargados y cero errores JS (`verify_visual_demo.py`).
 
 
 Guía para ejecutar en [Render](https://render.com) exactamente lo que hoy corre en local:
