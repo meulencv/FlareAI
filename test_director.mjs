@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { routePosition, freshEvents, directorWarning, cinematicFrame, nearbyEvidence, patrolTargets, createCameraTour, createEvidenceView, createRouteRehearsal } from "./static/director.js";
 
-import { notificationBatch } from './happyrobot-112/static/alerts.js';
+import { notificationBatch, createAlertReceiver } from './happyrobot-112/static/alerts.js';
 import { preferredSpeaker, createSpeakerOutput } from './happyrobot-112/static/audio.js';
 
 test('manos libres elige altavoz explícito, nunca inventa que el dispositivo default sea altavoz', () => {
@@ -141,6 +141,96 @@ test('pausa, desconexión y decisiones reales cancelan el efecto sin publicar un
   assert.equal(h.rehearsal.active, null);
   h.rehearsal.reset();
   assert.equal(h.step(200), null);
+});
+
+function receiverHarness() {
+  const elements = new Map(), oscillators = [], gains = [], requests = [];
+  const $ = id => {
+    if (!elements.has(id)) elements.set(id, { textContent: '', hidden: true, disabled: false, focus() {} });
+    return elements.get(id);
+  };
+  const document = { getElementById: $, body: { dataset: {} }, addEventListener() {} };
+  const param = () => ({ values: [], setValueAtTime(value, at) { this.values.push([value, at]); },
+    linearRampToValueAtTime(value, at) { this.values.push([value, at]); } });
+  const audio = { state: 'suspended', currentTime: 10, destination: {},
+    async resume() { this.state = 'running'; this.onstatechange?.(); },
+    createOscillator() {
+      const node = { frequency: param(), connect() {}, disconnect() { this.disconnected = true; },
+        start(at) { this.started = at; }, stop(at) { this.stopped = at; } };
+      oscillators.push(node); return node;
+    },
+    createGain() {
+      const node = { gain: param(), connect() {}, disconnect() { this.disconnected = true; } };
+      gains.push(node); return node;
+    },
+  };
+  let payload = { session_id: 'test', sequence: 0, events: [] };
+  const window = { AudioContext: function() { return audio; }, navigator: { audioSession: {} },
+    addEventListener() {}, setInterval() { return 1; }, clearInterval() {} };
+  const receiver = createAlertReceiver({ document, window, fetch: async url => {
+    requests.push({ url, tones: oscillators.length });
+    return { ok: true, json: async () => payload };
+  } });
+  const deliver = async (kind = 'alert') => {
+    payload = { session_id: 'test', sequence: payload.sequence + 1, events: [{ sequence: payload.sequence + 1,
+      kind, incident_id: 'fire', message: 'Alerta de prueba', at: Date.now() / 1000, expires_at: Date.now() / 1000 + 60 }] };
+    await receiver.poll();
+  };
+  return { $, document, window, audio, oscillators, gains, requests, receiver, deliver };
+}
+
+test('el receptor prueba el sonido fuerte antes de la red y permite repetir la prueba', async () => {
+  const h = receiverHarness();
+  await h.$('activate-alerts').onclick();
+  assert.equal(h.requests[0].tones, 1, 'la activación debe reproducir un tono, no solo reanudar un contexto vacío');
+  assert.equal(h.window.navigator.audioSession.type, 'playback');
+  assert.equal(h.$('activate-alerts').disabled, false);
+  assert.ok(Math.abs(h.oscillators[0].stopped - h.oscillators[0].started - .8) < 1e-9);
+  assert.ok(h.gains[0].gain.values.some(([value]) => value >= .8));
+  assert.ok(h.gains[0].gain.values.every(([value]) => value <= 1));
+  await h.$('activate-alerts').onclick();
+  assert.equal(h.oscillators.length, 2);
+  assert.equal(h.requests.filter(r => r.url === '/112/api/session').length, 1);
+  h.receiver.stop();
+});
+
+test('el receptor conserva el aviso de audio suspendido y lo recupera desde la alerta', async () => {
+  const h = receiverHarness();
+  await h.$('activate-alerts').onclick();
+  h.audio.state = 'interrupted'; h.audio.onstatechange?.();
+  await h.deliver(); await h.receiver.poll();
+  assert.equal(h.$('received-alert').hidden, false);
+  assert.equal(h.$('retry-alert-sound').hidden, false);
+  assert.match(h.$('alert-sound-status').textContent, /suspendido/i);
+  await h.$('retry-alert-sound').onclick();
+  assert.equal(h.audio.state, 'running');
+  assert.equal(h.document.body.dataset.sounding, 'true');
+  assert.equal(h.$('retry-alert-sound').hidden, true);
+  const tone = h.oscillators.at(-1);
+  assert.equal(tone.stopped - tone.started, 8);
+  const count = h.oscillators.length;
+  await h.receiver.poll();
+  assert.equal(h.oscillators.length, count, 'un refresco no vuelve a sonar');
+  h.$('ack-alert').onclick();
+  assert.equal(tone.disconnected, true);
+  assert.equal(h.document.body.dataset.sounding, 'false');
+  h.receiver.stop();
+});
+
+test('la cancelación y el final natural liberan el sonido de la alerta', async () => {
+  const h = receiverHarness();
+  await h.$('activate-alerts').onclick(); await h.deliver();
+  const tone = h.oscillators.at(-1), gain = h.gains.at(-1);
+  tone.onended();
+  assert.ok(tone.disconnected && gain.disconnected);
+  assert.equal(h.document.body.dataset.sounding, 'false');
+  await h.deliver('cancel');
+  assert.equal(h.$('received-alert').hidden, true);
+  await h.deliver();
+  const next = h.oscillators.at(-1);
+  await h.deliver('cancel');
+  assert.equal(next.disconnected, true);
+  h.receiver.stop();
 });
 
 const point = (x, y) => ({ x, y });

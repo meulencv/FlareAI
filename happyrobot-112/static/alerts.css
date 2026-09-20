@@ -13,7 +13,8 @@ body[data-armed="true"] .beacon { background: #6ccd9725; border-color: #6ccd97; 
 button { font: inherit; width: 100%; border: 0; border-radius: 14px; padding: 16px; background: #d9e9ff; color: #15283e; font-weight: 650; cursor: pointer; touch-action: manipulation; }
 button:disabled { opacity: .6; cursor: default; }
 button:focus-visible, a:focus-visible { outline: 3px solid #d9acff; outline-offset: 4px; }
-#receiver-status { font-size: 12px; min-height: 40px; }
+#receiver-status, #sound-status { font-size: 12px; }
+#alert-sound-status { color: white; font-size: 13px; }
 .limitations { margin-top: 28px; font-size: 11px; color: #7f8ba1; }
 a { font-size: 12px; color: #a5c5f0; }
 [hidden] { display: none !important; }

@@ -1679,8 +1679,7 @@ dialog .eyebrow {
   }
 }
 .quiet-controls { position: fixed; top: 20px; left: 24px; z-index: 1002; display: flex; align-items: center; gap: 12px; }
-.quiet-controls button { font-size: 20px; font-weight: 650; letter-spacing: -.8px; padding: 9px 12px; border-radius: 14px; background: #ffffffdc; }
-.quiet-controls button span { font-weight: 400; color: #989da6; padding-left: 8px; }
+.quiet-controls button, .quiet-brand { font-size: 20px; font-weight: 650; letter-spacing: -.8px; padding: 9px 12px; border-radius: 14px; background: #ffffffdc; }
 .demo-mode { font-size: 9px; color: #9297a0; }
 body:not(.map-only) .quiet-controls { top: 76px; left: auto; right: 20px; }
 .map-only .header, .map-only .sidebar, .map-only .footer,

@@ -16,25 +16,31 @@ export function createAlertReceiver({ document, window, fetch }) {
     window.navigator.vibrate?.(0);
     document.body.dataset.sounding = 'false';
   }
-  function sound() {
-    stopSound();
-    if (!audio || audio.state !== 'running') {
-      $('receiver-status').textContent = 'El navegador ha suspendido el audio. Pulsa activar sonido de nuevo.';
-      $('activate-alerts').disabled = false;
-      return;
-    }
+  function audioStatus(message) {
+    const ready = audio?.state === 'running';
+    const text = message || (ready
+      ? 'Audio habilitado · si no lo oyes, sube el volumen multimedia y comprueba la salida de audio.'
+      : 'Audio suspendido o no habilitado. Pulsa activar sonido.');
+    $('sound-status').textContent = text;
+    $('alert-sound-status').textContent = text;
+    $('retry-alert-sound').hidden = ready;
+    $('activate-alerts').textContent = ready ? 'Probar sonido fuerte' : 'Activar recepción y sonido';
+  }
+  function sound(duration = 8) {
+    stopSound(); audioStatus();
+    if (!audio || audio.state !== 'running') return;
     const gain = audio.createGain(), start = audio.currentTime;
     soundGain = gain;
     oscillator = audio.createOscillator(); oscillator.type = 'sine';
     oscillator.connect(gain); gain.connect(audio.destination); gain.gain.setValueAtTime(0, start);
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < duration / .4; i++) {
       const at = start + i * .4;
       oscillator.frequency.setValueAtTime(i % 2 ? 1000 : 800, at);
-      gain.gain.setValueAtTime(0, at); gain.gain.linearRampToValueAtTime(.18, at + .02);
-      gain.gain.setValueAtTime(.18, at + .25); gain.gain.linearRampToValueAtTime(0, at + .3);
+      gain.gain.setValueAtTime(0, at); gain.gain.linearRampToValueAtTime(.85, at + .02);
+      gain.gain.setValueAtTime(.85, at + .25); gain.gain.linearRampToValueAtTime(0, at + .3);
     }
-    oscillator.onended = () => { gain.disconnect(); oscillator = null; document.body.dataset.sounding = 'false'; };
-    oscillator.start(start); oscillator.stop(start + 8.1);
+    oscillator.onended = stopSound;
+    oscillator.start(start); oscillator.stop(start + duration);
     document.body.dataset.sounding = 'true'; window.navigator.vibrate?.([250, 150, 250, 150, 250]);
   }
   function showNext() {
@@ -68,7 +74,7 @@ export function createAlertReceiver({ document, window, fetch }) {
       }
       if (!response.ok) throw new Error('Receptor temporalmente sin conexión');
       const payload = await response.json(), batch = notificationBatch(payload, session, sequence);
-      if (session !== batch.session) { stopSound(); current = null; queue = []; $('received-alert').hidden = true; }
+      if (session !== null && session !== batch.session) { stopSound(); current = null; queue = []; $('received-alert').hidden = true; }
       session = batch.session; sequence = batch.sequence;
       for (const event of batch.events) {
         if (event.kind === 'cancel') {
@@ -82,23 +88,34 @@ export function createAlertReceiver({ document, window, fetch }) {
       $('receiver-status').textContent = 'Sin conexión con el servidor. Reintentando; no se garantiza recepción.';
     } finally { loading = false; }
   }
-  $('activate-alerts').onclick = async () => {
-    $('activate-alerts').disabled = true;
+  async function activate() {
+    $('activate-alerts').disabled = true; $('retry-alert-sound').disabled = true;
     try {
       const Audio = window.AudioContext || window.webkitAudioContext;
       if (!Audio) throw new Error('Este navegador no permite el sonido de la demo');
-      audio ||= new Audio(); await audio.resume();
+      try { if (window.navigator.audioSession) window.navigator.audioSession.type = 'playback'; } catch {}
+      if (!audio || audio.state === 'closed') {
+        audio = new Audio();
+        audio.onstatechange = () => { if (audio.state !== 'running') stopSound(); audioStatus(); };
+      }
+      await audio.resume();
       if (audio.state !== 'running') throw new Error('No se pudo habilitar audio. Toca activar de nuevo.');
-      const response = await fetch('/112/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_code: accessCode }) });
-      if (!response.ok) throw new Error('No se pudo vincular el receptor');
-      const baseline = !armed; armed = true; document.body.dataset.armed = 'true';
-      $('activate-alerts').textContent = 'Sonido habilitado';
-      await poll(baseline); await holdScreen();
-      if (current) sound();
-    } catch (error) { $('receiver-status').textContent = error.message; $('activate-alerts').disabled = false; }
-  };
+      sound(current ? 8 : .8);
+      if (!armed) {
+        const response = await fetch('/112/api/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ access_code: accessCode }) });
+        if (!response.ok) throw new Error('No se pudo vincular el receptor');
+        armed = true; document.body.dataset.armed = 'true';
+        await poll(true);
+      }
+      await holdScreen();
+    } catch (error) {
+      audioStatus(error.message);
+    } finally { $('activate-alerts').disabled = false; $('retry-alert-sound').disabled = false; }
+  }
+  $('activate-alerts').onclick = activate;
+  $('retry-alert-sound').onclick = activate;
   $('ack-alert').onclick = dismiss;
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { void poll(); void holdScreen(); } });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { audioStatus(); void poll(); void holdScreen(); } });
   window.addEventListener('pagehide', () => { stopSound(); void wakeLock?.release(); });
   const timer = window.setInterval(() => void poll(), 1500);
   return { stop() { window.clearInterval(timer); stopSound(); void wakeLock?.release(); }, poll };

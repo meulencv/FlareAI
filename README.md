@@ -24,7 +24,11 @@ real; lee todos los números de `flare_contacts`, nunca de constantes del progra
   sala; tras una caída abrupta, otra instancia reintenta adquirirlo al caducar el lease.
 - Los partes telefónicos tienen autoridad superior. Las solicitudes explícitas se ejecutan con seguimiento;
   si falta una unidad o ruta, la petición queda pendiente, no se inventa un despacho.
-- ES-Alert es excepcional: petición explícita o situación crítica en el parte, con veto de tres segundos.
+- ES-Alert es excepcional y lo decide el agente a partir del peligro para la población descrito en el parte
+  (humos tóxicos, explosión, propagación hacia viviendas…), sin exigir una petición del bombero ni la etiqueta
+  «crítico». Una petición explícita sigue siendo obligatoria; un fuego pequeño sin peligro exterior o humo
+  genérico no bastan. El agente distingue evacuación y confinamiento. Se conserva el veto de tres segundos.
+  Prompts del director y de voz saliente publicados con autorización el 20/09/2026; backend reiniciado.
 - El cierre produce PDF, estadísticas ilustrativas y notas útiles, sin forzar aprendizajes. **Cerebro**, abajo
   a la derecha, abre el grafo. Los Markdown reales se conservan en `FlareAI-Memoria/`, con datos también en Twin.
 - Hectáreas, vidas potencialmente salvadas, CO2 y valor del carbono son estimaciones de escenario con supuestos
@@ -228,7 +232,7 @@ Publicar solo los estáticos no ejecuta `app.py` ni su adquisición en segundo p
 
 ## Director autónomo de la demo
 
-El mapa arranca sin selección ni paneles abiertos. `flareai +` recupera la exploración manual.
+El mapa arranca sin selección ni paneles abiertos. El logo `flareai` no es interactivo: se mantiene la vista inicial, sin alternar a otra pantalla.
 Gasolineras e instalaciones aparecen desde zoom 13 y se ocultan si tapan la huella del fuego.
 
 Cuando una llamada aporta un aviso localizado, un **Reasoning Agent de HappyRobot** recibe el

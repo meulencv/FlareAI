@@ -146,6 +146,21 @@ def complete_fixture(store, identifier, run):
     assert not director.state['notifications']
 
 
+def verify_logo(page):
+    logo = page.locator('.quiet-controls > :first-child')
+    expect(page.locator('body')).to_have_class('map-only')
+    following = page.locator('#follow-toggle').get_attribute('aria-pressed')
+    url = page.url
+    logo.click()
+    expect(page.locator('body')).to_have_class('map-only')
+    expect(page.locator('#follow-toggle')).to_have_attribute('aria-pressed', following)
+    expect(page.locator('.header')).to_be_hidden()
+    expect(page.locator('#sidebar')).to_be_hidden()
+    expect(logo).to_have_text('flareai')
+    assert logo.evaluate('(element) => element.tagName') == 'SPAN'
+    assert page.url == url
+
+
 def main():
     store, identifier, run = fixture_store()
     server = None
@@ -164,6 +179,7 @@ def main():
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 page.route('**/app.js', instrument_map)
                 page.goto(url)
+                verify_logo(page)
                 assert page.locator('#calls-panel').count() == 0, 'El panel izquierdo de voces se retiró'
                 expect(page.locator('.witness-marker')).to_have_count(6)
                 expect(page.locator('.witness-marker.real-call')).to_have_count(1)
@@ -298,6 +314,7 @@ def editor_check():
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 page.route('**/*', lambda route: route.continue_() if route.request.url.startswith(url + '/') else route.abort())
                 page.goto(url)
+                verify_logo(page)
                 pencil = page.locator('#scenario-edit-toggle')
                 expect(pencil).to_be_visible()
                 settings = page.locator('#settings-toggle')

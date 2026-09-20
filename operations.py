@@ -58,9 +58,15 @@ def visible_testimonies(wave: list[dict], now: float) -> list[dict]:
     return [item for item in wave if item['at'] <= now]
 
 
-def alert_allowed(fields: dict) -> bool:
-    return fields.get('incendio') not in {'descartado', 'extinguido'} and fields.get('es_alert') != 'no_solicitado' and (
-        fields.get('es_alert') == 'solicitado' or fields.get('evolucion') == 'critico')
+def alert_allowed(fields: dict, action: dict | None = None) -> bool:
+    if fields.get('incendio') in {'descartado', 'extinguido'}:
+        return False
+    if fields.get('es_alert') == 'solicitado' or fields.get('evolucion') == 'critico':
+        return True
+    action = action or {}
+    detail = fields.get('detalle')
+    return (action.get('population_risk') is True and isinstance(detail, str) and bool(detail.strip())
+            and action.get('report_evidence') == detail)
 
 
 def requested_resources(fields: dict, versions: dict | None = None) -> dict[str, int]:

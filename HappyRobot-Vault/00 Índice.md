@@ -55,6 +55,13 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-20)
+- **Sonido móvil:** tono más fuerte, prueba audible al activar y recuperación del audio dentro de la alerta.
+  Chromium verificado; escucha física en móvil pendiente.
+  [[Simulador 112 con ficha en directo#Sonido de la alerta móvil (2026-09-20)|Corrección y límites]].
+- **ES-Alert por decisión del agente:** peligro poblacional del parte (p. ej. humos tóxicos), sin exigir
+  petición del bombero. Prompts director/voz saliente publicados y backend reiniciado con autorización;
+  130 pruebas pasan, sin llamadas de prueba ni ensayo del razonamiento remoto.
+  [[Simulador 112 con ficha en directo#ES-Alert por peligro para la población (2026-09-20)|Criterio y verificación]].
 - **Demo breve:** retirada inmediata al apagarse el fuego, regreso visual de 5–15 s e informe disponible
   antes de llegar a base. [[Dashboard y simulador#Retirada e informe rápidos (2026-09-20)|Decisión y verificación]].
 - **Editor manual:** lápiz rojo junto a Ajustes, corte aleatorio con recálculo A* real del escenario,

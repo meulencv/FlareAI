@@ -144,6 +144,70 @@ python3 test_server.py
 ../.local/node-v22.19.0-darwin-arm64/bin/node --check static/app.js
 ```
 
+## ES-Alert por peligro para la población (2026-09-20)
+
+Petición: «la decisión de activar […] la debe tomar el agente, no el bombero». En presentación el parte
+llega por llamada saliente vinculada a la llegada del equipo, no por el antiguo marcador 123.
+
+Se identificaron dos bloqueos: el prompt solo admitía petición explícita o evolución crítica y el backend
+interpretaba `no_solicitado` como veto. Se prepararon una política compartida para ambos directores y un
+cambio del guion saliente: conservar amenazas, negaciones y posible exposición en el `detalle`, sin preguntar
+si hay que activar ES-Alert. El director decide si humos tóxicos u otro peligro amenazan a la población;
+no basta un incendio pequeño, humo genérico o estar cerca de viviendas. Evacuación y confinamiento son
+medidas distintas: la instrucción de simulación depende de la amenaza, no se evacúa automáticamente al humo.
+
+Para vincular la conclusión a la evidencia, `alert` admite `population_risk=true` y `report_evidence` con
+el `detalle` íntegro actual. El servidor comprueba esa copia, pero la valoración semántica sigue siendo del
+LLM, no de un buscador de palabras. Se mantienen las peticiones explícitas sin esperar al director, los
+partes críticos como habilitantes, el bloqueo por descarte/extinción, la deduplicación y el veto humano de
+tres segundos. Una corrección del parte invalida planes pendientes. No se modifica el esquema SQL/Twin.
+
+Se reprodujo primero el fallo mediante pruebas, luego se corrigieron ejecutor y prompts. Verificación:
+
+```bash
+.venv/bin/python -m unittest test_operations test_director test_presentation test_scene test_autodispatch test_demo test_local_routes -q
+```
+
+Resultado: 130 pruebas, Ruff y mypy pasan. Usan parte y decisión fixtures: no prueban interpretación de audio
+ni razonamiento remoto.
+
+### Registro de publicación y activación
+
+1. El usuario autorizó sustituir los dos prompts. Antes de cada cambio se comprobó que no había runs activos.
+2. Director, mismo workflow `01a0b948-d14b-7883-bb58-2c9a014f27f4`: versión nueva
+   `01a0bc22-7844-71ac-82d9-26479d46e02b`. La comprobación inicial falló por visibilidad tardía de publicación;
+   un GET posterior confirmó `is_live`/`is_published` y prompt exacto, sin repetir la publicación.
+3. Voz saliente, mismo workflow `01a0ba93-b11b-7ed2-8e1d-2bc94b7eba1e`: versión nueva
+   `01a0bc23-078f-75a8-96d7-ba7d29e61424`, publicada/live. Se compararon configuración de voz, herramienta,
+   modelo y saludo antes/después: conservados. 112 ciudadano no se modificó.
+4. Metadatos sincronizados en la configuración existente local/Twin, sin migrar esquema ni alterar contactos.
+5. Con una segunda autorización, cierre ordenado y reinicio de `app.py --presentation --allow-outbound
+   --host 127.0.0.1 --port 8090 --mobile-port 8112`. API director en `idle`, sin asignaciones/alertas,
+   marcador HTTP 200. Sesión nueva: recargar mapa/marcador; historial guardado conservado.
+
+No se iniciaron llamadas ni runs de prueba. **Pendiente opcional:** ensayo de la nueva decisión con LLM/audio
+real, que requiere autorización aparte; publicación verificada no equivale a haber ensayado la conversación.
+
+## Sonido de la alerta móvil (2026-09-20)
+
+Petición: «haz que suene fuerte […] ahora mismo no suena». La revisión encontró un tono atenuado
+(ganancia 0,18), activación sin prueba audible y recuperación de audio detrás del modal de alerta;
+el polling además sobrescribía el aviso de suspensión.
+
+1. Se reprodujeron los fallos de activación y recuperación con pruebas del receptor.
+2. Se elevó la ganancia a 0,85, conservando seno alterno 800/1000 Hz sin saturación y máximo ocho segundos.
+3. Activar reproduce una prueba de 0,8 s antes de la red; el botón permite repetirla. Se solicita sesión
+   `playback` cuando el navegador lo permite, exclusivamente en el receptor sin captura de micrófono.
+4. El estado de sonido ya no depende del texto de conexión. Si se suspende, se detiene el tono y el modal
+   ofrece **Activar sonido de esta alerta**. Aceptación, cancelación y fin natural liberan el audio.
+5. Verificados Node `--test test_director.mjs` y Chromium en viewport móvil: Web Audio real con pico 0,85,
+   prueba breve, recuperación tras suspensión y silencio; sin errores JS. API fixture, sin llamadas,
+   cambios de workflows ni escrituras remotas.
+
+**Pendiente:** recargar `/112/alerts/` y confirmar escucha en el móvil físico, especialmente Safari/iOS.
+Hay que pulsar activar y subir el volumen multimedia; la web no controla el volumen del dispositivo
+ni garantiza reproducción con la pantalla bloqueada o el navegador suspendido.
+
 ## Comportamientos comprobados
 
 - Creación/publicación por API, workflow live, Ana HR y español.

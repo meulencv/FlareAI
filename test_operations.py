@@ -29,7 +29,30 @@ class OperationTests(unittest.TestCase):
         self.assertTrue(alert_allowed({'evolucion': 'critico'}))
         self.assertTrue(alert_allowed({'es_alert': 'solicitado'}))
         self.assertFalse(alert_allowed({'incendio': 'descartado', 'es_alert': 'solicitado'}))
-        self.assertFalse(alert_allowed({'evolucion': 'critico', 'es_alert': 'no_solicitado'}))
+        self.assertTrue(alert_allowed({'evolucion': 'critico', 'es_alert': 'no_solicitado'}))
+
+    def test_population_risk_is_an_agent_decision_grounded_in_the_current_part(self):
+        fields = {'incendio': 'confirmado', 'evolucion': 'estable', 'es_alert': 'no_solicitado',
+                  'detalle': 'Humos tóxicos se dirigen hacia las viviendas próximas.'}
+        action = {'population_risk': True, 'report_evidence': fields['detalle']}
+        self.assertTrue(alert_allowed(fields, action))
+        self.assertFalse(alert_allowed(fields), 'El parte por sí solo no sustituye la decisión del agente')
+        for invalid in ({}, {'population_risk': False}, {'population_risk': 'true'}, {'report_evidence': 'Humos tóxicos'},
+                        {'report_evidence': 'Hay una fuga química junto a viviendas.'}, {'report_evidence': None}):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(alert_allowed(fields, {**action, **invalid} if invalid else {}))
+        self.assertFalse(alert_allowed({}, action))
+        self.assertFalse(alert_allowed({'detalle': ''}, {'population_risk': True, 'report_evidence': ''}))
+        for state in ('descartado', 'extinguido'):
+            self.assertFalse(alert_allowed({**fields, 'incendio': state}, action))
+
+    def test_small_fire_and_denied_toxic_smoke_do_not_trigger_by_keywords(self):
+        for detail in ('Incendio pequeño y estable sin peligro para vecinos.',
+                       'No hay humos tóxicos ni riesgo para la población.',
+                       'Humo tóxico confinado dentro del recinto; no alcanza el exterior.'):
+            fields = {'incendio': 'confirmado', 'evolucion': 'estable', 'detalle': detail}
+            self.assertFalse(alert_allowed(fields))
+            self.assertFalse(alert_allowed(fields, {'population_risk': False, 'report_evidence': detail}))
 
     def test_requests_preserve_types_and_quantities(self):
         self.assertEqual(requested_resources({'ambulancias': '2', 'helicoptero': 'solicitado', 'refuerzos': 'solicitado'}),

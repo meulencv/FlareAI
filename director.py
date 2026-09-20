@@ -52,7 +52,9 @@ def anchor(payload: dict) -> str:
                    'status': payload.get('status'),
                    'incidents': [{'id': i['id'], 'lat': i.get('lat'), 'lon': i.get('lon'),
                                   'location': (i.get('demo_report') or {}).get('location'),
-                                  'cancelled': (i.get('demo_report') or {}).get('cancelled')} for i in reported(payload)]})
+                                  'cancelled': (i.get('demo_report') or {}).get('cancelled'),
+                                  'responder_report': i.get('responder_report')} for i in reported(payload)],
+                   'field_reports': payload.get('demo', {}).get('field_reports', {})})
 
 
 def extract_plan(messages: list[dict]) -> dict | None:
@@ -480,7 +482,7 @@ class Director:
                    'alerts': self.state['alerts'], 'history': self.state['history'][-8:],
                    'source_status': payload.get('status'), 'at': time.time(), 'incident_limit': 8,
                    'field_reports': payload.get('demo', {}).get('field_reports', {}),
-                   'capabilities': {'alert': 'Vista ES-Alert en móviles de la demo: solo confirmación de bomberos en entorno urbano o petición expresa. Nunca Cell Broadcast real.',
+                   'capabilities': {'alert': 'ES-Alert simulado: petición expresa, parte crítico o decisión del agente por peligro para la población fundamentada en el parte actual (population_risk=true y report_evidence=copia íntegra de fields.detalle). No requiere que el bombero lo solicite; no_solicitado no es un veto. Humo genérico o entorno urbano no bastan. Nunca Cell Broadcast real.',
                                     'helicopter': 'Recurso ficticio en helipuerto real; disponible para solicitud aérea explícita o incendio confirmado que empeora. Vuelo ilustrativo, no protocolo español.',
                                     'reinforcements': 'Solicitudes de bomberos en responder_report.fields.refuerzos; valorar recursos libres y reassign entre incidentes con motivo y cobertura restante.'},
                    'omitted_incidents': max(0, len(reported(payload)) - 8),
@@ -495,7 +497,7 @@ class Director:
         if self.scene:
             context['scenario'] = deepcopy(self.scene.data)
             context['capabilities'].update(ambulance='Ambulancias ficticias desde hospitales/bases del atlas. Riesgo vital, humo sobre barrio o población amenazada requieren valorar sanitario y policía, no solo camiones.',
-                alert='Toda propuesta se envía al receptor de simulación tras 3 segundos salvo cancelación humana. Nunca ES-Alert real.',
+                alert=context['capabilities']['alert'] + ' Toda propuesta habilitada se envía al receptor de simulación tras 3 segundos salvo cancelación humana.',
                 helicopter='Apoyo aéreo ilustrativo admisible en aviso marítimo por llamada o riesgo alto del escenario.',
                 lifecycle='active → contained → watching → releasing → closed. Contener requiere trabajo sostenido, no solo llegada. En releasing se ejecuta retirada; no movilices recursos nuevos.')
         context['revision'] = digest(context)
@@ -590,7 +592,7 @@ class Director:
                 incident = incidents[item['incident_id']]
                 fields = (incident.get('responder_report') or {}).get('fields', {})
                 from operations import alert_allowed
-                item['mobile_alert'] = alert_allowed(fields)
+                item['mobile_alert'] = alert_allowed(fields, item)
             prepared.append(item)
         return prepared
 

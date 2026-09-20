@@ -369,14 +369,6 @@ $("wind-toggle").onclick = () => {
   windVisible = !windVisible; $("wind-toggle").classList.toggle("active", windVisible);
   $("wind-toggle").setAttribute("aria-pressed", String(windVisible)); stage.setWind(windVisible);
 };
-$("explore-toggle").onclick = () => {
-  directorView.manual();
-  const minimal = document.body.classList.toggle("map-only");
-  $("explore-toggle").setAttribute("aria-expanded", String(!minimal));
-  if (minimal) { $("details").classList.remove("open"); $("sidebar").classList.remove("open"); closeSimulation(); }
-  else if (selected) selectIncident(selected, false, true);
-  map.invalidateSize();
-};
 $("show-list").onclick = () => { $("sidebar").classList.toggle("open"); $("details").classList.remove("open"); };
 $("close-details").onclick = () => {
   $("details").classList.remove("open");

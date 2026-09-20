@@ -49,6 +49,28 @@ FlareAI no requiere API key para NASA/NOAA. La demo de voz usa `HAPPYROBOT_API_K
 `happyrobot-112/.env`, solo en backend y nunca en el repo/vault. Los secretos de la implementación
 anterior siguen en `versión-anterior/.env` (`HAPPYROBOT_API_KEY`).
 
+## ES-Alert decidido por el agente (20/09/2026, sustituye restricciones anteriores)
+
+- El agente valora el peligro para la población descrito por bomberos (humos tóxicos, explosión, propagación…),
+  sin esperar petición explícita ni `evolucion=critico`. `es_alert=no_solicitado` no veta esa decisión.
+  Un incendio pequeño sin amenaza exterior, humo genérico o proximidad urbana no bastan; respetar negaciones.
+- La acción `alert` autónoma incluye `population_risk=true` y `report_evidence` igual al `detalle` íntegro actual.
+  `operations.alert_allowed` valida la vinculación; no hay detector por palabras clave ni alerta determinista
+  por toxicidad. La clasificación semántica es del LLM. Petición explícita sigue siendo mandato; parte crítico
+  sigue habilitando valoración; descarte/extinción bloquean. Distinguir evacuación/confinamiento en `reason`.
+- `director.anchor` incluye partes para invalidar planes en vuelo tras correcciones. Se mantienen idempotencia,
+  veto humano de 3 s en escenario y receptor solo simulado. No hay cambios de esquema ni migraciones Twin.
+- `director_workflow.ALERT_POLICY` se comparte con `presentation_workflows.DIRECTOR_POLICY`; el guion saliente
+  conserva amenazas, negaciones y exposición en `detalle` (240 caracteres), sin pedir autorización de alerta.
+  Publicados con autorización: director `01a0bc22-7844-71ac-82d9-26479d46e02b`, voz saliente
+  `01a0bc23-078f-75a8-96d7-ba7d29e61424`; mismos workflows, voz/tools preservados, metadatos sincronizados
+  en local/Twin. La publicación del director tardó en reflejarse: GET confirmó live, no se republicó.
+  Backend reiniciado con autorización, manteniendo `--presentation --allow-outbound` en 8090/8112; sin llamadas
+  ni runs de prueba. Recargar mapa/marcador tras cambiar sesión.
+- Verificar con `.venv/bin/python -m unittest test_operations test_director test_presentation test_scene
+  test_autodispatch test_demo test_local_routes -q`: 130 pruebas, Ruff y mypy pasan. Planes/voz fixtures,
+  no validan el razonamiento LLM live; GET remoto sí verificó los prompts y estado publicados.
+
 ## Cierre rápido para demo (20/09/2026, sustituye las esperas anteriores)
 
 - Petición expresa: al apagarse el fuego, regreso inmediato e informe rápido. `Scene.evolve` y
@@ -619,3 +641,14 @@ Si el vault no existe todavía, créalo con esta misma estructura antes de escri
   no son ahorro de prevención acreditado, ingresos ni créditos. Se indica cobertura parcial y se conserva
   «sin datos» en lugar de inventar ceros. La cuarta tarjeta cuenta operaciones con balance disponible.
 - Verificación rápida: Node `--test test_scene.mjs test_operations.mjs test_director.mjs` (43 pruebas).
+
+## Sonido del receptor móvil (20/09/2026)
+
+- `happyrobot-112/static/alerts.js`: ganancia 0,85 (antes 0,18), tono alterno 800/1000 Hz sin saturación,
+  prueba audible de 0,8 s al activar antes de la red y alarma de máximo 8 s. Botón de prueba reutilizable.
+- Solicita `navigator.audioSession.type = 'playback'` si existe, solo en el receptor sin micrófono.
+  Suspensión/interrupción detiene el tono y muestra estado persistente separado del polling; la alerta
+  incluye su propio botón de reactivación para no dejarlo detrás del modal. No reproduce histórico.
+- Verificación: Node `--test test_director.mjs`; Chromium móvil con API fixture, AudioContext real y pico
+  medido 0,85, recuperación tras suspend y silencio. No llamadas, cloud ni escrituras de sesión reales.
+  Safari/iOS y volumen físico requieren escucha humana; no garantiza sonido con pantalla bloqueada.

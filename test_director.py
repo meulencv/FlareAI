@@ -52,6 +52,28 @@ class DirectorTests(unittest.TestCase):
         self.assertIn('{{trigger-test.data.context_json}}', prompt)
         self.assertNotIn('{{trigger-test.context_json}}', prompt)
 
+    def test_both_director_policies_include_autonomous_population_risk_contract(self):
+        from director_workflow import ALERT_POLICY, PROMPT
+        from presentation_workflows import DIRECTOR_POLICY, OUTBOUND_POLICY
+        for policy in (PROMPT, DIRECTOR_POLICY):
+            self.assertIn(ALERT_POLICY, policy)
+            self.assertNotIn('{{ALERT_POLICY}}', policy)
+            self.assertIn('population_risk=true', policy)
+            self.assertIn('report_evidence', policy)
+            self.assertIn('confinamiento', policy)
+            self.assertNotIn('Si es_alert=no_solicitado, incendio=descartado', policy)
+        self.assertIn('si no habla de alertas, omite es_alert', OUTBOUND_POLICY)
+        self.assertIn('Mantén negaciones, dudas y correcciones', OUTBOUND_POLICY)
+
+    def test_anchor_tracks_field_evidence_but_not_growing_citizen_summary(self):
+        from director import anchor
+        payload = {'incidents': [{'id': 'fire', 'demo_report': {'summary': {'riesgos': 'Humo'}}}]}
+        original = anchor(payload)
+        payload['incidents'][0]['demo_report']['summary']['riesgos'] = 'Humo junto a la carretera'
+        self.assertEqual(anchor(payload), original)
+        payload['demo'] = {'field_reports': {'fire': {'revision': 2, 'fields': {'detalle': 'Riesgo exterior descartado'}}}}
+        self.assertNotEqual(anchor(payload), original)
+
     def test_sync_keeps_literal_hook_key_and_updates_all_node_ids(self):
         from director_workflow import sync, NAME
         database = Mock()
@@ -397,6 +419,60 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(len(self.director.alert_feed(0)['events']), 1)
         self.director.apply(plan, [action], 'duplicate')
         self.assertEqual(len(self.director.alert_feed(0)['events']), 1)
+
+    def test_agent_can_alert_on_toxic_smoke_without_a_firefighter_request(self):
+        from demo import extract_part
+        from scene import Scene
+        fields = extract_part([{'role': 'assistant', 'tool_calls': [{'name': 'actualizar_parte', 'args': {
+            'incendio': 'confirmado', 'evolucion': 'estable', 'es_alert': 'no_solicitado',
+            'detalle': 'Humos tóxicos alcanzan las viviendas al otro lado de la calle.'}}]}])
+        report = {'revision': 1, 'fields': fields, 'field_versions': dict.fromkeys(fields, 1)}
+        self.context['incidents'][0]['responder_report'] = report
+        self.director.scene = Scene(self.director)
+        self.director.ingest_field_reports({'demo': {'field_reports': {'fire': report}}})
+        self.assertFalse(self.director.state.get('pending_alerts'))
+        self.assertFalse(self.director.alert_feed(0)['events'])
+        plan = {**self.plan, 'actions': [{'type': 'alert', 'incident_id': 'fire', 'population_risk': True,
+            'report_evidence': fields['detalle'], 'reason': 'SIMULACRO: humo tóxico sobre viviendas; confinamiento preventivo del entorno.'}]}
+        with patch('director.threading.Timer') as timer:
+            actions = self.director.prepare(plan, self.context)
+            self.assertTrue(actions[0]['mobile_alert'])
+            self.director.apply(plan, actions, 'toxic-smoke-plan')
+            proposal = self.director.state['pending_alerts']['fire']
+            self.assertEqual(proposal['source'], 'director_decision')
+            self.assertEqual(timer.call_args.args[0], 3)
+            self.director.apply(plan, actions, 'duplicate')
+            timer.assert_called_once()
+            self.assertFalse(self.director.alert_feed(0)['events'])
+            self.director.deliver_alert('fire', proposal['id'])
+            self.assertEqual(self.director.alert_feed(0)['events'][0]['source'], 'director_decision')
+            self.assertEqual(self.director.state['history'][0]['plan']['actions'][0]['report_evidence'], fields['detalle'])
+
+    def test_operator_can_veto_an_agent_population_risk_alert(self):
+        from scene import Scene
+        self.director.scene = Scene(self.director)
+        fields = {'detalle': 'Riesgo de explosión que afecta a las casas próximas.'}
+        self.context['incidents'][0]['responder_report'] = {'fields': fields}
+        plan = {**self.plan, 'actions': [{'type': 'alert', 'incident_id': 'fire', 'population_risk': True,
+            'report_evidence': fields['detalle'], 'reason': 'SIMULACRO: evacuar el entorno amenazado por explosión.'}]}
+        with patch('director.threading.Timer'):
+            self.director.apply(plan, self.director.prepare(plan, self.context), 'risk-plan')
+            proposal = self.director.state['pending_alerts']['fire']
+            self.director.cancel_alert(proposal['id'])
+            self.director.deliver_alert('fire', proposal['id'])
+            self.assertFalse(self.director.alert_feed(0)['events'])
+
+    def test_updated_field_report_invalidates_an_inflight_alert_plan(self):
+        from director import anchor
+        fields = {'detalle': 'Humos tóxicos sobre viviendas.'}
+        self.context['incidents'][0]['responder_report'] = {'fields': fields}
+        self.director.state['pending']['anchor'] = anchor(self.payload)
+        self.planner.poll.return_value = {**self.plan, 'actions': [{'type': 'alert', 'incident_id': 'fire',
+            'population_risk': True, 'report_evidence': fields['detalle'], 'reason': 'Proteger población del humo tóxico'}]}
+        self.payload['incidents'][0]['responder_report'] = {'fields': {'detalle': 'Se descarta toxicidad y peligro exterior.'}}
+        self.director.step()
+        self.assertFalse(self.director.alert_feed(0)['events'])
+        self.assertTrue(any(e['kind'] == 'superseded' for e in self.director.state['events']))
 
     def test_report_marks_only_the_reporting_resource_arrived(self):
         self.director.step()

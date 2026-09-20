@@ -19,10 +19,19 @@ busy/missed/voicemail/failed/canceled habilitan el contacto de respaldo. Un time
 no se repite sin comprobarlo. `--allow-outbound` es imprescindible para llamadas físicas. El 123 ya no es
 un endpoint de llamada admitido. Los partes se vinculan internamente a incidente, coordenadas y unidad.
 
-ES-Alert queda limitado a solicitud explícita o evolución crítica comunicada por bomberos; una negación
-expresa o descarte/extinción lo impiden. La población y el humo urbano no bastan. Se conserva el veto de
-tres segundos en servidor y el receptor exclusivamente simulado. El ciclo espera el parte y los refuerzos
-antes de dar por concluida la operación, y conserva los traslados y regresos.
+ES-Alert (revisión del 20/09/2026): el director decide por peligro para la población comunicado en el parte,
+no espera que el bombero solicite la alerta ni marque `evolucion=critico`. Para esa decisión autónoma la acción
+`alert` incluye `population_risk=true` y `report_evidence` igual al `detalle` completo del parte vigente; el
+backend valida esa vinculación, no clasifica humos mediante palabras clave. El juicio semántico corresponde
+al LLM: toxicidad/explosión/propagación con amenaza exterior sí; humo genérico, negaciones o un fuego pequeño
+sin peligro exterior no. El texto explica amenaza, entorno y evacuación o confinamiento según los datos.
+`no_solicitado` no es un veto; la petición explícita sigue ejecutándose sin esperar al LLM. Se conserva la
+habilitación de partes críticos, pero no implica envío automático sin decisión. Descarte/extinción bloquean.
+Un cambio de parte invalida un plan en vuelo. Se conserva el veto de tres segundos en servidor y el receptor
+exclusivamente simulado. No hay migración SQL/Twin: evidencia y decisión viajan en JSON existente. Prompts
+publicados con autorización el 20/09/2026 y backend reiniciado: director `01a0bc22-7844-71ac-82d9-26479d46e02b`,
+voz saliente `01a0bc23-078f-75a8-96d7-ba7d29e61424`; ambos verificados publicados/live. Sin llamadas de prueba.
+El ciclo espera el parte y los refuerzos antes de dar por concluida la operación, y conserva traslados/regresos.
 
 Twin limita SELECT a 500 filas/1 MB, devuelve int8 como texto y no mantiene transacciones entre llamadas
 HTTP. El adaptador pagina y normaliza. La función versionada `flare_live_save_director_v1` guarda estado y

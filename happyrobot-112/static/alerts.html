@@ -18,12 +18,15 @@
       <p>Cuando bomberos solicite ES-Alert, o el director lo decida tras una confirmación en entorno urbano, este móvil mostrará una alerta y emitirá un sonido.</p>
     </section>
     <button id="activate-alerts">Activar recepción y sonido</button>
-    <p id="receiver-status" role="status">Pulsa activar una vez. La alarma de prueba puede sonar fuerte.</p>
+    <p id="receiver-status" role="status">Pulsa activar para conectar el receptor.</p>
+    <p id="sound-status" role="status">Al activar sonará una prueba fuerte de un segundo. Sube el volumen multimedia del móvil.</p>
     <section id="received-alert" role="alertdialog" aria-modal="true" aria-labelledby="alert-title" aria-describedby="alert-message" hidden>
       <span class="simulation-label">SIMULACRO · NO ES UNA EMERGENCIA REAL</span>
       <h2 id="alert-title">ES-Alert de demostración</h2>
       <p id="alert-message"></p>
       <p id="alert-time"></p>
+      <p id="alert-sound-status" role="status"></p>
+      <button id="retry-alert-sound" hidden>Activar sonido de esta alerta</button>
       <button id="ack-alert">Silenciar y aceptar</button>
     </section>
     <p class="limitations">Mantén esta pantalla abierta y el volumen del dispositivo activado. No es Cell Broadcast ni una notificación del sistema: no garantiza sonido con el móvil bloqueado, en silencio o la web en segundo plano.</p>
