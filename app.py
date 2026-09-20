@@ -395,7 +395,7 @@ class Handler(SimpleHTTPRequestHandler):
                 public = tunnel
                 phone_url = alert_url = None
                 hosted_app = False
-                if self.store.presentation:
+                if self.store.presentation and not getattr(self.store.db, 'room_id', ''):
                     configured = cast(TwinDatabase, self.store.db).setting('phone-web').get('url', '')
                     target = urlsplit(configured)
                     hosted = f'https://{target.netloc}' if target.scheme == 'https' and target.hostname and not target.username and not target.password else None

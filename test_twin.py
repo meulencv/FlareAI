@@ -1,10 +1,56 @@
+import os
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from twin import TwinDatabase, bind_sql
 
 
 class TwinTests(unittest.TestCase):
+    def test_render_and_local_acquire_different_leases(self):
+        client = Mock()
+        client.request.return_value = {'rows': [{'owner': 'ok'}]}
+        with patch.dict(os.environ, {}, clear=True):
+            local = TwinDatabase(client=client)
+        with patch.dict(os.environ, {'RENDER_SERVICE_ID': 'srv-demo'}, clear=True):
+            remote = TwinDatabase(client=client)
+            replacement = TwinDatabase(client=client)
+        self.assertEqual(local.room_prefix, '')
+        self.assertEqual(remote.room_prefix, replacement.room_prefix)
+        with local.verification_lock(804030) as first, remote.verification_lock(804030) as second:
+            self.assertTrue(first and second)
+        queries = [call.args[2]['sql'] for call in client.request.call_args_list]
+        self.assertIn("VALUES ('804030',", queries[0])
+        self.assertIn(remote.room_prefix + '804030', queries[1])
+        self.assertIn(remote.room_prefix + '804030', queries[2])
+        self.assertNotIn(remote.room_prefix, queries[3])
+
+    def test_remote_heartbeat_and_documents_stay_in_its_room(self):
+        client = Mock()
+        client.request.return_value = {'rows': []}
+        with patch.dict(os.environ, {'RENDER_SERVICE_ID': 'srv-demo'}, clear=True):
+            db = TwinDatabase(client=client)
+        db.heartbeat('remote-session')
+        db.stop_room('remote-session')
+        db.document('report:test', 'report', {'ok': True}, 'remote-session')
+        db.documents('report')
+        queries = [call.args[2]['sql'] for call in client.request.call_args_list]
+        self.assertTrue(all(db.room_prefix in query for query in queries))
+        self.assertIn('starts_with(id,', queries[-1])
+
+    def test_remote_reset_does_not_delete_other_sessions(self):
+        client = Mock()
+        client.request.return_value = {'rows': []}
+        with patch.dict(os.environ, {'RENDER_SERVICE_ID': 'srv-demo'}, clear=True):
+            db = TwinDatabase(client=client)
+        db.start_demo('remote-session')
+        client.reset_mock()
+        with patch('database.Database.reset_demo'):
+            db.reset_demo()
+        queries = [call.args[2]['sql'] for call in client.request.call_args_list]
+        self.assertTrue(queries)
+        self.assertTrue(all(' WHERE ' in query for query in queries))
+        self.assertTrue(all('remote-session' in query or db.room_prefix in query for query in queries))
+
     def test_sql_values_are_quoted_not_interpolated(self):
         self.assertEqual(bind_sql('SELECT %s AS value', ("O'Brien",)), "SELECT 'O''Brien' AS value")
         self.assertIn("''; DROP TABLE", bind_sql('SELECT %s', ("'; DROP TABLE test; --",)))

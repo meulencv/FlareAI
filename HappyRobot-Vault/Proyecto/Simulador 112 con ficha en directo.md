@@ -232,3 +232,15 @@ ni garantiza reproducción con la pantalla bloqueada o el navegador suspendido.
   respaldo urgente y `Ubicacion` sin tilde.
 
 Relacionado: [[FlareAI Web Voice - workflow]] · [[Voice Tokens y LiveKit]] · [[Web app - server y frontend]]
+
+
+## Sala independiente de Render (2026-09-20)
+
+Render quedaba en `standby` porque el local conservaba el lease Twin `804030`. Ahora `TwinDatabase`
+usa un prefijo estable derivado de `RENDER_SERVICE_ID` para el lease, heartbeat y documentos remotos.
+El local conserva sus identificadores. Cada sala mantiene un único director; no se desactiva el cerrojo.
+El marcador de Render apunta a su propio `/112/`, y su reset se limita a sesiones del proceso y
+sus documentos de sala. No cambia workflows, contactos ni autorización de llamadas salientes.
+
+20 pruebas de Twin/presentación y Ruff pasan con proveedores simulados; no se lanzó una llamada real.
+Después del despliegue hay que recargar mapa y marcador e iniciar una llamada nueva.

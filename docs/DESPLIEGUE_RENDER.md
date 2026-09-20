@@ -97,11 +97,14 @@ proceso, ~1 s; carga del grafo ~0,6 s, luego cacheado por el router). La base si
    Render rechaza `sslmode=disable`; `require` evita cualquier degradación a texto claro.
    Si cambias rutas o grafos en local y quieres que viajen con el código: `python database.py seed` y
    versionar `data/seed/assets.jsonl.gz`.
-3. **Un único director.** El lease de la sala en Twin (`flare_live_leases`) admite un solo director: si el
-   servidor local sigue en `--presentation`, el de Render queda en `standby` (y `/healthz` lo indica) hasta
-   que el local se cierre; al revés, igual. Parar el local antes de presentar desde Render. En un
-   redespliegue, la instancia nueva arranca en `standby` y adquiere el lease ~2 s después de que la antigua
-   reciba `SIGTERM` (o a los 90 s si cayó de golpe).
+3. **Salas independientes (corrección 20/09/2026).** Render usa una sala derivada automáticamente de
+   `RENDER_SERVICE_ID` (alternativas: `RENDER_EXTERNAL_URL`, `RENDER=true`; override `FLAREAI_ROOM_ID`).
+   El local conserva el lease original `804030`: ambos directores pueden actuar simultáneamente.
+   Cada sala mantiene su exclusión, renovación y caducidad de 90 s entre redespliegues.
+   Render usa su propio `/112/`, heartbeat y documentos; su reset solo borra sus sesiones de proceso y
+   documentos de sala, sin borrar la presentación local. Los workflows y contactos siguen compartidos;
+   las llamadas salientes continúan sujetas a `FLAREAI_ALLOW_OUTBOUND`.
+   Tras el deploy, recargar mapa y marcador y hacer una llamada nueva: la sesión de navegador anterior caduca.
 4. **Llamadas reales.** `FLAREAI_ALLOW_OUTBOUND` está a `"0"`. Cambiarlo a `"1"` en *Environment* del
    servicio (Render reinicia) solo para el ensayo autorizado con los contactos de `flare_contacts`.
 5. **Comprobar.** `https://<servicio>.onrender.com/healthz` → `{"ok": true, "director": "idle"}`;

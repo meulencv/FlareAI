@@ -118,6 +118,12 @@ class TwinDatabase(Database):
             client = provider.client
             client.key = os.environ.get('FLAREAI_TWIN_API_KEY') or client.key
         self.client = client
+        # Stable across Render deploys; the local room keeps its existing lease.
+        self.room_id = (os.environ.get('FLAREAI_ROOM_ID') or os.environ.get('RENDER_SERVICE_ID')
+                        or os.environ.get('RENDER_EXTERNAL_URL')
+                        or ('render' if os.environ.get('RENDER') == 'true' else ''))
+        self.room_prefix = 'room:' + hashlib.sha256(self.room_id.encode()).hexdigest()[:20] + ':' if self.room_id else ''
+        self._demo_sessions: set[str] = set()
         self._cache: dict[str, tuple[float, Any]] = {}
         self._cache_lock = threading.RLock()
         self._lease_failed = threading.Event()
@@ -214,6 +220,7 @@ class TwinDatabase(Database):
 
     def start_demo(self, identifier: str) -> None:
         self.execute('INSERT INTO flare_live_sessions(id) VALUES (%s) ON CONFLICT DO NOTHING', (identifier,))
+        self._demo_sessions.add(identifier)
 
     def save_demo_call(self, session_id: str, run_id: str, data: dict) -> None:
         self.execute("INSERT INTO flare_live_calls(id,session_id,data) VALUES (%s,%s,%s) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=(now() AT TIME ZONE 'UTC') WHERE flare_live_calls.session_id=EXCLUDED.session_id", (run_id, session_id, data))
@@ -236,6 +243,7 @@ class TwinDatabase(Database):
             self._last_event[session_id] = max(e['sequence'] for e in events)
 
     def document(self, identifier: str, kind: str = '', value: dict | None = None, session_id: str | None = None) -> dict | None:
+        identifier = self.room_prefix + identifier
         if value is not None:
             self.execute("INSERT INTO flare_live_documents(id,kind,session_id,data) VALUES (%s,%s,%s,%s) ON CONFLICT(id) DO UPDATE SET data=EXCLUDED.data,updated_at=(now() AT TIME ZONE 'UTC') WHERE flare_live_documents.kind=EXCLUDED.kind AND flare_live_documents.session_id IS NOT DISTINCT FROM EXCLUDED.session_id", (identifier, kind, session_id, value))
             return value
@@ -245,10 +253,14 @@ class TwinDatabase(Database):
     def documents(self, kind: str, session_id: str | None = None) -> list[dict]:
         query = 'SELECT id,data FROM flare_live_documents WHERE kind=%s'
         values: tuple = (kind,)
+        if self.room_prefix:
+            query += ' AND starts_with(id,%s)'
+            values += (self.room_prefix,)
         if session_id is not None:
             query += ' AND session_id=%s'
             values += (session_id,)
-        return self.rows(query + ' ORDER BY id', values)
+        rows = self.rows(query + ' ORDER BY id', values)
+        return [row | {'id': row['id'].removeprefix(self.room_prefix)} for row in rows]
 
     def contacts(self, value: list[dict] | None = None, role: str = 'firefighter') -> list[dict]:
         if value is not None:
@@ -263,13 +275,14 @@ class TwinDatabase(Database):
                 yield acquired
             return
         owner = str(uuid.uuid4())
+        lease_id = self.room_prefix + str(key)
         query = "INSERT INTO flare_live_leases VALUES (%s,%s,(now() AT TIME ZONE 'UTC')+interval '90 seconds') ON CONFLICT(id) DO UPDATE SET owner=EXCLUDED.owner,expires_at=EXCLUDED.expires_at WHERE flare_live_leases.expires_at<(now() AT TIME ZONE 'UTC') OR flare_live_leases.owner=EXCLUDED.owner RETURNING owner"
-        acquired = bool(self.execute(query, (str(key), owner))['rows'])
+        acquired = bool(self.execute(query, (lease_id, owner))['rows'])
         stop = threading.Event()
         def renew():
             while not stop.wait(15):
                 try:
-                    if not self.execute(query, (str(key), owner))['rows']:
+                    if not self.execute(query, (lease_id, owner))['rows']:
                         self._lease_failed.set()
                         return
                 except Exception:
@@ -285,18 +298,27 @@ class TwinDatabase(Database):
             if acquired:
                 worker.join(timeout=25)
             if acquired and not self._lease_failed.is_set():
-                self.execute("UPDATE flare_live_leases SET expires_at=(now() AT TIME ZONE 'UTC') WHERE id=%s AND owner=%s", (str(key), owner))
+                self.execute("UPDATE flare_live_leases SET expires_at=(now() AT TIME ZONE 'UTC') WHERE id=%s AND owner=%s", (lease_id, owner))
 
     def heartbeat(self, session_id: str) -> None:
         self.document('active-room', 'room', {'session_id': session_id, 'heartbeat_at': time.time(), 'mode': 'simulation_only'})
 
     def stop_room(self, session_id: str) -> None:
-        self.execute("UPDATE flare_live_documents SET data=jsonb_set(data,'{heartbeat_at}','0'::jsonb) WHERE id='active-room' AND data->>'session_id'=%s", (session_id,))
+        self.execute("UPDATE flare_live_documents SET data=jsonb_set(data,'{heartbeat_at}','0'::jsonb) WHERE id=%s AND data->>'session_id'=%s", (self.room_prefix + 'active-room', session_id))
 
     def reset_demo(self) -> None:
         """Además del vaciado local heredado, vacía las llamadas/estado/documentos dinámicos de Twin.
         Nunca toca `flare_contacts` (teléfonos de bomberos) ni `flare_live_settings`/`flare_live_leases`."""
         super().reset_demo()
+        if self.room_prefix:
+            # A remote reset must never erase the live local presentation.
+            for session_id in self._demo_sessions:
+                for table in ('flare_live_calls', 'flare_live_web_requests', 'flare_live_events',
+                              'flare_live_state', 'flare_live_documents'):
+                    self.execute(f'DELETE FROM {table} WHERE session_id=%s', (session_id,))
+                self.execute('DELETE FROM flare_live_sessions WHERE id=%s', (session_id,))
+            self.execute('DELETE FROM flare_live_documents WHERE starts_with(id,%s)', (self.room_prefix,))
+            return
         for table in ('flare_live_calls', 'flare_live_web_requests', 'flare_live_events',
                       'flare_live_state', 'flare_live_documents', 'flare_live_sessions'):
             self.execute(f'DELETE FROM {table}')
