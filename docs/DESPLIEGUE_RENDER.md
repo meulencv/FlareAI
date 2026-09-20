@@ -1,5 +1,21 @@
 # Despliegue del centro Python en Render
 
+## Demo visual automática (decisión final 20/09/2026)
+
+Render arranca ahora una exhibición autónoma, incluso con el comando anterior `--presentation`.
+Se detecta por sus variables `RENDER_SERVICE_ID`/`RENDER_EXTERNAL_URL`/`RENDER=true`; `FLAREAI_VISUAL_DEMO=0`
+restaura el modo conectado descrito más abajo. En local, sin esas variables, no cambia nada.
+
+Genera hasta dos incendios ficticios, avisos de llamada simulada, bomberos, ambulancias, patrullas y
+helicópteros. Usa la red OSM preparada y el motor de extinción/regreso; varía lugares, viento y tiempos.
+Los controles de cortes, viento y potencia siguen activos. Las decisiones son guion simulado, sin LLM,
+Twin ni llamadas telefónicas. Las cámaras y NASA se muestran como imágenes reales guardadas y fechadas,
+no como directo ni evidencia del incendio ficticio. Las fuentes están en `static/visual-evidence/manifest.json`.
+El servicio conserva PostgreSQL y los datos territoriales del deployment. No comparte avisos con el local.
+
+Validación: 71 pruebas Python, 38 JavaScript, Ruff y mypy. Ciclo con grafo real y persistencia en memoria.
+
+
 Guía para ejecutar en [Render](https://render.com) exactamente lo que hoy corre en local:
 `app.py --presentation` con PostgreSQL, el marcador `/112/`, el receptor `/112/alerts/`, el director
 HappyRobot y Twin. El Blueprint `render.yaml` de la raíz describe los dos recursos; esta guía cubre lo

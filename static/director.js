@@ -209,26 +209,32 @@ export function createEvidenceView({ document, fetch, getData, getCameras, openC
   async function satellite(incident, thermal, token, signal, mode = "swir") {
     const root = $("evidence-satellite");
     root.replaceChildren(node("h3", "NASA GIBS · " + (mode === "swir" ? "infrarrojo SWIR" : "color natural")));
-    if (!thermal) { root.append(node("p", "Sin detecciones FIRMS a ≤10 km en los datos disponibles. Se omite la imagen; no se descarta el aviso.")); return; }
+    if (!thermal && !incident.visual_evidence) { root.append(node("p", "Sin detecciones FIRMS a ≤10 km en los datos disponibles. Se omite la imagen; no se descarta el aviso.")); return; }
     root.append(node("p", "Consultando mosaico satelital…", "evidence-loading"));
     try {
       const url = `/api/satellite?id=${encodeURIComponent(incident.id)}&mode=${mode}`;
-      const picture = await json(url, signal, `${url}|${incident.lat}|${incident.lon}`);
+      const picture = incident.visual_evidence?.satellite || await json(url, signal, `${url}|${incident.lat}|${incident.lon}`);
       if (token !== generation || signal.aborted) return;
-      if (!/^\/satellite\/[a-f0-9]{24}\.png$/.test(picture.url)) throw new Error("Imagen inválida");
+      if (!/^\/satellite\/[a-f0-9]{24}\.png$/.test(picture.url) && !(incident.visual_evidence && picture.url === '/visual-evidence/barcelona-satellite.png')) throw new Error("Imagen inválida");
       root.querySelector(".evidence-loading")?.remove();
       const detections = (getData()?.incidents || []).flatMap(i => i.detections || []);
-      image(root, picture.url, `NASA ${mode} · ${incident.name}`, `${picture.date} · mosaico diario, no directo. Puntos: detecciones, no confirmación por imagen.`, token, detections, picture.bbox);
+      image(root, picture.url, `NASA ${picture.mode} · ${incident.name}`, `${picture.date} · mosaico diario, no directo. Puntos: detecciones, no confirmación por imagen.`, token, detections, picture.bbox);
       const button = node("button", mode === "swir" ? "Ver color natural" : "Ver infrarrojo SWIR");
       button.onclick = () => { expires = Date.now() + 30000; satellite(incident, thermal, token, signal, mode === "swir" ? "natural" : "swir"); };
-      root.append(button);
+      if (!incident.visual_evidence?.satellite) root.append(button);
     } catch {
       if (token === generation && !signal.aborted) { root.querySelector(".evidence-loading")?.remove(); root.append(node("p", "Sin mosaico disponible. Continuamos con el aviso, sin validación por imagen.")); }
     }
   }
-  async function camera(match, token, signal) {
+  async function camera(match, token, signal, stored = null) {
     const root = $("evidence-camera");
     root.replaceChildren(node("h3", "Cámara cercana · revisión visual"));
+    if (stored?.url === '/visual-evidence/barcelona-camera.jpg') {
+      root.append(node('p', `${stored.name} · Barcelona · ${stored.source}`));
+      image(root, stored.url, stored.name, `Captura guardada para la demo · recuperada ${date(stored.fetched_at)}. No es vídeo en directo ni prueba del incendio.`, token);
+      const link = node('a', 'Ver proveedor'); link.href = safeLink(stored.pageUrl) || '#'; link.target = '_blank'; link.rel = 'noopener noreferrer'; root.append(link);
+      return;
+    }
     if (!match) { root.append(node("p", "Sin cámaras verificadas disponibles a ≤10 km. No implica ausencia de incendio.")); return; }
     const item = match.item;
     root.append(node("p", `${item.name} · ${item.source} · ${number(match.distance_km)} km del aviso`));
@@ -255,7 +261,7 @@ export function createEvidenceView({ document, fetch, getData, getCameras, openC
     const { thermal, camera: nearbyCamera } = nearbyEvidence(incident, payload.incidents || [], getCameras());
     $("agent-evidence").hidden = false; expires = Date.now() + 30000;
     $("evidence-title").textContent = incident.demo_report?.location?.label || incident.name;
-    $("evidence-status").textContent = payload.status === "offline" ? "MUESTRA HISTÓRICA · SIN CONEXIÓN" : payload.status !== "ready" ? "FUENTES SIN ACTUALIZAR · CONSULTA LAS FECHAS" : "REVISIÓN AUTOMÁTICA DE FUENTES";
+    $("evidence-status").textContent = incident.visual_evidence ? "DEMO VISUAL · FUENTES REALES FECHADAS" : payload.status === "offline" ? "MUESTRA HISTÓRICA · SIN CONEXIÓN" : payload.status !== "ready" ? "FUENTES SIN ACTUALIZAR · CONSULTA LAS FECHAS" : "REVISIÓN AUTOMÁTICA DE FUENTES";
     const facts = $("evidence-facts"); facts.replaceChildren();
     const location = incident.demo_report?.location;
     if (location) facts.append(node("p", `${location.approximate || location.precision === 'locality' ? 'Ubicación aproximada' : 'Punto localizado'} · ${location.reason || 'Según ubicación comunicada.'} ${location.source || ''} ${location.attribution || ''}`));
@@ -266,7 +272,7 @@ export function createEvidenceView({ document, fetch, getData, getCameras, openC
     } else facts.append(node("p", "NASA FIRMS · sin coincidencia cercana en esta ventana. La ausencia de detección no invalida la llamada."));
     const w = incident.weather || {};
     facts.append(node("p", `NOAA GFS · ambiente a 2 m: ${number(w.air_temperature_c)} °C · viento ${number(w.wind_speed_kmh)} km/h. Modelo, no sensor local. Validez ${date(w.valid_at_utc)} · ciclo ${date(w.model_run_utc)}.`));
-    satellite(incident, thermal, token, signal); camera(nearbyCamera, token, signal);
+    satellite(incident, thermal, token, signal, incident.visual_evidence ? 'natural' : 'swir'); camera(nearbyCamera, token, signal, incident.visual_evidence?.camera);
   }
   return { show, hide, tick(now) { if (expires && now > expires) hide(); } };
 }
@@ -309,7 +315,7 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
     beforeMove(); focus(incident);
     cameraTour.bounds(selectionBounds(incident), 15.5, reduced.matches);
     contextUntil = Date.now() + 45000; lastTarget = `incident:${incident.id}`;
-    if (review && (lastEvidence !== incident.id || Date.now() - evidenceAt > 60000)) {
+    if (review && (lastEvidence !== incident.id || Date.now() - evidenceAt > (incident.visual_evidence ? 12000 : 60000))) {
       evidence.show(incident); lastEvidence = incident.id; evidenceAt = Date.now();
     } else if (lastEvidence !== incident.id) evidence.hide();
   }
@@ -465,6 +471,10 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
       const response = await fetch("/api/director", { signal: globalThis.AbortSignal.timeout(8000) });
       if (!response.ok) throw new Error("Director no disponible");
       const next = await response.json();
+      if (next.mode === 'visual_demo') {
+        const badge = document.querySelector('.demo-mode');
+        if (badge) { badge.textContent = 'demo automática · decisiones simuladas'; badge.title = 'Incendios ficticios. Cambia el viento o corta una vía desde el editor.'; }
+      }
       if (session !== next.session_id) {
         sequence = 0; queue = []; current = null; session = next.session_id;
         armed = false; lastTarget = ""; lastEvidence = ""; routeKey = ""; contextUntil = 0;
@@ -473,7 +483,14 @@ export function createDirectorView({ map, L, document, fetch, focus, clearContex
         hideCaption();
       }
       offset = next.server_time ? next.server_time * 1000 - Date.now() : 0;
-      queue.push(...freshEvents(next.events || [], sequence, (Date.now() + offset) / 1000));
+      let incoming = freshEvents(next.events || [], sequence, (Date.now() + offset) / 1000);
+      if (next.mode === 'visual_demo') {
+        const visible = new Set(['report', 'focus', 'context', 'decision', 'dispatch', 'return', 'contained', 'release', 'invalidated']);
+        let vehicles = 0;
+        incoming = incoming.filter(e => visible.has(e.kind) && (!['dispatch', 'return'].includes(e.kind) || ++vehicles <= 2));
+        queue = queue.slice(-3);
+      }
+      queue.push(...incoming);
       queue = queue.slice(-16);
       sequence = next.sequence || 0; state = next; lastContact = Date.now();
       renderAssignments(); renderAlerts(); sceneView.update(next); operationView.update(next);

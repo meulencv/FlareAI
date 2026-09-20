@@ -294,7 +294,12 @@ class Director:
     def __init__(self, store, planner=None, router=None, atlas=None) -> None:
         self.store, self.db = store, store.db
         self.session_id = store.demo.session_id
-        self.planner = planner if planner is not None else Planner(self.db)
+        self.planner: Any
+        if getattr(store, 'visual_demo', False) is True:
+            from visual_demo import SilentProvider
+            self.planner = SilentProvider()
+        else:
+            self.planner = planner if planner is not None else Planner(self.db)
         self.router = router if router is not None else LocalRouter(self.db)
         self.atlas = atlas if atlas is not None else EmergencyAtlas()
         self.lock = threading.RLock()
@@ -318,6 +323,11 @@ class Director:
         if getattr(store, 'presentation', False) is True:
             from operations import Operations
             self.operations = Operations(self)
+
+        self.visual = None
+        if getattr(store, 'visual_demo', False) is True:
+            from visual_demo import VisualDemo
+            self.visual = VisualDemo(self)
 
     def _setup_scenario(self) -> None:
         from scene import Scene
@@ -349,6 +359,9 @@ class Director:
             if self.operations is not None:
                 from operations import Operations
                 self.operations = Operations(self)
+            if self.visual is not None:
+                from visual_demo import VisualDemo
+                self.visual = VisualDemo(self)
             self.save()
 
     def station_inventory(self) -> list[dict]:
@@ -681,6 +694,9 @@ class Director:
         return changed
 
     def step(self) -> None:
+        if self.visual is not None:
+            self.visual.step()
+            return
         payload = self.store.payload()
         with self.lock:
             previous = deepcopy(self.state)

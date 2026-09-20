@@ -55,6 +55,8 @@ y dashboard con aprobación humana.
 - [[2026-09-19]] — S.O.S. Crisis Engine; FlareAI con atlas SQL, instalaciones, webcams, carreteras y confirmaciones
 
 ## Estado actual (resumen rápido, 2026-09-20)
+- **Render: exhibición visual automática** sin llamadas ni Twin; incendios, decisiones simuladas e imágenes fechadas.
+  [[Simulador 112 con ficha en directo#Exhibición visual autónoma de Render (2026-09-20)|Decisión final]].
 - **Render independiente del local:** lease, heartbeat y documentos por servicio, marcador en el propio host.
   [[Simulador 112 con ficha en directo#Sala independiente de Render (2026-09-20)|Cambio y prueba]].
 - **Sonido móvil:** tono más fuerte, prueba audible al activar y recuperación del audio dentro de la alerta.

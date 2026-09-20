@@ -64,11 +64,12 @@ class Cartography:
 
 
 class Store:
-    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False, hackathon: bool = False, presentation: bool = False, allow_outbound: bool = False) -> None:
+    def __init__(self, offline: bool = False, database: Database | None = None, demo_enabled: bool = False, director_enabled: bool = False, hackathon: bool = False, presentation: bool = False, allow_outbound: bool = False, visual_demo: bool = False) -> None:
         self.offline = offline
-        self.presentation = presentation
-        self.allow_outbound = allow_outbound
-        self.hackathon = hackathon or presentation
+        self.visual_demo = visual_demo
+        self.presentation = presentation and not visual_demo
+        self.allow_outbound = allow_outbound and not visual_demo
+        self.hackathon = hackathon or presentation or visual_demo
         self.db = database
         self.territorial = Territorial(database, offline) if database else None
         self.cartography = Cartography(database) if database else None
@@ -83,7 +84,11 @@ class Store:
         self.incidents = assemble(self.fires, self.weather, datetime.fromisoformat(self.fires["analysis_at_utc"]) if offline else None, self.provinces)
         if self.db:
             self.db.save_incidents([dict(i) for i in self.incidents])
-        self.demo = DemoBridge(database) if database and demo_enabled else None
+        if visual_demo:
+            from visual_demo import SilentProvider
+            self.demo = DemoBridge(database, provider=SilentProvider()) if database and demo_enabled else None
+        else:
+            self.demo = DemoBridge(database) if database and demo_enabled else None
         self.director = Director(self) if self.demo and director_enabled and not offline else None
 
     def refresh_loop(self) -> None:
@@ -480,6 +485,8 @@ class Handler(SimpleHTTPRequestHandler):
                 self.send_json(result)
             elif re.fullmatch(r"/satellite/[a-f0-9]{24}\.png", route.path):
                 self.send_bytes((DATA / "satellite" / route.path.rsplit("/", 1)[1]).read_bytes(), "image/png")
+            elif self.store.visual_demo and route.path in {'/visual-evidence/barcelona-satellite.png', '/visual-evidence/barcelona-camera.jpg'}:
+                self.send_bytes((ROOT / 'static' / route.path[1:]).read_bytes(), 'image/png' if route.path.endswith('.png') else 'image/jpeg')
             elif route.path in CARTOGRAPHY and self.store.cartography:
                 self.send_cartography(*self.store.cartography.entry(route.path))
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
@@ -517,7 +524,9 @@ if __name__ == "__main__":
     if options.presentation and options.offline:
         parser.error('--presentation necesita Twin y HappyRobot online')
     # FLAREAI_ALLOW_OUTBOUND=1 equivale a --allow-outbound cuando el comando de arranque es fijo (Render).
-    allow_outbound = options.allow_outbound or os.environ.get('FLAREAI_ALLOW_OUTBOUND') == '1'
+    from visual_demo import enabled as visual_demo_enabled
+    visual_demo = visual_demo_enabled() and not options.offline
+    allow_outbound = not visual_demo and (options.allow_outbound or os.environ.get('FLAREAI_ALLOW_OUTBOUND') == '1')
 
     def terminate(signum: int, frame: object) -> None:
         # Las plataformas detienen el proceso con SIGTERM: se trata como Ctrl-C para liberar la sala y cerrar ordenadamente.
@@ -532,12 +541,12 @@ if __name__ == "__main__":
         try:
             if not options.offline:
                 mobile = ThreadingHTTPServer(('127.0.0.1', options.mobile_port), MobileHandler)
-            database: Database = TwinDatabase() if options.presentation else Database()
+            database: Database = TwinDatabase() if options.presentation and not visual_demo else Database()
             if not database.url:
                 local_start()
             database.bootstrap()
             store = Handler.store = Store(options.offline, database, demo_enabled=not options.offline, director_enabled=True,
-                hackathon=options.hackathon, presentation=options.presentation, allow_outbound=allow_outbound)
+                hackathon=options.hackathon, presentation=options.presentation, allow_outbound=allow_outbound, visual_demo=visual_demo)
             if store.director:
                 worker = threading.Thread(target=store.director.loop, daemon=True)
                 worker.start()

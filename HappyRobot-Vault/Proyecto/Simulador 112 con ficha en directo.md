@@ -244,3 +244,15 @@ sus documentos de sala. No cambia workflows, contactos ni autorización de llama
 
 20 pruebas de Twin/presentación y Ruff pasan con proveedores simulados; no se lanzó una llamada real.
 Después del despliegue hay que recargar mapa y marcador e iniciar una llamada nueva.
+
+
+## Exhibición visual autónoma de Render (2026-09-20)
+
+La decisión posterior sustituye la sincronización de llamadas y la sala Twin en Render: el jurado
+ve hasta dos fuegos ficticios con movimientos y extinción automáticos. `visual_demo.py` dirige el
+simulador existente, sin proveedor LLM ni teléfono. Avisos y decisiones aparecen como simulados;
+se muestran imágenes guardadas y fechadas de NASA GIBS y de una cámara de Barcelona.
+Cortes, viento y potencia modifican el escenario. Solo se activa automáticamente bajo Render;
+local sigue intacto. `FLAREAI_VISUAL_DEMO=0` permite volver al modo conectado.
+
+Relacionado: [[Dashboard y simulador]] · [[2026-09-20]].
