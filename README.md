@@ -120,7 +120,7 @@ Entendemos que no vas a poder hacer las llamadas al 112, así que en ese desplie
 
 **Es posible que los mapas no te carguen bien.** Las APIs que usamos tienen limitaciones y se saturan. Nosotros hemos hecho un sistema local que lo carga mucho más rápido, pero por las limitaciones del hosting gratuito no hemos podido desplegarlo del todo bien.
 
-Si necesitas probarlo en condiciones, **[ábrenos un issue en GitHub](https://github.com/meulencv/FlareAI/issues/new)** y te respondemos ahí con un túnel a nuestro ordenador en un momento. O míralo en el **vídeo**: ahí se ve bien cómo funciona todo y cómo reacciona a las llamadas y a los distintos inputs.
+Si necesitas probarlo en condiciones, **escríbenos a (mail no disponible)** y te pasamos la URL de un túnel a nuestro ordenador en un momento (mejor por mail que por issue, así te la mandamos en privado). O míralo en el **vídeo**: ahí se ve bien cómo funciona todo y cómo reacciona a las llamadas y a los distintos inputs.
 
 ## Ejecutar en local
 
