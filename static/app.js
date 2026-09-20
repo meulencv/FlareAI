@@ -6,6 +6,7 @@ import { createContextView } from "./context.js";
 import { createInfrastructure } from "./infrastructure.js";
 import { createDirectorView } from "./director.js";
 import { priorityLine } from './scene.js';
+import { createCartography } from "./cartography.js";
 
 const $ = id => document.getElementById(id);
 const svg = name => `<svg aria-hidden="true"><use href="#i-${name}"/></svg>`;
@@ -28,8 +29,10 @@ L.control.scale({ imperial: false, maxWidth: 110, position: "bottomleft" }).addT
 map.createPane("footprints"); map.getPane("footprints").style.zIndex = 430;
 map.createPane("scenario"); map.getPane("scenario").style.zIndex = 440;
 const shapeLayer = L.layerGroup().addTo(map), scenarioLayer = L.layerGroup().addTo(map);
+map.getPane("mapPane").appendChild($("cartography"));
 map.getPane("mapPane").appendChild($("heat"));
 map.getPane("mapPane").appendChild($("flow"));
+const cartography = createCartography({ map, canvas: $("cartography"), L });
 const stage = createStage({
   map, canvas: $("flow"),
   sampleWind: (lat, lon) => (data ? sample(data.wind.regions, lat, lon) : null),
@@ -279,31 +282,43 @@ async function refresh() {
   } finally { refreshing = false; }
 }
 
-async function start() {
-  const responses = await Promise.all(["spain.geojson", "neighbors.geojson", "provinces.geojson", "places.json"].map(p => fetch(`/${p}`)));
+async function loadJson(names) {
+  const responses = await Promise.all(names.map(name => fetch(`/${name}`)));
   if (responses.some(r => !r.ok)) throw new Error("No se pudo cargar la cartografía. Recarga la página.");
-  const [spain, neighbors, provinces, places] = await Promise.all(responses.map(r => r.json()));
+  return Promise.all(responses.map(r => r.json()));
+}
+
+async function start() {
+  // Primer fotograma con el contorno de España y vecinos; las provincias (3,4 MB) llegan después sin bloquear.
+  const [spain, neighbors, places] = await loadJson(["spain.geojson", "neighbors.geojson", "places.json"]);
   country = spain;
-  L.geoJSON(neighbors, { interactive: false, style: { color: "#e5e9ee", weight: .8, fillColor: "#f2f4f7", fillOpacity: 1 } }).addTo(map);
-  L.geoJSON(country, { interactive: false, style: { color: "#cfd6df", weight: 1, fillColor: "#ffffff", fillOpacity: 1 } }).addTo(map);
-  L.geoJSON(provinces, { interactive: false, style: { color: "#e7ebf0", weight: .6, fillOpacity: 0 } }).addTo(map);
-  for (const place of places) {
-    const label = L.marker([place.lat, place.lon], { interactive: false, icon: L.divIcon({
-      className: "place-label", html: escapeHtml(place.name), iconSize: [90, 18], iconAnchor: [45, -5],
-    }) });
-    const show = () => {
-      const visible = map.getZoom() > 7 || ["Madrid", "Barcelona", "Valencia", "Sevilla", "Bilbao", "Palma", "A Coruña", "Las Palmas"].includes(place.name);
-      if (visible) label.addTo(map); else label.remove();
-    };
-    map.on("zoomend", show); show();
-  }
+  cartography.set("neighbors", neighbors); cartography.set("country", country);
+  const majorPlaces = new Set(["Madrid", "Barcelona", "Valencia", "Sevilla", "Bilbao", "Palma", "A Coruña", "Las Palmas"]);
+  const labels = places.map(place => ({ place, label: L.marker([place.lat, place.lon], { interactive: false, icon: L.divIcon({
+    className: "place-label", html: escapeHtml(place.name), iconSize: [90, 18], iconAnchor: [45, -5],
+  }) }) }));
+  let labelsDetailed = null;
+  const showLabels = () => {
+    const detailed = map.getZoom() > 7;
+    if (detailed === labelsDetailed) return;
+    labelsDetailed = detailed;
+    for (const { place, label } of labels) {
+      if (detailed || majorPlaces.has(place.name)) label.addTo(map); else label.remove();
+    }
+  };
+  map.on("zoomend", showLabels); showLabels();
   stage.start(rings(country.geometry));
+  const heading = document.querySelector(".map-label h2"), eyebrow = document.querySelector(".map-label .eyebrow");
   map.on("moveend resize zoomend", () => {
-    document.querySelector(".map-label h2").textContent = map.getZoom() > 9 && selected ? `${selected.name}, a escala local.` : "España, bajo observación.";
-    document.querySelector(".map-label .eyebrow").textContent = map.getZoom() > 9 ? "DETALLE TERRITORIAL" : "PANORAMA NACIONAL";
+    const title = map.getZoom() > 9 && selected ? `${selected.name}, a escala local.` : "España, bajo observación.";
+    const kicker = map.getZoom() > 9 ? "DETALLE TERRITORIAL" : "PANORAMA NACIONAL";
+    if (heading.textContent !== title) heading.textContent = title;
+    if (eyebrow.textContent !== kicker) eyebrow.textContent = kicker;
   });
   new ResizeObserver(() => map.invalidateSize()).observe($("map"));
-  setRegion("peninsula"); infrastructure.load(); await refresh(); setInterval(refresh, 2500);
+  setRegion("peninsula"); infrastructure.load();
+  loadJson(["provinces.geojson"]).then(([provinces]) => cartography.set("provinces", provinces)).catch(() => {});
+  await refresh(); setInterval(refresh, 2500);
 }
 
 document.querySelectorAll("[data-region]").forEach(b => b.addEventListener("click", () => { closeSimulation(); setRegion(b.dataset.region); }));

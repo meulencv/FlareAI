@@ -477,6 +477,12 @@ h1 {
   left: 18px;
   bottom: 4px;
 }
+.leaflet-map-pane > .base-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 380;
+  pointer-events: none;
+}
 .leaflet-map-pane > .flow-canvas {
   position: absolute;
   inset: 0;

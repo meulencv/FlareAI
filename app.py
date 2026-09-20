@@ -411,7 +411,7 @@ class Handler(SimpleHTTPRequestHandler):
                     raise KeyError('Cartografía no importada')
                 self.send_json(asset['data']['places'] if route.path == '/places.json' else asset['data'])
             elif route.path in {"/", "/index.html", "/styles.css", "/app.js", "/wind.js", "/simulation.js",
-                                "/flow.js", "/flames.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js", "/operations.js", "/aura.js",
+                                "/flow.js", "/flames.js", "/cartography.js", "/context.js", "/heat.js", "/infrastructure.js", "/director.js", "/scene.js", "/traffic.js", "/operations.js", "/aura.js",
                                 "/spain.geojson", "/neighbors.geojson", "/provinces.geojson", "/places.json",
                                 "/vendor/leaflet.js", "/vendor/leaflet.css"}:
                 super().do_GET()
