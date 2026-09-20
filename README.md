@@ -31,6 +31,7 @@ En un incendio, el 112 recibe **cientos de llamadas en minutos**. Muchas se cont
 | 📲 **Llama de vuelta, como el 112** | Cuando las unidades llegan, el agente **llama por teléfono al mando de bomberos**, recoge su parte por voz y, si no contesta, salta al contacto de respaldo. Validado con llamadas reales. |
 | ⚡ **Se adapta al instante** | Cambia el viento, se corta una vía, el bombero dice que empeora → el plan se rehace en el mismo tick. Varios incendios a la vez, priorizados. |
 | 📱 **Alerta a la población** | Si el parte describe peligro para las personas (humos tóxicos, propagación a viviendas), el agente propone una **ES-Alert** que el operador puede vetar en 3 segundos. |
+| 🗄️ **Todo sincronizado en HappyRobot** | La base de datos dinámica es **HappyRobot Twin**: llamadas, partes, decisiones, asignaciones y memorias viven ahí. Los workflows de voz y el agente director leen y escriben el mismo estado, así que todo queda coordinado y trazable. |
 | 🧑‍✈️ **Humano al mando** | Dashboard donde se ve **qué piensa la IA y por qué**, con pausa, veto y un editor para introducir giros al escenario. |
 | 📚 **Aprende** | Cada operación cerrada genera una memoria. **Cerebro** las conecta en un grafo y las inyecta en el contexto del agente para la siguiente decisión. |
 
@@ -98,7 +99,9 @@ flowchart LR
 
 **Llamada de vuelta: el protocolo 112, automatizado.** En una sala del 112 real, el operador no espera: llama al mando desplegado para conocer la situación sobre el terreno. FlareAI hace exactamente eso, solo. Al llegar las unidades dispara una **llamada de voz saliente** con HappyRobot, conversa con el bombero, estructura su parte (fuego confirmado, evolución, refuerzos, peligro para la población) y lo devuelve al agente para replanificar. Si el principal no atiende, llama al respaldo; cada intento queda registrado antes de marcar y nunca se repite una llamada incierta. **Lo hemos validado con llamadas telefónicas reales**: principal ocupado → respaldo atendió y el parte completo entró en el sistema en 71 segundos. Es escalable por diseño: los contactos, prioridades y respaldos viven en Twin, no en código; añadir un parque, una comarca o un cuerpo nuevo es añadir filas.
 
-**Ejecución real.** Las llamadas salientes a bomberos son reales vía HappyRobot. Los despachos, partes, decisiones y memorias se escriben en **HappyRobot Twin**, que sincroniza el estado entre instancias: un único director activo por sala, con lease renovable y recuperación tras caída.
+**Ejecución real.** Las llamadas entrantes y salientes son reales vía HappyRobot; los despachos, partes y alertas son acciones del agente, no texto propuesto.
+
+**La base de datos está en HappyRobot.** Usamos **HappyRobot Twin** como base de datos del sistema para todo lo dinámico: cada llamada 112, cada testimonio, cada parte de bomberos, cada decisión del agente, cada asignación de vehículo y cada memoria aprendida se guarda ahí. Es lo que sincroniza las piezas: el workflow de voz escribe la ficha de la llamada, el director la lee y escribe su plan, la llamada saliente al bombero escribe el parte, y el director vuelve a leerlo para replanificar. Todo con un único director activo por sala (lease renovable, recuperación automática si se cae) y un histórico consultable. Lo estático —atlas de emergencias, cartografía, cachés de NASA/NOAA— queda en PostgreSQL local para no mover gigas que no cambian.
 
 **Memoria y autoaprendizaje.** Al cerrar una operación, el sistema genera un informe y una memoria breve. Esas memorias vuelven al contexto del agente en la siguiente decisión. Cerebro las visualiza como grafo navegable.
 
@@ -107,7 +110,7 @@ flowchart LR
 ## Stack
 
 - **Backend:** Python 3.13, servidor HTTP stdlib, sin frameworks. PostgreSQL para atlas territorial e histórico; SQLite + RTree para el atlas de emergencias (parques, hospitales, comisarías, helipuertos).
-- **Agente:** HappyRobot Reasoning Agent (director) + workflows de voz entrante (112) y saliente (bomberos). HappyRobot Twin como base de datos dinámica compartida.
+- **Agente:** HappyRobot Reasoning Agent (director) + workflows de voz entrante (112) y saliente (bomberos). **HappyRobot Twin como base de datos** de llamadas, partes, decisiones, asignaciones y memorias.
 - **Datos:** NASA FIRMS · NASA GIBS · NOAA GFS (GRIB2 parcial) · IGN · INE · OpenStreetMap · catálogo de 2.900+ webcams públicas verificadas.
 - **Frontend:** Leaflet + Canvas 2D propio (fuego animado, partículas de viento, cartografía en un solo canvas para 110k vértices a 60 fps). Sin build.
 - **Escalabilidad:** el observatorio ya cubre toda España; el escenario operativo se prepara por zona (grafo viario descargado una vez y cacheado). Añadir una ciudad es preparar sus teselas.
